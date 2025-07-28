@@ -3,7 +3,7 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as THREE from "three";
 // import * as CANNON from "cannon-es"; // <--- Potentially remove if physics not used for tokens
-import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderFilledTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
+import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
 import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { useSearchParams } from "next/navigation";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -1428,7 +1428,6 @@ function LudoPageContent() {
                         flex="1"
                     >
                         <SliderTrack bg="gray.600">
-                            <SliderFilledTrack bg="teal.500" />
                         </SliderTrack>
                         <SliderThumb boxSize={6} />
                     </Slider>
@@ -1475,7 +1474,6 @@ function LudoPageContent() {
                         flex="1"
                     >
                         <SliderTrack bg="gray.600">
-                            <SliderFilledTrack bg="teal.500" />
                         </SliderTrack>
                         <SliderThumb boxSize={6} />
                     </Slider>
