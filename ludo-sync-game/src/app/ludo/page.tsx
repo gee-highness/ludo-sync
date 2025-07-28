@@ -3,10 +3,15 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as THREE from "three";
 // import * as CANNON from "cannon-es"; // <--- Potentially remove if physics not used for tokens
-import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
+import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderFilledTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
 import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { useSearchParams } from "next/navigation";
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+
+import { Suspense } from 'react'; // Import Suspense
+
+
 
 interface TokenState {
     gridPos: [number, number];
@@ -80,7 +85,34 @@ const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
 };
 
 
-export default function LudoPage() {
+
+export default function LudoPageWrapper() { // Create a wrapper component
+    return (
+        <Suspense fallback={
+            <Center
+                position="absolute"
+                top="0"
+                left="0"
+                width="100%"
+                height="100%"
+                bg="rgba(0,0,0,0.7)"
+                zIndex="20"
+                flexDirection="column"
+            >
+                <Spinner size="xl" color="white" mb={4} />
+                <Text color="white" fontSize="xl">
+                    Loading game...
+                </Text>
+            </Center>
+        }>
+            <LudoPageContent />
+        </Suspense>
+    );
+}
+
+
+
+function LudoPageContent() {
     const mountRef = useRef<HTMLDivElement>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
@@ -1151,7 +1183,7 @@ export default function LudoPage() {
 
                 for (let i = 0; i < intersects.length; i++) {
                     const intersectedObject = intersects[i].object;
-                    let currentParent = intersectedObject;
+                    let currentParent: THREE.Object3D | null = intersectedObject; // <-- Changed type here
                     while (currentParent && !currentParent.userData.playerId) {
                         currentParent = currentParent.parent;
                     }
@@ -1255,8 +1287,12 @@ export default function LudoPage() {
     }, [cameraFocalLength]);
 
     useEffect(() => {
-        if (!sceneRef.current) return;
+        // Add a null check here to ensure sceneRef.current is not null before proceeding
+        if (!sceneRef.current) {
+            return; // If sceneRef.current is null, exit the effect early.
+        }
 
+        // Now, TypeScript knows that sceneRef.current is NOT null in the code below this line.
         indicatorMeshesRef.current.forEach(mesh => mesh.visible = false);
 
         if (gamePhase === 'SELECT_TOKEN_TO_MOVE') {
@@ -1272,19 +1308,19 @@ export default function LudoPage() {
                     if (tokenMesh) {
                         if (!indicatorMesh) {
                             indicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
-                            sceneRef.current.add(indicatorMesh);
+                            // This line should now be safe because of the check at the top
+                            sceneRef.current!.add(indicatorMesh);
                             indicatorMeshesRef.current.set(key, indicatorMesh);
                         }
                         indicatorMesh.position.copy(tokenMesh.position);
-                        indicatorMesh.position.y += 2;
-                        indicatorMesh.scale.set(0.5, 0.5, 0.5); // Adjust these values to make it smaller (e.g., 0.1 for 10% of original size)
+                        indicatorMesh.position.y += 1.5;
+                        indicatorMesh.scale.set(0.5, 0.5, 0.5);
                         indicatorMesh.visible = true;
                     }
                 });
             }
         }
-    }, [gamePhase, currentPlayerId, rolledDiceValue, humanPlayerId, getMovableTokens, sceneRef, indicatorGeometry, indicatorMaterial]);
-
+    }, [gamePhase, currentPlayerId, rolledDiceValue, humanPlayerId, getMovableTokens, indicatorGeometry, indicatorMaterial]);
 
     return (
         <Box
@@ -1392,7 +1428,7 @@ export default function LudoPage() {
                         flex="1"
                     >
                         <SliderTrack bg="gray.600">
-
+                            <SliderFilledTrack bg="teal.500" />
                         </SliderTrack>
                         <SliderThumb boxSize={6} />
                     </Slider>
@@ -1439,7 +1475,7 @@ export default function LudoPage() {
                         flex="1"
                     >
                         <SliderTrack bg="gray.600">
-
+                            <SliderFilledTrack bg="teal.500" />
                         </SliderTrack>
                         <SliderThumb boxSize={6} />
                     </Slider>
