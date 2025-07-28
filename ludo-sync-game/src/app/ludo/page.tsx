@@ -2,16 +2,12 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as THREE from "three";
-// import * as CANNON from "cannon-es"; // <--- Potentially remove if physics not used for tokens
 import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
 import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { useSearchParams } from "next/navigation";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-
-import { Suspense } from 'react'; // Import Suspense
-
-
+import { Suspense } from 'react';
 
 interface TokenState {
     gridPos: [number, number];
@@ -34,30 +30,16 @@ interface Player {
 type GamePhase = 'IDLE' | 'ROLL_DICE' | 'SELECT_TOKEN_TO_MOVE' | 'ANIMATING_MOVE' | 'GAME_OVER';
 
 interface FocalLengthControlsProps {
-    getFocalLength: () => number;
+    focalLength: number; // Changed to directly pass focalLength
     onIncrease: () => void;
     onDecrease: () => void;
 }
 
 const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
-    getFocalLength,
+    focalLength, // Directly use focalLength prop
     onIncrease,
     onDecrease,
 }) => {
-    const [displayFocalLength, setDisplayFocalLength] = useState(getFocalLength());
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            // Only update if the value has changed to avoid unnecessary re-renders
-            const currentFocalLength = getFocalLength();
-            if (currentFocalLength !== displayFocalLength) {
-                setDisplayFocalLength(currentFocalLength);
-            }
-        }, 100);
-
-        return () => clearInterval(interval);
-    }, [getFocalLength, displayFocalLength]); // Add displayFocalLength to dependencies
-
     return (
         <Box
             position="absolute"
@@ -73,7 +55,7 @@ const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
             alignItems="center"
             gap={2}
         >
-            <Text fontSize="sm">Focal Length: {displayFocalLength.toFixed(0)}</Text>
+            <Text fontSize="sm">Focal Length: {focalLength.toFixed(0)}</Text>
             <Button onClick={onDecrease} size="sm" colorScheme="teal" width="full">
                 Zoom In (+)
             </Button>
@@ -84,9 +66,7 @@ const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
     );
 };
 
-
-
-export default function LudoPageWrapper() { // Create a wrapper component
+export default function LudoPageWrapper() {
     return (
         <Suspense fallback={
             <Center
@@ -110,14 +90,11 @@ export default function LudoPageWrapper() { // Create a wrapper component
     );
 }
 
-
-
 function LudoPageContent() {
     const mountRef = useRef<HTMLDivElement>(null);
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    // const worldRef = useRef<CANNON.World | null>(null); // <--- Potentially remove
     const animationFrameId = useRef<number | null>(null);
 
     const tokenMeshMapRef = useRef<Map<string, THREE.Object3D[]>>(new Map());
@@ -222,7 +199,7 @@ function LudoPageContent() {
         steps: number,
         playerId: string
     ): TokenState | null => {
-        const player = playersRef.current[playerId]; // Use ref for players
+        const player = playersRef.current[playerId];
         if (!player) {
             return null;
         }
@@ -268,7 +245,7 @@ function LudoPageContent() {
 
     const getMovableTokens = useCallback((playerId: string, diceValue: number): number[] => {
         const movableTokenIndices: number[] = [];
-        const player = playersRef.current[playerId]; // Use ref for players
+        const player = playersRef.current[playerId];
 
         if (!player) {
             return [];
@@ -284,10 +261,10 @@ function LudoPageContent() {
             }
         });
         return movableTokenIndices;
-    }, [calculateNextPosition]); // Removed `players` from dependencies
+    }, [calculateNextPosition]);
 
     const checkWinCondition = useCallback(() => {
-        const currentPlayers = playersRef.current; // Use ref for players
+        const currentPlayers = playersRef.current;
         for (const playerId of playerOrder) {
             const player = currentPlayers[playerId];
             if (!player) {
@@ -308,7 +285,7 @@ function LudoPageContent() {
                 break;
             }
         }
-    }, [playerOrder, toast]); // Removed `players` from dependencies
+    }, [playerOrder, toast]);
 
     const endTurn = useCallback(() => {
         setRolledDiceValue(null);
@@ -328,7 +305,7 @@ function LudoPageContent() {
     }, [currentPlayerId, playerOrder, botPlayerId]);
 
     const rollDice = useCallback(() => {
-        if (gamePhaseRef.current !== 'ROLL_DICE' || winner) { // Use ref for gamePhase
+        if (gamePhaseRef.current !== 'ROLL_DICE' || winner) {
             return;
         }
 
@@ -343,13 +320,13 @@ function LudoPageContent() {
             position: "top-right",
         });
 
-        const movableTokens = getMovableTokens(currentPlayerIdRef.current, diceResult); // Use ref for currentPlayerId
+        const movableTokens = getMovableTokens(currentPlayerIdRef.current, diceResult);
 
         if (diceResult === 6) {
             setRollsLeft(prev => prev + 1);
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
-                if (currentPlayerIdRef.current === botPlayerId) { // Use ref
+                if (currentPlayerIdRef.current === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
                     }, 1000);
@@ -369,7 +346,7 @@ function LudoPageContent() {
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
                 setRollsLeft(prev => prev - 1);
-                if (currentPlayerIdRef.current === botPlayerId) { // Use ref
+                if (currentPlayerIdRef.current === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
                     }, 1000);
@@ -399,11 +376,11 @@ function LudoPageContent() {
                 }
             }
         }
-    }, [botPlayerId, winner, toast, getMovableTokens]); // Removed gamePhase and currentPlayerId from dependencies, using refs
+    }, [botPlayerId, winner, toast, getMovableTokens]);
 
     const adjustTokensInCell = useCallback((row: number, col: number) => {
         const tokensInThisCell: { mesh: THREE.Object3D, playerId: string, tokenIndex: number }[] = [];
-        const currentPlayersState = playersRef.current; // Use the ref here
+        const currentPlayersState = playersRef.current;
 
         playerOrder.forEach(pId => {
             const player = currentPlayersState[pId];
@@ -420,30 +397,17 @@ function LudoPageContent() {
         });
 
         const numTokens = tokensInThisCell.length;
-        const baseScale = 0.5; // Original scale for a single token
+        const baseScale = 0.5;
 
-        if (numTokens > 0) { // Ensure there's at least one token
+        if (numTokens > 0) {
             const cellWorldCenter = gridToWorld(row, col);
-            const offsetDistance = 0.2; // Distance for offsetting tokens
+            const offsetDistance = 0.2;
 
-            // Calculate the dynamic scale factor
-            // To ensure tokens don't become excessively large or small,
-            // we'll cap the maximum scale and provide a floor.
-            // A simple 1/numTokens might make them too small with many tokens.
-            // Let's make it proportional but with a minimum visible size.
-            // For example, if numTokens is 1, scaleFactor is 1.
-            // If numTokens is 2, scaleFactor is 0.5.
-            // If numTokens is 4, scaleFactor is 0.25.
             let scaleFactor = 1 / numTokens;
+            scaleFactor = Math.max(scaleFactor, 0.2);
 
-            // Optional: Clamp the scale factor to prevent tokens from becoming too small
-            // For example, ensure it's not smaller than 0.2 of the base scale.
-            scaleFactor = Math.max(scaleFactor, 0.2); // Prevents scale from going below 20% of baseScale
-
-            // Define offsets based on the number of tokens
             let offsets: [number, number][] = [];
             if (numTokens === 1) {
-                // No offset needed for single token
                 offsets = [[0, 0]];
             } else if (numTokens === 2) {
                 offsets = [[-offsetDistance, 0], [offsetDistance, 0]];
@@ -461,9 +425,6 @@ function LudoPageContent() {
                     [offsetDistance * 0.7, -offsetDistance * 0.7]
                 ];
             } else {
-                // For more than 4 tokens (unlikely in Ludo, but for robustness)
-                // You might need a more complex offset distribution.
-                // For now, we'll just place them at the center but scaled down heavily.
                 tokensInThisCell.forEach(({ mesh }) => {
                     mesh.scale.set(baseScale * scaleFactor, baseScale * scaleFactor, baseScale * scaleFactor);
                     const cellWorldCenterDefault = gridToWorld(row, col);
@@ -475,14 +436,13 @@ function LudoPageContent() {
             tokensInThisCell.forEach(({ mesh }, i) => {
                 const [offsetX, offsetZ] = offsets[i];
                 mesh.position.set(cellWorldCenter.x + offsetX, 0.01, cellWorldCenter.z + offsetZ);
-                // Apply the dynamically calculated scale
                 mesh.scale.set(baseScale * scaleFactor, baseScale * scaleFactor, baseScale * scaleFactor);
             });
         }
     }, [gridToWorld, playerOrder]);
 
     const moveToken = useCallback((playerId: string, tokenIndex: number, diceValue: number) => {
-        const player = playersRef.current[playerId]; // Use ref
+        const player = playersRef.current[playerId];
         if (!player || tokenIndex < 0 || tokenIndex >= player.tokens.length) {
             return;
         }
@@ -501,7 +461,7 @@ function LudoPageContent() {
 
         if (!potentialNextState.isHome) {
             for (const opponentId of playerOrder) {
-                const opponentPlayer = playersRef.current[opponentId]; // Use ref
+                const opponentPlayer = playersRef.current[opponentId];
                 if (!opponentPlayer) continue;
                 if (opponentId === playerId) continue;
 
@@ -687,7 +647,7 @@ function LudoPageContent() {
                         position: "top-right",
                     });
                     setGamePhase('ROLL_DICE');
-                    if (currentPlayerIdRef.current === botPlayerId) { // Use ref
+                    if (currentPlayerIdRef.current === botPlayerId) {
                         setTimeout(() => rollDiceRef.current?.(), 1500);
                     }
                 } else {
@@ -697,10 +657,10 @@ function LudoPageContent() {
         };
         animateTokenStep();
 
-    }, [calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates]); // `players` removed
+    }, [calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates]);
 
     const makeBotMove = useCallback((diceValue: number, movableTokens: number[]) => {
-        const botPlayer = playersRef.current[currentPlayerIdRef.current]; // Use ref
+        const botPlayer = playersRef.current[currentPlayerIdRef.current];
         if (!botPlayer || movableTokens.length === 0) {
             setTimeout(() => endTurnRef.current?.(), 0);
             return;
@@ -721,15 +681,15 @@ function LudoPageContent() {
         if (chosenTokenIndex === null) {
             for (const index of movableTokens) {
                 const token = botPlayer.tokens[index];
-                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current); // Use ref
+                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current);
                 if (!potentialNextState || potentialNextState.isHome) continue;
 
                 const isTargetSafeSpot = safeSpots.has(JSON.stringify(potentialNextState.gridPos));
                 if (isTargetSafeSpot) continue;
 
                 for (const opponentId of playerOrder) {
-                    if (opponentId === currentPlayerIdRef.current) continue; // Use ref
-                    const opponentPlayer = playersRef.current[opponentId]; // Use ref
+                    if (opponentId === currentPlayerIdRef.current) continue;
+                    const opponentPlayer = playersRef.current[opponentId];
                     if (!opponentPlayer) continue;
 
                     for (const oppToken of opponentPlayer.tokens) {
@@ -750,7 +710,7 @@ function LudoPageContent() {
             let maxDistance = -1;
             for (const index of movableTokens) {
                 const token = botPlayer.tokens[index];
-                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current); // Use ref
+                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current);
                 if (!potentialNextState) continue;
 
                 let currentDistance = 0;
@@ -774,20 +734,20 @@ function LudoPageContent() {
         }
 
         if (chosenTokenIndex !== null) {
-            moveTokenRef.current?.(currentPlayerIdRef.current, chosenTokenIndex, diceValue); // Use ref
+            moveTokenRef.current?.(currentPlayerIdRef.current, chosenTokenIndex, diceValue);
         } else {
             setTimeout(() => endTurnRef.current?.(), 0);
         }
-    }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates]); // Removed `players` and `currentPlayerId`
+    }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates]);
 
     const handleTokenClick = useCallback((playerId: string, tokenIndex: number) => {
-        if (gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' && currentPlayerIdRef.current === playerId && playerId === humanPlayerId) { // Use refs
-            if (rolledDiceValueRef.current === null) { // Use ref
+        if (gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' && currentPlayerIdRef.current === playerId && playerId === humanPlayerId) {
+            if (rolledDiceValueRef.current === null) {
                 return;
             }
-            const movableTokens = getMovableTokens(playerId, rolledDiceValueRef.current); // Use ref
+            const movableTokens = getMovableTokens(playerId, rolledDiceValueRef.current);
             if (movableTokens.includes(tokenIndex)) {
-                moveTokenRef.current?.(playerId, tokenIndex, rolledDiceValueRef.current); // Use ref
+                moveTokenRef.current?.(playerId, tokenIndex, rolledDiceValueRef.current);
             } else {
                 toast({
                     title: "Invalid Move",
@@ -799,7 +759,7 @@ function LudoPageContent() {
                 });
             }
         }
-    }, [humanPlayerId, getMovableTokens, toast]); // Removed gamePhase, currentPlayerId, rolledDiceValue
+    }, [humanPlayerId, getMovableTokens, toast]);
 
     const animate = useCallback(() => {
         animationFrameId.current = requestAnimationFrame(animate);
@@ -807,9 +767,8 @@ function LudoPageContent() {
         const scene = sceneRef.current;
         const camera = cameraRef.current;
         const renderer = rendererRef.current;
-        // const world = worldRef.current; // <--- Potentially remove
 
-        if (!scene || !camera || !renderer) { // If world is removed, remove it from this check
+        if (!scene || !camera || !renderer) {
             return;
         }
 
@@ -827,12 +786,6 @@ function LudoPageContent() {
 
         camera.lookAt(new THREE.Vector3(0, 0, 0));
         camera.updateProjectionMatrix();
-
-        // if (world) { // <--- Potentially remove this block
-        //     const fixedTimeStep = 1 / 60;
-        //     const maxSubSteps = 10;
-        //     world.step(fixedTimeStep, performance.now() / 1000, maxSubSteps);
-        // }
 
         renderer.render(scene, camera);
     }, [cameraFocalLength, cameraVerticalAngle, cameraRotationY]);
@@ -917,12 +870,7 @@ function LudoPageContent() {
         const ambientLight = new THREE.AmbientLight(0x404040, 2);
         scene.add(ambientLight);
 
-        // --- Physics World Initialization ---
-        // If CANNON.World is not used for token movement/collisions, this block can be removed.
-        // const world = new CANNON.World();
-        // world.gravity.set(0, -9.82, 0);
-        // world.broadphase = new CANNON.SAPBroadphase(world);
-        // worldRef.current = world;
+        // Physics World Initialization removed as it's not used for token movement.
 
         const groundGeometry = new THREE.PlaneGeometry(50, 50, 10, 10);
         const groundMaterial = new THREE.MeshStandardMaterial({
@@ -936,7 +884,7 @@ function LudoPageContent() {
 
         const loader = new GLTFLoader();
         let modelsLoadedCount = 0;
-        const totalModelsToLoad = 1 + 1 + 4 + (4 * 4); // Center, Grid, 4 Bases, 16 Tokens
+        const totalModelsToLoad = 1 + 1 + 4 + (4 * 4);
 
         const checkAllModelsLoaded = () => {
             modelsLoadedCount++;
@@ -1061,7 +1009,7 @@ function LudoPageContent() {
                     title: `Error loading ${playerId} start base model`, description: `Could not load ${playerId} starting area model.`,
                     status: "error", duration: 5000, isClosable: true, position: "top-right",
                 });
-                for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); } // Ensure counter increments even on error
+                for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
             });
         });
 
@@ -1175,7 +1123,6 @@ function LudoPageContent() {
                 }
 
                 raycaster.current.setFromCamera(mouse.current, cameraRef.current);
-                // Optimize raycasting by only checking known token meshes
                 const allTokenMeshes: THREE.Object3D[] = [];
                 tokenMeshMapRef.current.forEach(meshes => allTokenMeshes.push(...meshes));
 
@@ -1183,7 +1130,7 @@ function LudoPageContent() {
 
                 for (let i = 0; i < intersects.length; i++) {
                     const intersectedObject = intersects[i].object;
-                    let currentParent: THREE.Object3D | null = intersectedObject; // <-- Changed type here
+                    let currentParent: THREE.Object3D | null = intersectedObject;
                     while (currentParent && !currentParent.userData.playerId) {
                         currentParent = currentParent.parent;
                     }
@@ -1227,7 +1174,7 @@ function LudoPageContent() {
                 });
             });
         };
-    }, [cameraFocalLength, cameraVerticalAngle, cameraRotationY, gridToWorld, toast, humanPlayerId, pathCoordinates, playerHomePathMainPathEntryIndices]); // Added static deps
+    }, [gridToWorld, toast, humanPlayerId, pathCoordinates, playerHomePathMainPathEntryIndices]); // Removed camera state variables
 
     useEffect(() => {
         if (!isLoading && sceneRef.current && cameraRef.current && rendererRef.current) {
@@ -1282,17 +1229,11 @@ function LudoPageContent() {
         });
     }, [players, adjustTokensInCell, playerOrder]);
 
-    const getCameraFocalLengthForDisplay = useCallback(() => {
-        return cameraRef.current ? cameraRef.current.fov : cameraFocalLength;
-    }, [cameraFocalLength]);
-
     useEffect(() => {
-        // Add a null check here to ensure sceneRef.current is not null before proceeding
         if (!sceneRef.current) {
-            return; // If sceneRef.current is null, exit the effect early.
+            return;
         }
 
-        // Now, TypeScript knows that sceneRef.current is NOT null in the code below this line.
         indicatorMeshesRef.current.forEach(mesh => mesh.visible = false);
 
         if (gamePhase === 'SELECT_TOKEN_TO_MOVE') {
@@ -1308,7 +1249,6 @@ function LudoPageContent() {
                     if (tokenMesh) {
                         if (!indicatorMesh) {
                             indicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
-                            // This line should now be safe because of the check at the top
                             sceneRef.current!.add(indicatorMesh);
                             indicatorMeshesRef.current.set(key, indicatorMesh);
                         }
@@ -1490,7 +1430,7 @@ function LudoPageContent() {
 
             {!isLoading && (
                 <FocalLengthControls
-                    getFocalLength={getCameraFocalLengthForDisplay}
+                    focalLength={cameraFocalLength} // Pass focalLength directly
                     onIncrease={() => setCameraFocalLength(prev => Math.min(prev + 5, 80))}
                     onDecrease={() => setCameraFocalLength(prev => Math.max(prev - 5, 10))}
                 />
