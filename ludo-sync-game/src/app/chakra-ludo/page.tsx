@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import React, { useRef, useEffect, useState, useCallback, useMemo, Suspense } from "react"; // Import Suspense
 import {
     Box,
     Spinner,
     Center,
     Text,
     Button,
-    Flex,
     Grid,
     Circle,
     VStack,
@@ -17,7 +16,6 @@ import {
     ModalHeader,
     ModalBody,
     ModalCloseButton,
-    IconButton,
     useBreakpointValue,
 } from "@chakra-ui/react";
 import { InfoIcon, QuestionIcon } from '@chakra-ui/icons'; // Import QuestionIcon for the help button
@@ -79,8 +77,36 @@ const fastHopAnimation = keyframes`
   100% { transform: translateY(0); }
 `;
 
+// Simple loading component for Suspense fallback
+const LoadingComponent = () => (
+    <Center
+        position="absolute"
+        top="0"
+        left="0"
+        width="100%"
+        height="100%"
+        bg="rgba(0,0,0,0.7)"
+        zIndex="20"
+        flexDirection="column"
+    >
+        <Spinner size="xl" color="white" mb={4} />
+        <Text color="white" fontSize="xl">
+            Loading Ludo...
+        </Text>
+    </Center>
+);
 
-export default function LudoPageContent() {
+
+export default function LudoPage() {
+    return (
+        <Suspense fallback={<LoadingComponent />}>
+            <LudoGameClient />
+        </Suspense>
+    );
+}
+
+
+function LudoGameClient() {
     // Removed useToast
     const searchParams = useSearchParams();
 
@@ -108,6 +134,11 @@ export default function LudoPageContent() {
     const [showHelpModal, setShowHelpModal] = useState(false);
     // New state for displaying the previous dice value
     const [previousDiceDisplayValue, setPreviousDiceDisplayValue] = useState<number | null>(null);
+
+    // New refs and states for dice animation positioning
+    const boardRef = useRef<HTMLDivElement>(null);
+    const [diceAnimationStartPos, setDiceAnimationStartPos] = useState<{ top: number, left: number } | null>(null);
+    const [boardCenterPixelPos, setBoardCenterPixelPos] = useState<{ top: number, left: number } | null>(null);
 
 
     const addLog = useCallback((logMessage: string) => {
@@ -221,6 +252,16 @@ export default function LudoPageContent() {
     }), []);
 
 
+    // Responsive cell size
+    const responsiveCellSize = useBreakpointValue({
+        base: '20px', // Smaller for mobile
+        sm: '25px',
+        md: '30px',
+        lg: '35px',
+        xl: '40px', // Original size for larger screens
+    }) || '40px'; // Added fallback to ensure it's always initialized to a string
+
+
     // Helper to determine cell type for styling
     const getCellType = useCallback((row: number, col: number) => {
         // Center square
@@ -234,7 +275,7 @@ export default function LudoPageContent() {
                 if (row > 7) return 'homePathRed'; // Player 1's home path
             }
         }
-        if (row === 7 && col === 7) return 'center';
+        if (row === 7 && col === 7 || row === 6 && col === 6 || row === 8 && col === 6 || row === 8 && col === 8 || row === 6 && col === 8) return 'center';
 
         // Bases
         if (row >= 9 && row <= 14 && col >= 0 && col <= 5) return 'baseRed';
@@ -391,7 +432,7 @@ export default function LudoPageContent() {
 
     // New callback function to handle logic after dice animation ends
     const handleDiceAnimationEnd = useCallback(() => {
-        setIsDiceAnimating(false); // Fix: Ensure dice button is re-enabled immediately after animation callback fires
+        //setIsDiceAnimating(false); // Fix: Ensure dice button is re-enabled immediately after animation callback fires
 
         // Now, proceed with the game logic that depends on the dice roll
         const diceResult = rolledDiceValueRef.current; // Use ref to get the latest value
@@ -489,7 +530,7 @@ export default function LudoPageContent() {
         // Simulate remaining steps one by one if not coming out of base or if already on path
         for (let i = 0; i < stepsToMove; i++) {
             // Calculate a single step from the current simulated state
-            let nextStepSimulatedState;
+            let nextStepSimulatedState: TokenState | null = null; // Explicitly type nextStepSimulatedState
             if (currentSimulatedState.isInHomePath) {
                 const currentHomePathIndex = player.homePath.findIndex(p => p[0] === currentSimulatedState.gridPos[0] && p[1] === currentSimulatedState.gridPos[1]);
                 if (currentHomePathIndex + 1 < player.homePath.length) {
@@ -535,6 +576,7 @@ export default function LudoPageContent() {
 
 
     const moveToken = useCallback((playerId: string, tokenIndex: number, diceValue: number) => {
+        setIsDiceAnimating(false);
         const player = playersRef.current[playerId];
         if (!player || tokenIndex < 0 || tokenIndex >= player.tokens.length) {
             return;
@@ -577,9 +619,9 @@ export default function LudoPageContent() {
 
                 for (let oppIndex = 0; oppIndex < opponentPlayer.tokens.length; oppIndex++) {
                     const opponentToken = opponentPlayer.tokens[oppIndex];
-                    if (!opponentToken.isInBase && !opponentToken.isHome &&
-                        opponentToken.gridPos[0] === finalTargetState.gridPos[0] &&
-                        opponentToken.gridPos[1] === finalTargetState.gridPos[1]) {
+                    if (!opponentToken.isInBase && !opponentToken.isHome && // Corrected from oppToken to opponentToken
+                        opponentToken.gridPos[0] === finalTargetState.gridPos[0] && // Corrected from oppToken to opponentToken
+                        opponentToken.gridPos[1] === finalTargetState.gridPos[1]) { // Corrected from oppToken to opponentToken
 
                         if (!isTargetSafeSpot) {
                             capturedTokenInfo = {
@@ -661,12 +703,15 @@ export default function LudoPageContent() {
 
                     if (newRolls > 0) {
                         addLog(`${playerId.replace('player', 'Player ')} has ${newRolls} rolls left. Rolling again.`);
+                        // Introduce a small delay to allow state update to propagate
                         setTimeout(() => {
-                            setGamePhase('ROLL_DICE');
+                            setGamePhase('ROLL_DICE'); // Ensure phase is set before roll
                             if (currentPlayerIdRef.current === botPlayerId) {
-                                rollDiceRef.current?.();
+                                // Add a very slight delay here, or ensure the phase is 'ROLL_DICE'
+                                // before calling rollDiceRef.current
+                                setTimeout(() => rollDiceRef.current?.(), 100); // Added 100ms delay here
                             }
-                        }, 500);
+                        }, 500); // This delay is for the current player's next action
                     } else {
                         addLog(`${playerId.replace('player', 'Player ')} has no rolls left. Turn passes.`);
                         setTimeout(() => endTurnRef.current?.(), 500);
@@ -734,7 +779,7 @@ export default function LudoPageContent() {
                 const token = botPlayer.tokens[index];
                 if (token.isInBase) {
                     chosenTokenIndex = index;
-                    addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')})_chooses to move token ${index + 1} from base with a 6.`);
+                    addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) chooses to move token ${index + 1} from base with a 6.`);
                     break;
                 }
             }
@@ -837,6 +882,44 @@ export default function LudoPageContent() {
     useEffect(() => { makeBotMoveRef.current = makeBotMove; }, [makeBotMove]);
     useEffect(() => { moveTokenRef.current = moveToken; }, [moveToken]);
     useEffect(() => { handleTokenClickRef.current = handleTokenClick; }, [handleTokenClick]);
+
+    // Effect to calculate and update dice animation start/center positions
+    useEffect(() => {
+        const calculatePositions = () => {
+            if (!boardRef.current || !responsiveCellSize || !isGameStarted || Object.keys(players).length === 0) {
+                // Only calculate if board ref is available, cell size is resolved, game started and players are initialized
+                return;
+            }
+
+            const boardRect = boardRef.current.getBoundingClientRect();
+            const cellSizeNum = parseFloat(responsiveCellSize);
+
+            // Calculate board center pixel position
+            // The board is 15x15 cells. The center of the board is at (7.5, 7.5) cell units.
+            const boardCenterX = boardRect.left + (BOARD_SIZE / 2) * cellSizeNum - 20;
+            const boardCenterY = boardRect.top + (BOARD_SIZE / 2) * cellSizeNum - 20;
+            setBoardCenterPixelPos({ top: boardCenterY, left: boardCenterX });
+
+            // Calculate current player's base center pixel position
+            const currentPlayer = players[currentPlayerId];
+            if (currentPlayer) {
+                // For each player, the base is a 2x2 grid. We want the center of this 2x2 area.
+                // baseStartCoordinates[playerId] gives the top-left corner of the 2x2 base.
+                const [baseStartRow, baseStartCol] = baseStartCoordinates[currentPlayerId];
+                // Add 1 cell unit to both row and col to get to the center of the 2x2 base area
+                const baseCenterX = boardRect.left + (baseStartCol + 1) * cellSizeNum;
+                const baseCenterY = boardRect.top + (baseStartRow + 1) * cellSizeNum;
+                setDiceAnimationStartPos({ top: baseCenterY, left: baseCenterX });
+            }
+        };
+
+        // Call once on mount and then on resize or relevant state changes
+        calculatePositions();
+        window.addEventListener('resize', calculatePositions);
+        return () => window.removeEventListener('resize', calculatePositions);
+
+    }, [responsiveCellSize, currentPlayerId, players, isGameStarted, boardRef, baseStartCoordinates]);
+
 
     // Initial game setup
     useEffect(() => {
@@ -966,14 +1049,6 @@ export default function LudoPageContent() {
         }
     }, [gameMode, numPlayers, isGameStarted, humanPlayerId, botPlayerId, addLog, baseStartCoordinates, relative2x2Pattern, playerStartPositions, playerHomePaths, playerHomePathMainPathEntryIndices]);
 
-    // Responsive cell size
-    const responsiveCellSize = useBreakpointValue({
-        base: '20px', // Smaller for mobile
-        sm: '25px',
-        md: '30px',
-        lg: '35px',
-        xl: '40px', // Original size for larger screens
-    });
 
     // Function to render the Ludo board cells
     const renderBoard = useCallback(() => {
@@ -983,6 +1058,7 @@ export default function LudoPageContent() {
                 const cellType = getCellType(row, col);
                 let bgColor = 'gray.100'; // Default empty cell
                 let borderColor = 'gray.300';
+                let textColor = 'gray.700'; // Default text color for stars, etc.
 
                 switch (cellType) {
                     case 'center':
@@ -990,60 +1066,61 @@ export default function LudoPageContent() {
                         borderColor = 'gray.900';
                         break;
                     case 'baseRed':
-                        bgColor = 'red.100';
-                        borderColor = 'red.300';
+                        bgColor = 'red.600'; // Deeper red
+                        borderColor = 'red.800';
                         break;
                     case 'baseGreen':
-                        bgColor = 'green.100';
-                        borderColor = 'green.300';
+                        bgColor = 'green.600'; // Deeper green
+                        borderColor = 'green.800';
                         break;
                     case 'baseBlue':
-                        bgColor = 'blue.100';
-                        borderColor = 'blue.300';
+                        bgColor = 'blue.600'; // Deeper blue
+                        borderColor = 'blue.800';
                         break;
                     case 'basePurple':
-                        bgColor = 'purple.100';
-                        borderColor = 'purple.300';
+                        bgColor = 'purple.600'; // Deeper purple
+                        borderColor = 'purple.800';
                         break;
                     case 'mainPath':
-                        bgColor = 'gray.300';
-                        borderColor = 'gray.500';
+                        bgColor = 'whiteAlpha.500'; // Slightly transparent white for path
+                        borderColor = 'gray.400';
                         break;
                     case 'safeSpot':
-                        bgColor = 'yellow.300';
-                        borderColor = 'yellow.500';
+                        bgColor = 'yellow.400'; // Brighter yellow
+                        borderColor = 'yellow.600';
+                        textColor = 'white'; // White star for contrast
                         break;
                     case 'startRed':
-                        bgColor = 'red.300';
+                        bgColor = 'red.700';
                         borderColor = 'red.500';
                         break;
                     case 'startGreen':
-                        bgColor = 'green.300';
+                        bgColor = 'green.700';
                         borderColor = 'green.500';
                         break;
                     case 'startBlue':
-                        bgColor = 'blue.300';
+                        bgColor = 'blue.700';
                         borderColor = 'blue.500';
                         break;
                     case 'startPurple':
-                        bgColor = 'purple.300';
+                        bgColor = 'purple.700';
                         borderColor = 'purple.500';
                         break;
                     case 'homePathRed':
-                        bgColor = 'red.200';
-                        borderColor = 'red.400';
+                        bgColor = 'red.200'; // Lighter red for home path
+                        borderColor = 'red.500'; // More distinct border
                         break;
                     case 'homePathGreen':
-                        bgColor = 'green.200';
-                        borderColor = 'green.400';
+                        bgColor = 'green.200'; // Lighter green for home path
+                        borderColor = 'green.500'; // More distinct border
                         break;
                     case 'homePathBlue':
-                        bgColor = 'blue.200';
-                        borderColor = 'blue.400';
+                        bgColor = 'blue.200'; // Lighter blue for home path
+                        borderColor = 'blue.500'; // More distinct border
                         break;
                     case 'homePathPurple':
-                        bgColor = 'purple.200';
-                        borderColor = 'purple.400';
+                        bgColor = 'purple.200'; // Lighter purple for home path
+                        borderColor = 'purple.500'; // More distinct border
                         break;
                     default:
                         // For the empty corners, make them blend with background or be distinct
@@ -1070,7 +1147,7 @@ export default function LudoPageContent() {
                         width={responsiveCellSize}
                         height={responsiveCellSize}
                         bg={bgColor}
-                        border="1px solid"
+                        border="1px solid" // Ensure all cells have a border
                         borderColor={borderColor}
                         display="flex"
                         alignItems="center"
@@ -1079,7 +1156,7 @@ export default function LudoPageContent() {
                         overflow="hidden"
                     >
                         {cellType === 'safeSpot' && (
-                            <Text fontSize="md" color="gray.700" position="absolute">★</Text>
+                            <Text fontSize="xl" fontWeight="bold" color={textColor} position="absolute">★</Text>
                         )}
                         {/* Render tokens in the cell */}
                         {tokensInCell.map((token, idx) => {
@@ -1103,20 +1180,23 @@ export default function LudoPageContent() {
                             }
 
                             // Calculate stacking transform to prevent tokens from overlapping completely
-                            const stackingTransform = tokensInCell.length > 1
-                                ? (idx % 2 === 0
-                                    ? (idx < 2 ? 'translate(-25%, -25%)' : 'translate(-25%, 25%)')
-                                    : (idx < 2 ? 'translate(25%, -25%)' : 'translate(25%, 25%)')
-                                )
-                                : 'translate(0,0)'; // No transform if only one token
+                            const stackingOffsets = [
+                                { x: '-25%', y: '-25%' }, // Top-left
+                                { x: '25%', y: '-25%' },  // Top-right
+                                { x: '-25%', y: '25%' },  // Bottom-left
+                                { x: '25%', y: '25%' }   // Bottom-right
+                            ];
+                            const stackingTransform = tokensInCell.length > 1 && idx < 4
+                                ? `translate(${stackingOffsets[idx].x}, ${stackingOffsets[idx].y})`
+                                : 'translate(0,0)'; // No transform if only one token or too many
 
                             return (
                                 <Circle
                                     key={`${token.playerId}-${token.tokenIndex}`}
-                                    size={tokensInCell.length > 1 ? '50%' : '70%'} // Adjust size if multiple tokens
+                                    size={tokensInCell.length > 1 ? '55%' : '75%'} // Adjust size if multiple tokens for better visibility
                                     bg={token.color}
-                                    border={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '2px solid white' : 'none'}
-                                    boxShadow={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '0 0 0 3px ' + token.color : 'none'}
+                                    border={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '3px solid white' : 'none'} // Thicker border
+                                    boxShadow={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '0 0 0 4px ' + token.color : 'none'} // Larger glow
                                     cursor={gamePhase === 'SELECT_TOKEN_TO_MOVE' && currentPlayerId === humanPlayerId ? 'pointer' : 'default'}
                                     onClick={() => handleTokenClickRef.current?.(token.playerId, token.tokenIndex)}
                                     position="absolute" // Always absolute for precise positioning within cell
@@ -1136,21 +1216,7 @@ export default function LudoPageContent() {
 
     if (isLoading) {
         return (
-            <Center
-                position="absolute"
-                top="0"
-                left="0"
-                width="100%"
-                height="100%"
-                bg="rgba(0,0,0,0.7)"
-                zIndex="20"
-                flexDirection="column"
-            >
-                <Spinner size="xl" color="white" mb={4} />
-                <Text color="white" fontSize="xl">
-                    Loading Ludo World...
-                </Text>
-            </Center>
+            <LoadingComponent /> // Use the dedicated loading component
         );
     }
 
@@ -1158,7 +1224,7 @@ export default function LudoPageContent() {
         return (
             <Center
                 position="absolute"
-                top="0"
+                top="400"
                 left="0"
                 width="100%"
                 height="100%"
@@ -1197,275 +1263,283 @@ export default function LudoPageContent() {
     }
 
     return (
-        <Box
-            sx={{
-                width: "100vw",
-                height: "100vh",
-                overflow: "hidden",
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                bg: "gray.700", // Background color for the page
-            }}
-        >
-            {/* Game Info Panel */}
-            {gamePhase !== 'GAME_OVER' && (
-                <Box
+        <Suspense fallback={<LoadingComponent />}> {/* Wrap the main content with Suspense */}
+            <Box
+                sx={{
+                    width: "100vw",
+                    height: "100vh",
+                    overflow: "hidden",
+                    position: "relative",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    bg: "gray.700", // Background color for the page
+                }}
+            >
+                {/* Game Info Panel */}
+                {gamePhase !== 'GAME_OVER' && (
+                    <Box
+                        position="absolute"
+                        top="4"
+                        left="4"
+                        bg="rgba(0,0,0,0.6)"
+                        p={4}
+                        borderRadius="md"
+                        color="white"
+                        zIndex="10"
+                        minWidth="200px"
+                    >
+                        <Text fontSize="lg" mb={2}>Current Turn: <Text as="span" fontWeight="bold">{currentPlayerId.replace('player', 'Player ')}</Text></Text>
+                        {/* Display the previously rolled dice value */}
+                        {previousDiceDisplayValue !== null && (
+                            <Text fontSize="md" mb={2}>Last Roll: <Text as="span" fontWeight="bold">{previousDiceDisplayValue}</Text></Text>
+                        )}
+                        {gamePhase === 'ROLL_DICE' && currentPlayerId === humanPlayerId && rollsLeft > 0 && (
+                            <Text fontSize="sm" mt={2}>Rolls Left: {rollsLeft}</Text>
+                        )}
+                        {gamePhase === 'SELECT_TOKEN_TO_MOVE' && currentPlayerId === humanPlayerId && (
+                            <Text fontSize="sm" mt={2}>Click on a token to move it.</Text>
+                        )}
+                        {gamePhase === 'ANIMATING_MOVE' && (
+                            <Text fontSize="sm" mt={2}>Animating move...</Text>
+                        )}
+                        {gamePhase === 'ROLL_DICE' && currentPlayerId === botPlayerId && (
+                            <Text fontSize="sm" mt={2}>Bot is rolling...</Text>
+                        )}
+                        {gamePhase === 'ANIMATING_DICE' && (
+                            <Text fontSize="sm" mt={2}>Dice rolling...</Text>
+                        )}
+                    </Box>
+                )}
+
+                {/* Buttons Panel (Logs and Help) */}
+                <VStack
                     position="absolute"
                     top="4"
-                    left="4"
-                    bg="rgba(0,0,0,0.6)"
-                    p={4}
-                    borderRadius="md"
-                    color="white"
+                    right="4"
                     zIndex="10"
-                    minWidth="200px"
+                    spacing={2} // Space between buttons
                 >
-                    <Text fontSize="lg" mb={2}>Current Turn: <Text as="span" fontWeight="bold">{currentPlayerId.replace('player', 'Player ')}</Text></Text>
-                    {/* Display the previously rolled dice value */}
-                    {previousDiceDisplayValue !== null && (
-                        <Text fontSize="md" mb={2}>Last Roll: <Text as="span" fontWeight="bold">{previousDiceDisplayValue}</Text></Text>
-                    )}
-                    {gamePhase === 'ROLL_DICE' && currentPlayerId === humanPlayerId && rollsLeft > 0 && (
-                        <Text fontSize="sm" mt={2}>Rolls Left: {rollsLeft}</Text>
-                    )}
-                    {gamePhase === 'SELECT_TOKEN_TO_MOVE' && currentPlayerId === humanPlayerId && (
-                        <Text fontSize="sm" mt={2}>Click on a token to move it.</Text>
-                    )}
-                    {gamePhase === 'ANIMATING_MOVE' && (
-                        <Text fontSize="sm" mt={2}>Animating move...</Text>
-                    )}
-                    {gamePhase === 'ROLL_DICE' && currentPlayerId === botPlayerId && (
-                        <Text fontSize="sm" mt={2}>Bot is rolling...</Text>
-                    )}
-                    {gamePhase === 'ANIMATING_DICE' && (
-                        <Text fontSize="sm" mt={2}>Dice rolling...</Text>
-                    )}
-                </Box>
-            )}
-
-            {/* Buttons Panel (Logs and Help) */}
-            <VStack
-                position="absolute"
-                top="4"
-                right="4"
-                zIndex="10"
-                spacing={2} // Space between buttons
-            >
-                <Button onClick={() => setShowLogsModal(true)} colorScheme="gray" size="sm" leftIcon={<InfoIcon />}>
-                    View Logs
-                </Button>
-                <Button onClick={() => setShowHelpModal(true)} colorScheme="gray" size="sm" leftIcon={<QuestionIcon />}>
-                    How to Play
-                </Button>
-            </VStack>
+                    <Button onClick={() => setShowLogsModal(true)} colorScheme="gray" size="sm" leftIcon={<InfoIcon />}>
+                        View Logs
+                    </Button>
+                    <Button onClick={() => setShowHelpModal(true)} colorScheme="gray" size="sm" leftIcon={<QuestionIcon />}>
+                        How to Play
+                    </Button>
+                </VStack>
 
 
-            {/* Ludo Board Grid */}
-            <Grid
-                templateColumns={`repeat(${BOARD_SIZE}, ${responsiveCellSize})`}
-                templateRows={`repeat(${BOARD_SIZE}, ${responsiveCellSize})`}
-                gap="0px"
-                border="2px solid black"
-                boxShadow="xl"
-                borderRadius="md"
-                overflow="hidden"
-                zIndex="5"
-                // Center the board
-                margin="auto"
-            >
-                {renderBoard()}
-            </Grid>
+                {/* Ludo Board Grid */}
+                <Grid
+                    ref={boardRef}
+                    templateColumns={`repeat(${BOARD_SIZE}, ${responsiveCellSize})`}
+                    templateRows={`repeat(${BOARD_SIZE}, ${responsiveCellSize})`}
+                    gap="0px"
+                    border="4px solid black" // Thicker border for the entire board
+                    boxShadow="xl"
+                    borderRadius="lg" // Slightly more rounded corners
+                    overflow="hidden"
+                    zIndex="5"
+                    // Center the board
+                    margin="auto"
+                >
+                    {renderBoard()}
+                </Grid>
 
-            {/* Roll Dice Buttons for each player */}
-            {playerOrder.map(playerId => {
-                const isCurrentPlayer = currentPlayerId === playerId;
-                const isHumanPlayer = (gameMode === 'local-friends') || (playerId === humanPlayerId); // All players are human in local-friends mode
+                {/* Roll Dice Buttons for each player */}
+                {/* Roll Dice Buttons for each player */}
+                {playerOrder.map(playerId => {
+                    const isCurrentPlayer = currentPlayerId === playerId;
+                    const isHumanPlayer = (gameMode === 'local-friends') || (playerId === humanPlayerId); // All players are human in local-friends mode
 
-                let buttonPositionProps: any = {};
-                let buttonTransform: string = 'translateX(-50%)';
-                let buttonRotation: string = '0deg';
+                    let buttonPositionProps: { bottom?: string; left?: string; top?: string; right?: string; } = {}; // More specific type
+                    let containerTransform: string = ''; // Transform for the containing Box (only for positioning/centering)
+                    let buttonContentRotation: string = '0deg'; // Transform for the Button's content (for readability)
 
-                switch (playerId) {
-                    case 'player1': // Red - Bottom
-                        buttonPositionProps = { bottom: '4', left: '50%' };
-                        buttonTransform = 'translateX(-50%)';
-                        break;
-                    case 'player2': // Green - Right
-                        buttonPositionProps = { right: '4', top: '50%' };
-                        buttonTransform = 'translateY(-50%) rotate(90deg)';
-                        buttonRotation = '90deg';
-                        break;
-                    case 'player3': // Blue - Top
-                        buttonPositionProps = { top: '4', left: '50%' };
-                        buttonTransform = 'translateX(-50%) rotate(180deg)';
-                        buttonRotation = '180deg';
-                        break;
-                    case 'player4': // Purple - Left
-                        buttonPositionProps = { left: '4', top: '50%' };
-                        buttonTransform = 'translateY(-50%) rotate(-90deg)';
-                        buttonRotation = '-90deg';
-                        break;
-                }
+                    switch (playerId) {
+                        case 'player1': // Red - Bottom
+                            buttonPositionProps = { bottom: '4', left: '50%' };
+                            containerTransform = 'translateX(-50%)'; // Center horizontally
+                            buttonContentRotation = '0deg'; // Upright
+                            break;
+                        case 'player2': // Green - Left
+                            buttonPositionProps = { left: '4', top: '50%' }; // Position on left, vertically centered
+                            containerTransform = 'translateY(-50%)'; // Center vertically
+                            buttonContentRotation = '-90deg'; // Rotate button content -90 degrees for upright viewing from left
+                            break;
+                        case 'player3': // Blue - Top
+                            buttonPositionProps = { top: '4', left: '50%' };
+                            containerTransform = 'translateX(-50%)'; // Center horizontally
+                            buttonContentRotation = '180deg'; // Rotate button content 180 degrees for upright viewing from top
+                            break;
+                        case 'player4': // Purple - Right
+                            buttonPositionProps = { right: '4', top: '50%' }; // Position on right, vertically centered
+                            containerTransform = 'translateY(-50%)'; // Center vertically
+                            buttonContentRotation = '90deg'; // Rotate button content 90 degrees for upright viewing from right
+                            break;
+                    }
 
-                return (
-                    (isCurrentPlayer && isHumanPlayer && gamePhase === 'ROLL_DICE') && (
-                        <Box
-                            key={`roll-button-${playerId}`}
-                            position="absolute"
-                            {...buttonPositionProps}
-                            zIndex="10"
-                            style={{ transform: buttonTransform }}
-                        >
-                            <Button
-                                onClick={() => rollDiceRef.current?.()}
-                                colorScheme={players[playerId]?.color.split('.')[0] || 'teal'} // Use player color
-                                size="lg"
-                                px={10}
-                                py={6}
-                                borderRadius="full"
-                                boxShadow="lg"
-                                fontSize="xl"
-                                isDisabled={isDiceAnimating}
-                                _hover={{ transform: `scale(1.05) rotate(${buttonRotation})` }}
-                                _active={{ transform: `scale(0.95) rotate(${buttonRotation})` }}
-                                transition="all 0.2s"
-                                style={{ transform: `rotate(${buttonRotation})` }} // Apply rotation directly to button
+                    return (
+                        (isCurrentPlayer && isHumanPlayer && gamePhase === 'ROLL_DICE') && (
+                            <Box
+                                key={`roll-button-${playerId}`}
+                                position="absolute"
+                                {...buttonPositionProps}
+                                zIndex="10"
+                                style={{ transform: containerTransform }} // Apply container transform here
                             >
-                                Roll Dice
-                            </Button>
-                        </Box>
-                    )
-                );
-            })}
+                                <Button
+                                    onClick={() => rollDiceRef.current?.()}
+                                    colorScheme={players[playerId]?.color.split('.')[0] || 'teal'} // Use player color
+                                    size="lg"
+                                    px={10}
+                                    py={6}
+                                    borderRadius="full"
+                                    boxShadow="lg"
+                                    fontSize="xl"
+                                    isDisabled={isDiceAnimating}
+                                    _hover={{ transform: `scale(1.05) rotate(${buttonContentRotation})` }} // Apply rotation to hover
+                                    _active={{ transform: `scale(0.95) rotate(${buttonContentRotation})` }} // Apply rotation to active
+                                    transition="all 0.2s"
+                                    style={{ transform: `rotate(${buttonContentRotation})` }} // Apply content rotation directly to button
+                                >
+                                    Roll Dice
+                                </Button>
+                            </Box>
+                        )
+                    );
+                })}
 
+                {/* Dice Animation Component */}
+                {isDiceAnimating && rolledDiceValue !== null && diceAnimationStartPos && boardCenterPixelPos && (
+                    <DiceAnimation
+                        diceValue={rolledDiceValue}
+                        //  playerId={currentPlayerId}
+                        onAnimationEnd={handleDiceAnimationEnd}
+                        startTop={diceAnimationStartPos.top}
+                        startLeft={diceAnimationStartPos.left}
+                        boardCenterTop={boardCenterPixelPos.top}
+                        boardCenterLeft={boardCenterPixelPos.left}
+                    />
+                )}
 
-            {/* Dice Animation Component */}
-            {isDiceAnimating && rolledDiceValue !== null && (
-                <DiceAnimation
-                    diceValue={rolledDiceValue}
-                    playerId={currentPlayerId}
-                    onAnimationEnd={handleDiceAnimationEnd}
-                />
-            )}
+                {/* Logs Modal */}
+                <Modal isOpen={showLogsModal} onClose={() => setShowLogsModal(false)} size="xl">
+                    <ModalOverlay />
+                    <ModalContent bg="rgba(0,0,0,0.9)" color="white" borderRadius="md">
+                        <ModalHeader>Game Logs</ModalHeader>
+                        <ModalCloseButton />
+                        <ModalBody maxHeight="70vh" overflowY="auto">
+                            <VStack spacing={2} align="stretch">
+                                {gameLogs.length === 0 ? (
+                                    <Text>No logs available yet.</Text>
+                                ) : (
+                                    gameLogs.map((log, index) => (
+                                        <Text key={index} fontSize="sm">{log}</Text>
+                                    ))
+                                )}
+                            </VStack>
+                        </ModalBody>
+                    </ModalContent>
+                </Modal>
 
-            {/* Logs Modal */}
-            <Modal isOpen={showLogsModal} onClose={() => setShowLogsModal(false)} size="xl">
-                <ModalOverlay />
-                <ModalContent bg="rgba(0,0,0,0.9)" color="white" borderRadius="md">
-                    <ModalHeader>Game Logs</ModalHeader>
-                    <ModalCloseButton />
-                    <ModalBody maxHeight="70vh" overflowY="auto">
-                        <VStack spacing={2} align="stretch">
-                            {gameLogs.length === 0 ? (
-                                <Text>No logs available yet.</Text>
-                            ) : (
-                                gameLogs.map((log, index) => (
-                                    <Text key={index} fontSize="sm">{log}</Text>
-                                ))
-                            )}
-                        </VStack>
-                    </ModalBody>
-                </ModalContent>
-            </Modal>
+                {/* How to Play Modal */}
+                <Modal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} size="xl">
+                    <ModalOverlay />
+                    <ModalContent bg="rgba(0,0,0,0.9)" color="white" borderRadius="md">
+                        <ModalHeader>How to Play Ludo</ModalHeader>
+                        <ModalCloseButton />
+                        <ModalBody maxHeight="70vh" overflowY="auto" pb={6}>
+                            <VStack spacing={4} align="stretch">
+                                <Text fontSize="md">
+                                    Welcome to Ludo! This classic board game is all about racing your four tokens from your starting base to your home triangle.
+                                </Text>
 
-            {/* How to Play Modal */}
-            <Modal isOpen={showHelpModal} onClose={() => setShowHelpModal(false)} size="xl">
-                <ModalOverlay />
-                <ModalContent bg="rgba(0,0,0,0.9)" color="white" borderRadius="md">
-                    <ModalHeader>How to Play Ludo</ModalHeader>
-                    <ModalCloseButton />
-                    <ModalBody maxHeight="70vh" overflowY="auto" pb={6}>
-                        <VStack spacing={4} align="stretch">
-                            <Text fontSize="md">
-                                Welcome to Ludo! This classic board game is all about racing your four tokens from your starting base to your home triangle.
-                            </Text>
+                                <Text fontSize="lg" fontWeight="bold">Objective:</Text>
+                                <Text fontSize="md">
+                                    Be the first player to move all four of your tokens into your home triangle.
+                                </Text>
 
-                            <Text fontSize="lg" fontWeight="bold">Objective:</Text>
-                            <Text fontSize="md">
-                                Be the first player to move all four of your tokens into your home triangle.
-                            </Text>
+                                <Text fontSize="lg" fontWeight="bold">Game Setup:</Text>
+                                <Text fontSize="md">
+                                    Each player has four tokens of a specific color (Red, Green, Blue, Purple) starting in their respective colored base areas.
+                                </Text>
 
-                            <Text fontSize="lg" fontWeight="bold">Game Setup:</Text>
-                            <Text fontSize="md">
-                                Each player has four tokens of a specific color (Red, Green, Blue, Purple) starting in their respective colored base areas.
-                            </Text>
+                                <Text fontSize="lg" fontWeight="bold">How to Play:</Text>
+                                <VStack align="stretch" pl={4} spacing={2}>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">1. Rolling the Dice:</Text>
+                                        Players take turns rolling a single six-sided die.
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="bold">2. Getting Tokens Out of Base:</Text>
+                                        You need to roll a <Text as="span" fontWeight="bold">6</Text> to move a token out of your base and onto its starting position on the main path.
+                                        <Text as="i" display="block" mt={1}>Example: If you roll a 6, you can move one of your tokens from your base to your starting square. You also get an extra roll!</Text>
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">3. Moving Tokens:</Text>
+                                        Once a token is out of its base, you can move it clockwise along the main path according to the number rolled on the die.
+                                        <Text as="i" display="block" mt={1}>Example: If your token is on the path and you roll a 4, you move that token four squares forward.</Text>
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">4. Capturing Opponent&apos;s Tokens:</Text>
+                                        If your token lands on a square occupied by an opponent&apos;s token (and it&apos;s not a safe spot marked with a ★), the opponent&apos;s token is captured and sent back to their base. You get an extra roll!
+                                        <Text as="i" display="block" mt={1}>Example: Your token is on square A. You roll a 3. An opponent&apos;s token is on square D (3 squares from A). You move your token to D, and the opponent&apos;s token returns to their base.</Text>
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">5. Safe Spots:</Text>
+                                        Squares marked with a ★ are safe spots. Tokens on these squares cannot be captured. Your own starting square is also a safe spot.
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">6. Rolling a 6:</Text>
+                                        If you roll a 6, you get an extra turn. You can use the 6 to get a token out of base, or move an existing token. If you roll three consecutive 6s, your turn ends and you lose your last move.
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">7. Entering Home Path:</Text>
+                                        After completing a full round on the main path, your tokens enter their respective colored home paths. You must move your tokens precisely into the home triangle (the center square).
+                                        <Text as="i" display="block" mt={1}>Example: Your token is 2 squares away from your home triangle entry. You roll a 2. You move your token into the home path.</Text>
+                                    </Text>
+                                    <Text fontSize="md">
+                                        <Text as="span" fontWeight="semibold">8. Reaching Home:</Text>
+                                        To move a token into the center home square, you must roll the exact number of steps required. If you roll too high, you cannot move that token.
+                                        <Text as="i" display="block" mt={1}>Example: Your token is 1 square from home. You roll a 1, and your token enters home. If you roll a 2, you cannot move that token.</Text>
+                                    </Text>
+                                </VStack>
 
-                            <Text fontSize="lg" fontWeight="bold">How to Play:</Text>
-                            <VStack align="stretch" pl={4} spacing={2}>
+                                <Text fontSize="lg" fontWeight="bold">Winning the Game:</Text>
                                 <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">1. Rolling the Dice:</Text>
-                                    Players take turns rolling a single six-sided die.
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="bold">2. Getting Tokens Out of Base:</Text>
-                                    You need to roll a <Text as="span" fontWeight="bold">6</Text> to move a token out of your base and onto its starting position on the main path.
-                                    <Text as="i" display="block" mt={1}>Example: If you roll a 6, you can move one of your tokens from your base to your starting square. You also get an extra roll!</Text>
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">3. Moving Tokens:</Text>
-                                    Once a token is out of its base, you can move it clockwise along the main path according to the number rolled on the die.
-                                    <Text as="i" display="block" mt={1}>Example: If your token is on the path and you roll a 4, you move that token four squares forward.</Text>
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">4. Capturing Opponent's Tokens:</Text>
-                                    If your token lands on a square occupied by an opponent's token (and it's not a safe spot marked with a ★), the opponent's token is captured and sent back to their base. You get an extra roll!
-                                    <Text as="i" display="block" mt={1}>Example: Your token is on square A. You roll a 3. An opponent's token is on square D (3 squares from A). You move your token to D, and the opponent's token returns to their base.</Text>
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">5. Safe Spots:</Text>
-                                    Squares marked with a ★ are safe spots. Tokens on these squares cannot be captured. Your own starting square is also a safe spot.
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">6. Rolling a 6:</Text>
-                                    If you roll a 6, you get an extra turn. You can use the 6 to get a token out of base, or move an existing token. After moving with the 6, you roll again. If you roll three consecutive 6s, your turn ends and you lose your last move.
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">7. Entering Home Path:</Text>
-                                    After completing a full round on the main path, your tokens enter their respective colored home paths. You must move your tokens precisely into the home triangle (the center square).
-                                    <Text as="i" display="block" mt={1}>Example: Your token is 2 squares away from your home triangle entry. You roll a 2. You move your token into the home path.</Text>
-                                </Text>
-                                <Text fontSize="md">
-                                    <Text as="span" fontWeight="semibold">8. Reaching Home:</Text>
-                                    To move a token into the center home square, you must roll the exact number of steps required. If you roll too high, you cannot move that token.
-                                    <Text as="i" display="block" mt={1}>Example: Your token is 1 square from home. You roll a 1, and your token enters home. If you roll a 2, you cannot move that token.</Text>
+                                    The first player to get all four of their tokens into their home triangle wins the game!
                                 </Text>
                             </VStack>
+                        </ModalBody>
+                    </ModalContent>
+                </Modal>
 
-                            <Text fontSize="lg" fontWeight="bold">Winning the Game:</Text>
-                            <Text fontSize="md">
-                                The first player to get all four of their tokens into their home triangle wins the game!
-                            </Text>
-                        </VStack>
-                    </ModalBody>
-                </ModalContent>
-            </Modal>
-
-            {/* Game Over Overlay */}
-            {gamePhase === 'GAME_OVER' && winner && (
-                <Center
-                    position="absolute"
-                    top="0"
-                    left="0"
-                    width="100%"
-                    height="100%"
-                    bg="rgba(0,0,0,0.8)"
-                    zIndex="30"
-                    flexDirection="column"
-                >
-                    <Text color="white" fontSize="4xl" fontWeight="bold" mb={4}>
-                        Game Over!
-                    </Text>
-                    <Text color="white" fontSize="3xl">
-                        {winner.replace('player', 'Player ')} wins!
-                    </Text>
-                    <Button onClick={() => window.location.reload()} colorScheme="teal" mt={6}>
-                        Play Again
-                    </Button>
-                </Center>
-            )}
-        </Box>
+                {/* Game Over Overlay */}
+                {gamePhase === 'GAME_OVER' && winner && (
+                    <Center
+                        position="absolute"
+                        top="0"
+                        left="0"
+                        width="100%"
+                        height="100%"
+                        bg="rgba(0,0,0,0.8)"
+                        zIndex="30"
+                        flexDirection="column"
+                    >
+                        <Text color="white" fontSize="4xl" fontWeight="bold" mb={4}>
+                            Game Over!
+                        </Text>
+                        <Text color="white" fontSize="3xl">
+                            {winner.replace('player', 'Player ')} wins!
+                        </Text>
+                        <Button onClick={() => window.location.reload()} colorScheme="teal" mt={6}>
+                            Play Again
+                        </Button>
+                    </Center>
+                )}
+            </Box>
+        </Suspense>
     );
 }
