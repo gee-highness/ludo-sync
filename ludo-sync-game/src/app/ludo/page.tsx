@@ -1,42 +1,37 @@
-"use client"; // This is crucial for client-side rendering
+"use client";
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as THREE from "three";
-import * as CANNON from "cannon-es";
-import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderFilledTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
-import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons'; // Import icons
+// import * as CANNON from "cannon-es"; // <--- Potentially remove if physics not used for tokens
+import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
+import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
 import { useSearchParams } from "next/navigation";
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'; // Import GLTFLoader
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 
-// Define a type for a single token's state
 interface TokenState {
-    gridPos: [number, number]; // Current [row, col] on the 15x15 grid
-    pathIndex: number; // Index on pathCoordinates or homePath, or -1 if in base, -2 if home
+    gridPos: [number, number];
+    pathIndex: number;
     isInBase: boolean;
     isInHomePath: boolean;
-    isHome: boolean; // True if token reached the center
+    isHome: boolean;
 }
 
-// Define a type for player data (meshes are now managed externally)
 interface Player {
     id: string;
-    tokens: TokenState[]; // Array of token states
+    tokens: TokenState[];
     color: number;
-    startPosition: [number, number]; // The initial grid position for entering the game (on main path)
-    homePath: [number, number][]; // Path to the center
-    basePositions: [number, number][]; // Positions in the player's starting base (e.g., [14,14], [14,13], etc.)
-    homePathMainPathEntryIndex: number; // Index on main path where player enters home path
+    startPosition: [number, number];
+    homePath: [number, number][];
+    basePositions: [number, number][];
+    homePathMainPathEntryIndex: number;
 }
 
-// Define game phases
 type GamePhase = 'IDLE' | 'ROLL_DICE' | 'SELECT_TOKEN_TO_MOVE' | 'ANIMATING_MOVE' | 'GAME_OVER';
 
-// New component for Focal Length Controls
 interface FocalLengthControlsProps {
-    // This prop now takes a function to get the current FOV directly from the camera
     getFocalLength: () => number;
-    onIncrease: () => void; // This should decrease FOV (zoom in)
-    onDecrease: () => void; // This should increase FOV (zoom out)
+    onIncrease: () => void;
+    onDecrease: () => void;
 }
 
 const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
@@ -44,17 +39,19 @@ const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
     onIncrease,
     onDecrease,
 }) => {
-    // Use a local state to re-render this component when FOV changes
     const [displayFocalLength, setDisplayFocalLength] = useState(getFocalLength());
 
-    // Update displayFocalLength periodically or when getFocalLength changes
     useEffect(() => {
         const interval = setInterval(() => {
-            setDisplayFocalLength(getFocalLength());
-        }, 100); // Update every 100ms for smooth display
+            // Only update if the value has changed to avoid unnecessary re-renders
+            const currentFocalLength = getFocalLength();
+            if (currentFocalLength !== displayFocalLength) {
+                setDisplayFocalLength(currentFocalLength);
+            }
+        }, 100);
 
         return () => clearInterval(interval);
-    }, [getFocalLength]);
+    }, [getFocalLength, displayFocalLength]); // Add displayFocalLength to dependencies
 
     return (
         <Box
@@ -72,11 +69,9 @@ const FocalLengthControls: React.FC<FocalLengthControlsProps> = ({
             gap={2}
         >
             <Text fontSize="sm">Focal Length: {displayFocalLength.toFixed(0)}</Text>
-            {/* "Zoom In (+)" should decrease FOV, so it calls onDecrease */}
             <Button onClick={onDecrease} size="sm" colorScheme="teal" width="full">
                 Zoom In (+)
             </Button>
-            {/* "Zoom Out (-)" should increase FOV, so it calls onIncrease */}
             <Button onClick={onIncrease} size="sm" colorScheme="teal" width="full">
                 Zoom Out (-)
             </Button>
@@ -90,45 +85,34 @@ export default function LudoPage() {
     const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
     const sceneRef = useRef<THREE.Scene | null>(null);
     const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
-    const worldRef = useRef<CANNON.World | null>(null);
+    // const worldRef = useRef<CANNON.World | null>(null); // <--- Potentially remove
     const animationFrameId = useRef<number | null>(null);
 
-
-
-    // Ref to store all Three.js token meshes, managed outside React state
     const tokenMeshMapRef = useRef<Map<string, THREE.Object3D[]>>(new Map());
 
     const [isLoading, setIsLoading] = useState(true);
     const toast = useToast();
     const searchParams = useSearchParams();
 
-    // Game State Management
     const [gamePhase, setGamePhase] = useState<GamePhase>('IDLE');
     const [currentPlayerId, setCurrentPlayerId] = useState<string>('player1');
     const [rolledDiceValue, setRolledDiceValue] = useState<number | null>(null);
-    const [players, setPlayers] = useState<Record<string, Player>>({}); // State to hold player data
-    const [playerOrder] = useState<string[]>(['player1', 'player3']); // Order of active players
-    const [winner, setWinner] = useState<string | null>(null); // State for winner
-    const [rollsLeft, setRollsLeft] = useState<number>(1); // Rolls left for current player
+    const [players, setPlayers] = useState<Record<string, Player>>({});
+    const [playerOrder] = useState<string[]>(['player1', 'player3']);
+    const [winner, setWinner] = useState<string | null>(null);
+    const [rollsLeft, setRollsLeft] = useState<number>(1);
 
-    const playersRef = useRef(players); // Initialize with current players state
-
-    // Effect to keep playersRef.current updated with the latest players state
+    const playersRef = useRef(players);
     useEffect(() => {
         playersRef.current = players;
     }, [players]);
 
-    // Camera control states
-    // cameraFocalLength is now the TARGET focal length, not the current animated one
     const [cameraFocalLength, setCameraFocalLength] = useState<number>(40);
-    // cameraVerticalAngle represents the vertical angle (elevation) in radians
-    const [cameraVerticalAngle, setCameraVerticalAngle] = useState<number>(45 * Math.PI / 180); // Default to 45 degrees elevation
-    const [cameraRotationY, setCameraRotationY] = useState<number>(0); // Horizontal rotation
+    const [cameraVerticalAngle, setCameraVerticalAngle] = useState<number>(45 * Math.PI / 180);
+    const [cameraRotationY, setCameraRotationY] = useState<number>(0);
 
-    // Derive gameMode directly from searchParams
     const gameMode = searchParams.get('mode') as 'play-with-bot' | 'local-friends' | 'multiplayer' || null;
 
-    // Derive humanPlayerId and botPlayerId directly from gameMode (which is derived from searchParams)
     const { humanPlayerId, botPlayerId } = useMemo(() => {
         let derivedHumanPlayerId: string | null = null;
         let derivedBotPlayerId: string | null = null;
@@ -137,101 +121,76 @@ export default function LudoPage() {
             derivedHumanPlayerId = 'player1';
             derivedBotPlayerId = 'player3';
         } else if (gameMode === 'local-friends') {
-            derivedHumanPlayerId = 'player1'; // Assuming player1 is the first human
+            derivedHumanPlayerId = 'player1';
             derivedBotPlayerId = null;
         } else if (gameMode === 'multiplayer') {
             derivedHumanPlayerId = 'player1';
-            derivedBotPlayerId = 'player3'; // Example: player3 is a bot, player2/4 inactive
+            derivedBotPlayerId = 'player3';
         }
-        console.log(`useMemo: Derived humanPlayerId: ${derivedHumanPlayerId}, botPlayerId: ${derivedBotPlayerId} for gameMode: ${gameMode}`);
         return { humanPlayerId: derivedHumanPlayerId, botPlayerId: derivedBotPlayerId };
     }, [gameMode]);
 
-
-    // Ref to ensure game initialization runs only once
     const hasInitializedGame = useRef(false);
 
-    // Raycasting for token selection
     const raycaster = useRef(new THREE.Raycaster());
     const mouse = useRef(new THREE.Vector2());
 
-    // Refs for mutually dependent functions
     const rollDiceRef = useRef<(() => void) | null>(null);
     const endTurnRef = useRef<(() => void) | null>(null);
     const makeBotMoveRef = useRef<((diceValue: number, movableTokens: number[]) => void) | null>(null);
     const moveTokenRef = useRef<((playerId: string, tokenIndex: number, diceValue: number) => void) | null>(null);
     const handleTokenClickRef = useRef<((playerId: string, tokenIndex: number) => void) | null>(null);
 
-    // Refs to store the latest state values for event listeners (to prevent stale closures)
     const gamePhaseRef = useRef<GamePhase>('IDLE');
     const currentPlayerIdRef = useRef<string>('player1');
     const rolledDiceValueRef = useRef<number | null>(null);
     const rollsLeftRef = useRef<number>(1);
 
-    // For the movable token indicators
-    const indicatorGeometry = useMemo(() => new THREE.SphereGeometry(0.3, 16, 16), []); // Radius 0.3, 16 segments for smoothness
+    const indicatorGeometry = useMemo(() => new THREE.SphereGeometry(0.3, 16, 16), []);
     const indicatorMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }), []);
+    const indicatorMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
 
-    const indicatorMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map()); // Map to store indicator meshes by 'playerId-tokenIndex'
-
-    // Helper function to convert grid coordinates to world coordinates
     const gridToWorld = useCallback((row: number, col: number) => {
         const worldX = col - 7;
         const worldZ = row - 7;
-        return new THREE.Vector3(worldX, 0.5, worldZ); // Y adjusted for token height
+        return new THREE.Vector3(worldX, 0.01, worldZ);
     }, []);
 
-    // Define the main circular path on the 15x15 grid (52 cells)
-    const pathCoordinates: [number, number][] = [
-        // --- Player 1 (Red) Path Segment ---
-        [13, 6], // Red's start square (safe spot) - Index 0
-        [12, 6], [11, 6], [10, 6], [9, 6], [8, 6], // Upwards
-        [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0], // Leftwards
-        // --- Player 2 (Green) Path Segment ---
-        [7, 0], // Green's start square (safe spot) - Index 13
-        [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5], // Rightwards
-        [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6], // Upwards
-        // --- Player 3 (Yellow) Path Segment ---
-        [0, 7], // Yellow's start square (safe spot) - Index 26
-        [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8], // Downwards
-        [6, 8], [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], // Rightwards
-        // --- Player 4 (Blue) Path Segment ---
-        [7, 14], // Blue's start square (safe spot) - Index 39
-        [8, 14], [8, 13], [8, 12], [8, 11], [8, 10], [8, 9], // Leftwards
-        [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8], // Downwards
-        [14, 7] // Cell just before Red's home path entry - Index 51
-    ];
+    const pathCoordinates: [number, number][] = useMemo(() => [
+        [13, 6], [12, 6], [11, 6], [10, 6], [9, 6], [8, 6],
+        [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0],
+        [7, 0],
+        [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5],
+        [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6],
+        [0, 7],
+        [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8],
+        [6, 8], [6, 9], [6, 10], [6, 11], [6, 12], [6, 13],
+        [7, 14],
+        [8, 14], [8, 13], [8, 12], [8, 11], [8, 10], [8, 9],
+        [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8],
+        [14, 7]
+    ], []);
 
-    // Player Specific Home Path Entry Points (index on the main pathCoordinates array)
-    const playerHomePathMainPathEntryIndices: Record<string, number> = {
-        player1: 51, // Index of [14, 7] for Red
-        player2: 12, // Index of [7, 0] for Green
-        player3: 25, // Index of [0, 7] for Yellow
-        player4: 38, // Index of [7, 14] for Blue
-    };
+    const playerHomePathMainPathEntryIndices: Record<string, number> = useMemo(() => ({
+        player1: 51,
+        player2: 12,
+        player3: 25,
+        player4: 38,
+    }), []);
 
-    // Define Safe Spots (star squares and player start squares)
-    // Using JSON.stringify to allow array keys in a Set for efficient lookup
-    const safeSpots: Set<string> = new Set([
-        // Player start squares (which are also star spots)
-        JSON.stringify([13, 6]), // Red's start
-        JSON.stringify([6, 1]),  // Green's start
-        JSON.stringify([1, 8]),  // Yellow's start
-        JSON.stringify([8, 13]), // Blue's start
-        // Other star spots on the board
-        //        JSON.stringify([12, 8]), // Path index 48
-        //      JSON.stringify([8, 2]),  // Path index 7
-        //    JSON.stringify([2, 6]),  // Path index 20
-        //  JSON.stringify([6, 12]), // Path index 33
-    ]);
+    const safeSpots: Set<string> = useMemo(() => new Set([
+        JSON.stringify([13, 6]),
+        JSON.stringify([6, 1]),
+        JSON.stringify([1, 8]),
+        JSON.stringify([8, 13]),
+    ]), []);
 
-    // Helper to calculate the next position of a token
     const calculateNextPosition = useCallback((
         tokenState: TokenState,
         steps: number,
         playerId: string
     ): TokenState | null => {
-        const player = players[playerId];
+        const player = playersRef.current[playerId]; // Use ref for players
         if (!player) {
             return null;
         }
@@ -241,7 +200,7 @@ export default function LudoPage() {
                 const newPathIndex = pathCoordinates.findIndex(p => p[0] === player.startPosition[0] && p[1] === player.startPosition[1]);
                 return { gridPos: player.startPosition, pathIndex: newPathIndex, isInBase: false, isInHomePath: false, isHome: false };
             } else {
-                return null; // Cannot move from base without a 6
+                return null;
             }
         } else if (tokenState.isInHomePath) {
             const currentHomePathIndex = player.homePath.findIndex(p => p[0] === tokenState.gridPos[0] && p[1] === tokenState.gridPos[1]);
@@ -254,11 +213,10 @@ export default function LudoPage() {
             } else {
                 return null;
             }
-        } else { // On main path
+        } else {
             const currentMainPathIndex = tokenState.pathIndex;
             let targetMainPathIndex = currentMainPathIndex + steps;
 
-            // Check if entering home path
             if (currentMainPathIndex <= player.homePathMainPathEntryIndex && targetMainPathIndex > player.homePathMainPathEntryIndex) {
                 const stepsIntoHomePath = targetMainPathIndex - player.homePathMainPathEntryIndex - 1;
                 if (stepsIntoHomePath < player.homePath.length) {
@@ -266,7 +224,7 @@ export default function LudoPage() {
                 } else if (stepsIntoHomePath === player.homePath.length) {
                     return { gridPos: [-1, -1], pathIndex: -2, isInBase: false, isInHomePath: false, isHome: true };
                 } else {
-                    return null; // Overshot home
+                    return null;
                 }
             } else {
                 const newPathIndex = targetMainPathIndex % pathCoordinates.length;
@@ -274,13 +232,11 @@ export default function LudoPage() {
                 return { gridPos: newGridPos, pathIndex: newPathIndex, isInBase: false, isInHomePath: false, isHome: false };
             }
         }
-    }, [players, pathCoordinates]);
+    }, [pathCoordinates, safeSpots]); // Removed `players` from dependencies, using `playersRef.current`
 
-
-    // Helper to get movable tokens for the current player
     const getMovableTokens = useCallback((playerId: string, diceValue: number): number[] => {
         const movableTokenIndices: number[] = [];
-        const player = players[playerId];
+        const player = playersRef.current[playerId]; // Use ref for players
 
         if (!player) {
             return [];
@@ -288,31 +244,23 @@ export default function LudoPage() {
 
         player.tokens.forEach((token, index) => {
             if (token.isHome) {
-                return; // Token already home, cannot move
+                return;
             }
-
             const potentialNextState = calculateNextPosition(token, diceValue, playerId);
-
             if (potentialNextState) {
-                // REMOVED: The check for 'isBlockedByOwnToken' is removed.
-                // Players can now land on cells occupied by their own tokens.
                 movableTokenIndices.push(index);
             }
         });
         return movableTokenIndices;
-    }, [players, calculateNextPosition, safeSpots]);
+    }, [calculateNextPosition]); // Removed `players` from dependencies
 
-
-
-    // Check for win condition
     const checkWinCondition = useCallback(() => {
-        for (const playerId of playerOrder) { // Only check active players
-            const player = players[playerId];
+        const currentPlayers = playersRef.current; // Use ref for players
+        for (const playerId of playerOrder) {
+            const player = currentPlayers[playerId];
             if (!player) {
                 continue;
             }
-
-            // A player wins when all 4 of their tokens are in the home position
             const tokensInHome = player.tokens.filter(token => token.isHome).length;
             if (tokensInHome === 4) {
                 setWinner(playerId);
@@ -321,20 +269,18 @@ export default function LudoPage() {
                     title: "Game Over!",
                     description: `${playerId.replace('player', 'Player ')} wins the game!`,
                     status: "success",
-                    duration: null, // Keep open until closed by user
+                    duration: null,
                     isClosable: true,
                     position: "top",
                 });
                 break;
             }
         }
-    }, [players, playerOrder, toast]);
+    }, [playerOrder, toast]); // Removed `players` from dependencies
 
-
-    // Function to end the current player's turn and switch to the next
     const endTurn = useCallback(() => {
-        setRolledDiceValue(null); // Clear dice value for next turn
-        setRollsLeft(1); // Reset rolls for the next player
+        setRolledDiceValue(null);
+        setRollsLeft(1);
         const currentIndex = playerOrder.indexOf(currentPlayerId);
         const nextIndex = (currentIndex + 1) % playerOrder.length;
         const nextPlayer = playerOrder[nextIndex];
@@ -342,18 +288,15 @@ export default function LudoPage() {
         setCurrentPlayerId(nextPlayer);
         setGamePhase('ROLL_DICE');
 
-        // If the next player is a bot, automatically trigger their roll after a delay
         if (nextPlayer === botPlayerId) {
             setTimeout(() => {
-                rollDiceRef.current?.(); // Call via ref
+                rollDiceRef.current?.();
             }, 1500);
         }
     }, [currentPlayerId, playerOrder, botPlayerId]);
 
-
-    // Function to roll the dice
     const rollDice = useCallback(() => {
-        if (gamePhase !== 'ROLL_DICE' || winner) {
+        if (gamePhaseRef.current !== 'ROLL_DICE' || winner) { // Use ref for gamePhase
             return;
         }
 
@@ -368,20 +311,18 @@ export default function LudoPage() {
             position: "top-right",
         });
 
-        const movableTokens = getMovableTokens(currentPlayerId, diceResult);
+        const movableTokens = getMovableTokens(currentPlayerIdRef.current, diceResult); // Use ref for currentPlayerId
 
         if (diceResult === 6) {
-            // If 6 is rolled, player gets another roll after moving
-            setRollsLeft(prev => prev + 1); // Increment rolls left for next turn
+            setRollsLeft(prev => prev + 1);
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
-                if (currentPlayerId === botPlayerId) {
+                if (currentPlayerIdRef.current === botPlayerId) { // Use ref
                     setTimeout(() => {
-                        makeBotMoveRef.current?.(diceResult, movableTokens); // Call via ref
-                    }, 1000); // Simulate bot thinking time
+                        makeBotMoveRef.current?.(diceResult, movableTokens);
+                    }, 1000);
                 }
             } else {
-                // Rolled a 6 but no moves possible, still get another roll
                 toast({
                     title: "Rolled a 6, but no moves!",
                     description: "You get another turn!",
@@ -390,21 +331,19 @@ export default function LudoPage() {
                     isClosable: true,
                     position: "top-right",
                 });
-                setTimeout(() => rollDiceRef.current?.(), 1500); // Trigger another roll
+                setTimeout(() => rollDiceRef.current?.(), 1500);
             }
         } else {
-            // Not a 6
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
-                setRollsLeft(prev => prev - 1); // Decrement rolls, as this is a regular move
-                if (currentPlayerId === botPlayerId) {
+                setRollsLeft(prev => prev - 1);
+                if (currentPlayerIdRef.current === botPlayerId) { // Use ref
                     setTimeout(() => {
-                        makeBotMoveRef.current?.(diceResult, movableTokens); // Call via ref
-                    }, 1000); // Simulate bot thinking time
+                        makeBotMoveRef.current?.(diceResult, movableTokens);
+                    }, 1000);
                 }
             } else {
-                // No movable tokens, and not a 6. Check if more rolls are allowed.
-                if (rollsLeftRef.current > 1) { // Use ref for latest value
+                if (rollsLeftRef.current > 1) {
                     setRollsLeft(prev => prev - 1);
                     toast({
                         title: "No possible moves",
@@ -414,7 +353,7 @@ export default function LudoPage() {
                         isClosable: true,
                         position: "top-right",
                     });
-                    setTimeout(() => rollDiceRef.current?.(), 1500); // Trigger another roll
+                    setTimeout(() => rollDiceRef.current?.(), 1500);
                 } else {
                     toast({
                         title: "No possible moves",
@@ -424,52 +363,57 @@ export default function LudoPage() {
                         isClosable: true,
                         position: "top-right",
                     });
-                    setTimeout(() => endTurnRef.current?.(), 1500); // Call via ref
+                    setTimeout(() => endTurnRef.current?.(), 1500);
                 }
             }
         }
-    }, [gamePhase, currentPlayerId, botPlayerId, winner, toast, getMovableTokens]);
-
+    }, [botPlayerId, winner, toast, getMovableTokens]); // Removed gamePhase and currentPlayerId from dependencies, using refs
 
     const adjustTokensInCell = useCallback((row: number, col: number) => {
-        console.log(`[adjustTokensInCell] Called for cell [${row}, ${col}]`);
         const tokensInThisCell: { mesh: THREE.Object3D, playerId: string, tokenIndex: number }[] = [];
-
-        // Access the latest players state via the ref
-        const currentPlayersState = playersRef.current; // <--- CHANGE IS HERE
+        const currentPlayersState = playersRef.current; // Use the ref here
 
         playerOrder.forEach(pId => {
-            const player = currentPlayersState[pId]; // Use currentPlayersState
+            const player = currentPlayersState[pId];
             if (!player) return;
 
             player.tokens.forEach((tokenState, tIndex) => {
-                console.log(`[adjustTokensInCell] Checking token ${pId}-${tIndex}: gridPos [${tokenState.gridPos[0]}, ${tokenState.gridPos[1]}], isHome: ${tokenState.isHome}, isInBase: ${tokenState.isInBase}`);
                 if (tokenState.gridPos[0] === row && tokenState.gridPos[1] === col) {
                     const mesh = tokenMeshMapRef.current.get(pId)?.[tIndex];
                     if (mesh && mesh.visible) {
                         tokensInThisCell.push({ mesh, playerId: pId, tokenIndex: tIndex });
-                        console.log(`[adjustTokensInCell] Found visible token ${pId}-${tIndex} at [${row}, ${col}]`);
-                    } else if (mesh) {
-                        console.log(`[adjustTokensInCell] Token ${pId}-${tIndex} at [${row}, ${col}] is not visible (likely home).`);
                     }
                 }
             });
         });
 
         const numTokens = tokensInThisCell.length;
-        const baseScale = 0.5;
+        const baseScale = 0.5; // Original scale for a single token
 
-        console.log(`[adjustTokensInCell] Number of tokens found in cell [${row}, ${col}]: ${numTokens}`);
-        console.log(`[adjustTokensInCell] Tokens to arrange:`, tokensInThisCell.map(t => `${t.playerId}-${t.tokenIndex}`));
-
-
-        if (numTokens > 1) {
+        if (numTokens > 0) { // Ensure there's at least one token
             const cellWorldCenter = gridToWorld(row, col);
-            const offsetDistance = 0.2; // Adjust this value to control spread
-            console.log(`[adjustTokensInCell] Cell world center: x=${cellWorldCenter.x}, z=${cellWorldCenter.z}. Offset distance: ${offsetDistance}`);
+            const offsetDistance = 0.2; // Distance for offsetting tokens
 
+            // Calculate the dynamic scale factor
+            // To ensure tokens don't become excessively large or small,
+            // we'll cap the maximum scale and provide a floor.
+            // A simple 1/numTokens might make them too small with many tokens.
+            // Let's make it proportional but with a minimum visible size.
+            // For example, if numTokens is 1, scaleFactor is 1.
+            // If numTokens is 2, scaleFactor is 0.5.
+            // If numTokens is 4, scaleFactor is 0.25.
+            let scaleFactor = 1 / numTokens;
+
+            // Optional: Clamp the scale factor to prevent tokens from becoming too small
+            // For example, ensure it's not smaller than 0.2 of the base scale.
+            scaleFactor = Math.max(scaleFactor, 0.2); // Prevents scale from going below 20% of baseScale
+
+            // Define offsets based on the number of tokens
             let offsets: [number, number][] = [];
-            if (numTokens === 2) {
+            if (numTokens === 1) {
+                // No offset needed for single token
+                offsets = [[0, 0]];
+            } else if (numTokens === 2) {
                 offsets = [[-offsetDistance, 0], [offsetDistance, 0]];
             } else if (numTokens === 3) {
                 offsets = [
@@ -485,60 +429,38 @@ export default function LudoPage() {
                     [offsetDistance * 0.7, -offsetDistance * 0.7]
                 ];
             } else {
-                console.log(`[adjustTokensInCell] More than 4 tokens (${numTokens}) in cell, applying general scale reduction.`);
-                tokensInThisCell.forEach(({ mesh }, i) => {
-                    console.log(`[adjustTokensInCell] Token ${i}: Before scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
-                    mesh.scale.set(baseScale * 0.7, baseScale * 0.7, baseScale * 0.7);
+                // For more than 4 tokens (unlikely in Ludo, but for robustness)
+                // You might need a more complex offset distribution.
+                // For now, we'll just place them at the center but scaled down heavily.
+                tokensInThisCell.forEach(({ mesh }) => {
+                    mesh.scale.set(baseScale * scaleFactor, baseScale * scaleFactor, baseScale * scaleFactor);
                     const cellWorldCenterDefault = gridToWorld(row, col);
-                    mesh.position.set(cellWorldCenterDefault.x, 0.5, cellWorldCenterDefault.z);
-                    console.log(`[adjustTokensInCell] Token ${i}: After scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}, Position: x=${mesh.position.x}, z=${mesh.position.z}`);
+                    mesh.position.set(cellWorldCenterDefault.x, 0.01, cellWorldCenterDefault.z);
                 });
                 return;
             }
 
             tokensInThisCell.forEach(({ mesh }, i) => {
                 const [offsetX, offsetZ] = offsets[i];
-                console.log(`[adjustTokensInCell] Token ${i}: Current position x=${mesh.position.x}, z=${mesh.position.z}, scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
-                console.log(`[adjustTokensInCell] Token ${i}: Applying offset [${offsetX}, ${offsetZ}]`);
-
-                mesh.position.set(cellWorldCenter.x + offsetX, 0.5, cellWorldCenter.z + offsetZ);
-                mesh.scale.set(baseScale * 0.9, baseScale * 0.9, baseScale * 0.9); // Slightly smaller when grouped
-
-                console.log(`[adjustTokensInCell] Token ${i}: New position x=${mesh.position.x}, z=${mesh.position.z}, new scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
+                mesh.position.set(cellWorldCenter.x + offsetX, 0.01, cellWorldCenter.z + offsetZ);
+                // Apply the dynamically calculated scale
+                mesh.scale.set(baseScale * scaleFactor, baseScale * scaleFactor, baseScale * scaleFactor);
             });
-        } else if (numTokens === 1) {
-            console.log(`[adjustTokensInCell] One token in cell, ensuring it's centered and normal size.`);
-            const token = tokensInThisCell[0];
-            const cellWorldCenter = gridToWorld(row, col);
-            console.log(`[adjustTokensInCell] Token ${token.playerId}-${token.tokenIndex}: Current position x=${token.mesh.position.x}, z=${token.mesh.position.z}, scale x=${token.mesh.scale.x}, y=${token.mesh.scale.y}, z=${token.mesh.scale.z}`);
-
-            token.mesh.position.set(cellWorldCenter.x, 0.5, cellWorldCenter.z);
-            token.mesh.scale.set(baseScale, baseScale, baseScale);
-
-            console.log(`[adjustTokensInCell] Token ${token.playerId}-${token.tokenIndex}: New position x=${token.mesh.position.x}, z=${token.mesh.position.z}, new scale x=${token.mesh.scale.x}, y=${token.mesh.scale.y}, z=${token.mesh.scale.z}`);
-        } else {
-            console.log(`[adjustTokensInCell] No visible tokens found at [${row}, ${col}].`);
         }
-    }, [gridToWorld, playerOrder]); // REMOVED 'players' from dependencies
+    }, [gridToWorld, playerOrder]);
 
-    // Function to move a token and handle game logic
     const moveToken = useCallback((playerId: string, tokenIndex: number, diceValue: number) => {
-        console.log(`[moveToken] Called for Player: ${playerId}, Token Index: ${tokenIndex}, Dice Value: ${diceValue}`);
-        const player = players[playerId];
+        const player = playersRef.current[playerId]; // Use ref
         if (!player || tokenIndex < 0 || tokenIndex >= player.tokens.length) {
-            console.error(`[moveToken] Invalid player or token index. Player: ${playerId}, Index: ${tokenIndex}`);
             return;
         }
 
         const currentTokenState = player.tokens[tokenIndex];
-        console.log(`[moveToken] Current token state:`, currentTokenState);
         const potentialNextState = calculateNextPosition(currentTokenState, diceValue, playerId);
 
         if (!potentialNextState) {
-            console.error("[moveToken] Attempted to move to an invalid position. This should not happen if getMovableTokens is correct.");
             return;
         }
-        console.log(`[moveToken] Potential next state:`, potentialNextState);
 
         setGamePhase('ANIMATING_MOVE');
 
@@ -547,7 +469,7 @@ export default function LudoPage() {
 
         if (!potentialNextState.isHome) {
             for (const opponentId of playerOrder) {
-                const opponentPlayer = players[opponentId];
+                const opponentPlayer = playersRef.current[opponentId]; // Use ref
                 if (!opponentPlayer) continue;
                 if (opponentId === playerId) continue;
 
@@ -563,10 +485,7 @@ export default function LudoPage() {
                                 tokenIndex: oppIndex,
                                 originalBasePos: opponentPlayer.basePositions[oppIndex],
                             };
-                            console.log(`[moveToken] Captured token detected:`, capturedTokenInfo);
                             break;
-                        } else {
-                            console.log(`[moveToken] Opponent token found at target, but it's a safe spot. No capture.`);
                         }
                     }
                 }
@@ -598,27 +517,20 @@ export default function LudoPage() {
                     ),
                 };
             }
-            console.log(`[moveToken] Players state updated. New state of all players:`, newPlayers);
             return newPlayers;
         });
 
         const tokenMesh = tokenMeshMapRef.current.get(playerId)?.[tokenIndex];
         if (!tokenMesh) {
-            console.error(`[moveToken] Mesh for player ${playerId} token ${tokenIndex} not found in ref.`);
             return;
         }
-        console.log(`[moveToken] Moving mesh for token ${playerId}-${tokenIndex}. Initial mesh position: x=${tokenMesh.position.x}, z=${tokenMesh.position.z}`);
-
 
         const animationDurationPerStep = 0.2;
         const pathSegment: [number, number][] = [];
 
-        // Determine path segment for animation
         if (currentTokenState.isInBase) {
-            // Moving from base to start position
             pathSegment.push(player.startPosition);
         } else if (potentialNextState.isInHomePath) {
-            // Moving from main path into home path
             const startIndex = currentTokenState.pathIndex;
             const entryIndex = player.homePathMainPathEntryIndex;
 
@@ -634,22 +546,17 @@ export default function LudoPage() {
                     pathSegment.push(pathCoordinates[i]);
                 }
             }
-
             const stepsIntoHomePath = (potentialNextState.pathIndex ?? 0) + 1;
             for (let i = 0; i < stepsIntoHomePath; i++) {
                 pathSegment.push(player.homePath[i]);
             }
         } else if (potentialNextState.isHome) {
-            // Moving from home path to home center
             const startIndex = currentTokenState.pathIndex;
             for (let i = startIndex + 1; i < player.homePath.length; i++) {
                 pathSegment.push(player.homePath[i]);
             }
-            // Add the "home" position as the final point in the path segment for animation
-            // This is a placeholder; its actual coordinates will be (0,0,0) in world space.
-            pathSegment.push([-1, -1]); // Using a dummy gridPos for home
+            pathSegment.push([-1, -1]);
         } else {
-            // Moving on main path
             const startIndex = currentTokenState.pathIndex;
             const endIndex = potentialNextState.pathIndex;
 
@@ -657,7 +564,7 @@ export default function LudoPage() {
                 for (let i = startIndex + 1; i <= endIndex; i++) {
                     pathSegment.push(pathCoordinates[i]);
                 }
-            } else { // Wrap around
+            } else {
                 for (let i = startIndex + 1; i < pathCoordinates.length; i++) {
                     pathSegment.push(pathCoordinates[i]);
                 }
@@ -675,7 +582,6 @@ export default function LudoPage() {
             let animationProgress = (currentTime - startTime) / (totalAnimationDuration * 1000);
 
             if (animationProgress < 1) {
-                // Interpolate position along the path segment
                 const currentSegmentIndex = Math.min(Math.floor(animationProgress * pathSegment.length), pathSegment.length - 1);
                 const segmentProgress = (animationProgress * pathSegment.length) - currentSegmentIndex;
 
@@ -691,22 +597,21 @@ export default function LudoPage() {
                 const startWorldPos = gridToWorld(startGridPos[0], startGridPos[1]);
 
                 let endWorldPos: THREE.Vector3;
-                if (endGridPos[0] === -1 && endGridPos[1] === -1) { // Special case for home position
-                    endWorldPos = new THREE.Vector3(0, 0.5, 0); // Center of the board
+                if (endGridPos[0] === -1 && endGridPos[1] === -1) {
+                    endWorldPos = new THREE.Vector3(0, 0.5, 0);
                 } else {
                     endWorldPos = gridToWorld(endGridPos[0], endGridPos[1]);
                 }
 
                 tokenMesh.position.x = startWorldPos.x + (endWorldPos.x - startWorldPos.x) * segmentProgress;
-                tokenMesh.position.y = 0.5; // Always keep tokens on the board surface
+                tokenMesh.position.y = 0.01;
                 tokenMesh.position.z = startWorldPos.z + (endWorldPos.z - startWorldPos.z) * segmentProgress;
 
                 animationFrameId.current = requestAnimationFrame(animateTokenStep);
             } else {
-                // Animation finished: Ensure the token is exactly at its final destination
                 if (potentialNextState.isHome) {
                     tokenMesh.visible = false;
-                    tokenMesh.position.set(0, 0.5, 0); // Explicitly set to home center
+                    tokenMesh.position.set(0, 0.01, 0);
                     toast({
                         title: "Token Home!",
                         description: `${playerId}'s token reached home.`,
@@ -715,21 +620,17 @@ export default function LudoPage() {
                         isClosable: true,
                         position: "top-right",
                     });
-                    console.log(`[moveToken] Token ${playerId}-${tokenIndex} went home. Mesh hidden and reset position.`);
                 } else {
-                    // Set to the exact final grid position
                     const finalWorldPos = gridToWorld(potentialNextState.gridPos[0], potentialNextState.gridPos[1]);
-                    tokenMesh.position.set(finalWorldPos.x, 0.5, finalWorldPos.z);
-                    console.log(`[moveToken] Animation complete. Token ${playerId}-${tokenIndex} set to final position: x=${tokenMesh.position.x}, z=${tokenMesh.position.z}.`);
+                    tokenMesh.position.set(finalWorldPos.x, 0.01, finalWorldPos.z);
                 }
 
                 if (capturedTokenInfo) {
                     const capturedTokenMesh = tokenMeshMapRef.current.get(capturedTokenInfo.playerId)?.[capturedTokenInfo.tokenIndex];
                     if (capturedTokenMesh) {
                         const originalBaseWorldPos = gridToWorld(capturedTokenInfo.originalBasePos[0], capturedTokenInfo.originalBasePos[1]);
-                        capturedTokenMesh.position.set(originalBaseWorldPos.x, 0.5, originalBaseWorldPos.z);
-                        capturedTokenMesh.visible = true; // Ensure captured token is visible when returned to base
-                        console.log(`[moveToken] Captured token ${capturedTokenInfo.playerId}-${capturedTokenInfo.tokenIndex} returned to base: x=${capturedTokenMesh.position.x}, z=${capturedTokenMesh.position.z}`);
+                        capturedTokenMesh.position.set(originalBaseWorldPos.x, 0.01, originalBaseWorldPos.z);
+                        capturedTokenMesh.visible = true;
                     }
 
                     toast({
@@ -744,7 +645,6 @@ export default function LudoPage() {
 
                 checkWinCondition();
 
-                // Proceed to next game phase
                 if (diceValue === 6) {
                     toast({
                         title: "Rolled a 6!",
@@ -755,7 +655,7 @@ export default function LudoPage() {
                         position: "top-right",
                     });
                     setGamePhase('ROLL_DICE');
-                    if (currentPlayerId === botPlayerId) {
+                    if (currentPlayerIdRef.current === botPlayerId) { // Use ref
                         setTimeout(() => rollDiceRef.current?.(), 1500);
                     }
                 } else {
@@ -765,20 +665,17 @@ export default function LudoPage() {
         };
         animateTokenStep();
 
-    }, [players, calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates]);
+    }, [calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates]); // `players` removed
 
-
-    // Basic Bot AI logic
     const makeBotMove = useCallback((diceValue: number, movableTokens: number[]) => {
-        const botPlayer = players[currentPlayerId];
+        const botPlayer = playersRef.current[currentPlayerIdRef.current]; // Use ref
         if (!botPlayer || movableTokens.length === 0) {
-            setTimeout(() => endTurnRef.current?.(), 0); // Call via ref
+            setTimeout(() => endTurnRef.current?.(), 0);
             return;
         }
 
         let chosenTokenIndex: number | null = null;
 
-        // Strategy 1: If a 6 is rolled, prioritize moving a token out of base
         if (diceValue === 6) {
             for (const index of movableTokens) {
                 const token = botPlayer.tokens[index];
@@ -789,26 +686,25 @@ export default function LudoPage() {
             }
         }
 
-        // Strategy 2: Try to capture an opponent's token
         if (chosenTokenIndex === null) {
             for (const index of movableTokens) {
                 const token = botPlayer.tokens[index];
-                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerId);
+                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current); // Use ref
                 if (!potentialNextState || potentialNextState.isHome) continue;
 
                 const isTargetSafeSpot = safeSpots.has(JSON.stringify(potentialNextState.gridPos));
-                if (isTargetSafeSpot) continue; // Cannot capture on safe spot
+                if (isTargetSafeSpot) continue;
 
                 for (const opponentId of playerOrder) {
-                    if (opponentId === currentPlayerId) continue;
-                    const opponentPlayer = players[opponentId];
+                    if (opponentId === currentPlayerIdRef.current) continue; // Use ref
+                    const opponentPlayer = playersRef.current[opponentId]; // Use ref
                     if (!opponentPlayer) continue;
 
                     for (const oppToken of opponentPlayer.tokens) {
                         if (!oppToken.isInBase && !oppToken.isHome &&
                             oppToken.gridPos[0] === potentialNextState.gridPos[0] &&
                             oppToken.gridPos[1] === potentialNextState.gridPos[1]) {
-                            chosenTokenIndex = index; // This token can capture
+                            chosenTokenIndex = index;
                             break;
                         }
                     }
@@ -818,21 +714,20 @@ export default function LudoPage() {
             }
         }
 
-        // Strategy 3: Otherwise, move the token furthest along the path (or closest to home)
         if (chosenTokenIndex === null) {
-            let maxDistance = -1; // Higher distance means further along the path
+            let maxDistance = -1;
             for (const index of movableTokens) {
                 const token = botPlayer.tokens[index];
-                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerId);
+                const potentialNextState = calculateNextPosition(token, diceValue, currentPlayerIdRef.current); // Use ref
                 if (!potentialNextState) continue;
 
                 let currentDistance = 0;
                 if (potentialNextState.isHome) {
-                    currentDistance = Infinity; // Prioritize getting home
+                    currentDistance = Infinity;
                 } else if (potentialNextState.isInHomePath) {
-                    currentDistance = pathCoordinates.length + potentialNextState.pathIndex; // Main path length + home path index
+                    currentDistance = pathCoordinates.length + potentialNextState.pathIndex;
                 } else {
-                    currentDistance = potentialNextState.pathIndex; // Index on main path
+                    currentDistance = potentialNextState.pathIndex;
                 }
 
                 if (currentDistance > maxDistance) {
@@ -842,31 +737,25 @@ export default function LudoPage() {
             }
         }
 
-        // Fallback: If for some reason no specific strategy applied, just pick the first movable token
         if (chosenTokenIndex === null && movableTokens.length > 0) {
             chosenTokenIndex = movableTokens[0];
         }
 
         if (chosenTokenIndex !== null) {
-            moveTokenRef.current?.(currentPlayerId, chosenTokenIndex, diceValue); // Call via ref
+            moveTokenRef.current?.(currentPlayerIdRef.current, chosenTokenIndex, diceValue); // Use ref
         } else {
-            // This case indicates a logic error or no valid moves despite getMovableTokens returning options
-            console.error("makeBotMove: Bot could not find a token to move, passing turn. This indicates a logic error.");
-            setTimeout(() => endTurnRef.current?.(), 0); // Call via ref
+            setTimeout(() => endTurnRef.current?.(), 0);
         }
-    }, [players, currentPlayerId, calculateNextPosition, playerOrder, safeSpots, pathCoordinates]);
+    }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates]); // Removed `players` and `currentPlayerId`
 
-
-    // Function to handle token click for human players
     const handleTokenClick = useCallback((playerId: string, tokenIndex: number) => {
-        if (gamePhase === 'SELECT_TOKEN_TO_MOVE' && currentPlayerId === playerId && playerId === humanPlayerId) {
-            if (rolledDiceValue === null) {
-                console.error("handleTokenClick: Dice value is null when trying to move token. This should not happen.");
+        if (gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' && currentPlayerIdRef.current === playerId && playerId === humanPlayerId) { // Use refs
+            if (rolledDiceValueRef.current === null) { // Use ref
                 return;
             }
-            const movableTokens = getMovableTokens(playerId, rolledDiceValue);
+            const movableTokens = getMovableTokens(playerId, rolledDiceValueRef.current); // Use ref
             if (movableTokens.includes(tokenIndex)) {
-                moveTokenRef.current?.(playerId, tokenIndex, rolledDiceValue); // Call via ref
+                moveTokenRef.current?.(playerId, tokenIndex, rolledDiceValueRef.current); // Use ref
             } else {
                 toast({
                     title: "Invalid Move",
@@ -878,8 +767,7 @@ export default function LudoPage() {
                 });
             }
         }
-    }, [gamePhase, currentPlayerId, humanPlayerId, rolledDiceValue, getMovableTokens, toast]);
-
+    }, [humanPlayerId, getMovableTokens, toast]); // Removed gamePhase, currentPlayerId, rolledDiceValue
 
     const animate = useCallback(() => {
         animationFrameId.current = requestAnimationFrame(animate);
@@ -887,45 +775,36 @@ export default function LudoPage() {
         const scene = sceneRef.current;
         const camera = cameraRef.current;
         const renderer = rendererRef.current;
-        const world = worldRef.current;
+        // const world = worldRef.current; // <--- Potentially remove
 
-        if (!scene || !camera || !renderer || !world) {
+        if (!scene || !camera || !renderer) { // If world is removed, remove it from this check
             return;
         }
 
-        // Smoothly interpolate camera focal length towards the target
-        const lerpFactor = 0.05; // Adjust for desired smoothness (0.05 is a good starting point)
-        camera.fov = THREE.MathUtils.lerp(camera.fov, cameraFocalLength, lerpFactor);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, cameraFocalLength, 0.05);
         camera.updateProjectionMatrix();
 
-        // Calculate camera position based on spherical coordinates
-        const fixedCameraDistance = 30; // A fixed distance from the center for orbit
-        const verticalAngle = cameraVerticalAngle; // This is the elevation angle from the XZ plane
-        const horizontalAngle = cameraRotationY; // This is the angle around the Y-axis (azimuthal)
+        const fixedCameraDistance = 30;
+        const verticalAngle = cameraVerticalAngle;
+        const horizontalAngle = cameraRotationY;
 
-        // Spherical to Cartesian conversion
-        // x = r * cos(phi) * sin(theta)
-        // y = r * sin(phi)
-        // z = r * cos(phi) * cos(theta)
-        // where r = fixedCameraDistance, phi = verticalAngle, theta = horizontalAngle
         const xz_radius = fixedCameraDistance * Math.cos(verticalAngle);
         camera.position.x = xz_radius * Math.sin(horizontalAngle);
         camera.position.y = fixedCameraDistance * Math.sin(verticalAngle);
         camera.position.z = xz_radius * Math.cos(horizontalAngle);
 
-        camera.lookAt(new THREE.Vector3(0, 0, 0)); // Always look at the center
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
         camera.updateProjectionMatrix();
 
-
-        const fixedTimeStep = 1 / 60; // seconds
-        const maxSubSteps = 10;
-        world.step(fixedTimeStep, performance.now() / 1000, maxSubSteps);
+        // if (world) { // <--- Potentially remove this block
+        //     const fixedTimeStep = 1 / 60;
+        //     const maxSubSteps = 10;
+        //     world.step(fixedTimeStep, performance.now() / 1000, maxSubSteps);
+        // }
 
         renderer.render(scene, camera);
-    }, [cameraFocalLength, cameraVerticalAngle, cameraRotationY]); // cameraFocalLength is now the target, not updated in animate
+    }, [cameraFocalLength, cameraVerticalAngle, cameraRotationY]);
 
-
-    // UseEffects to keep refs updated with the latest function instances
     useEffect(() => {
         rollDiceRef.current = rollDice;
     }, [rollDice]);
@@ -946,52 +825,33 @@ export default function LudoPage() {
         handleTokenClickRef.current = handleTokenClick;
     }, [handleTokenClick]);
 
-    // Effects to keep state refs updated
-    useEffect(() => {
-        gamePhaseRef.current = gamePhase;
-    }, [gamePhase]);
+    useEffect(() => { gamePhaseRef.current = gamePhase; }, [gamePhase]);
+    useEffect(() => { currentPlayerIdRef.current = currentPlayerId; }, [currentPlayerId]);
+    useEffect(() => { rolledDiceValueRef.current = rolledDiceValue; }, [rolledDiceValue]);
+    useEffect(() => { rollsLeftRef.current = rollsLeft; }, [rollsLeft]);
 
-    useEffect(() => {
-        currentPlayerIdRef.current = currentPlayerId;
-    }, [currentPlayerId]);
-
-    useEffect(() => {
-        rolledDiceValueRef.current = rolledDiceValue;
-    }, [rolledDiceValue]);
-
-    useEffect(() => {
-        rollsLeftRef.current = rollsLeft;
-    }, [rollsLeft]);
-
-
-    // Main useEffect for Three.js/Cannon.js setup and initial model loading (runs once)
     useEffect(() => {
         if (!mountRef.current) {
             return;
         }
-
-        // Prevent re-initialization if already set up
         if (rendererRef.current) {
             return;
         }
 
-        // --- Scene Initialization ---
         const scene = new THREE.Scene();
         sceneRef.current = scene;
 
-        // --- Camera Initialization ---
         const camera = new THREE.PerspectiveCamera(
-            cameraFocalLength, // Use state for initial focal length
+            cameraFocalLength,
             window.innerWidth / window.innerHeight,
             0.1,
             1000
         );
         cameraRef.current = camera;
 
-        // Set initial camera position based on initial state values
         const initialFixedCameraDistance = 30;
-        const initialVerticalAngle = cameraVerticalAngle; // Initial angle in radians
-        const initialHorizontalAngle = cameraRotationY; // Initial angle in radians
+        const initialVerticalAngle = cameraVerticalAngle;
+        const initialHorizontalAngle = cameraRotationY;
 
         const initialXzRadius = initialFixedCameraDistance * Math.cos(initialVerticalAngle);
         camera.position.x = initialXzRadius * Math.sin(initialHorizontalAngle);
@@ -1001,7 +861,6 @@ export default function LudoPage() {
         camera.lookAt(new THREE.Vector3(0, 0, 0));
         camera.updateProjectionMatrix();
 
-        // --- Renderer Initialization ---
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -1010,7 +869,6 @@ export default function LudoPage() {
         rendererRef.current = renderer;
         mountRef.current.appendChild(renderer.domElement);
 
-        // --- Lighting ---
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
         directionalLight.position.set(5, 10, 7.5);
         directionalLight.castShadow = true;
@@ -1028,12 +886,12 @@ export default function LudoPage() {
         scene.add(ambientLight);
 
         // --- Physics World Initialization ---
-        const world = new CANNON.World();
-        world.gravity.set(0, -9.82, 0); // m/s^2
-        world.broadphase = new CANNON.SAPBroadphase(world);
-        worldRef.current = world;
+        // If CANNON.World is not used for token movement/collisions, this block can be removed.
+        // const world = new CANNON.World();
+        // world.gravity.set(0, -9.82, 0);
+        // world.broadphase = new CANNON.SAPBroadphase(world);
+        // worldRef.current = world;
 
-        // --- Add a Flat Ground Plane (Three.js Visual) ---
         const groundGeometry = new THREE.PlaneGeometry(50, 50, 10, 10);
         const groundMaterial = new THREE.MeshStandardMaterial({
             color: 0x333333,
@@ -1044,7 +902,6 @@ export default function LudoPage() {
         groundMesh.receiveShadow = true;
         scene.add(groundMesh);
 
-        // --- Load GLB Models ---
         const loader = new GLTFLoader();
         let modelsLoadedCount = 0;
         const totalModelsToLoad = 1 + 1 + 4 + (4 * 4); // Center, Grid, 4 Bases, 16 Tokens
@@ -1052,11 +909,10 @@ export default function LudoPage() {
         const checkAllModelsLoaded = () => {
             modelsLoadedCount++;
             if (modelsLoadedCount === totalModelsToLoad) {
-                setIsLoading(false); // Only set loading to false here
+                setIsLoading(false);
             }
         };
 
-        // Function to create and add a colored cell to the scene (for path visualization)
         const addColoredCell = (row: number, col: number, color: number, height: number = 0.003) => {
             const worldPos = gridToWorld(row, col);
             const cellGeometry = new THREE.PlaneGeometry(1, 1);
@@ -1074,15 +930,13 @@ export default function LudoPage() {
             scene.add(cellMesh);
         };
 
-        // Player Colors (Hexadecimal)
         const playerColors = {
-            player1: 0xCC1400, // Red
-            player2: 0x00CC00, // Green (Inactive for this mode)
-            player3: 0x0027CC, // Yellow (Bot)
-            player4: 0x6C00CD, // Blue (Inactive for this mode)
+            player1: 0xCC1400,
+            player2: 0x00CC00,
+            player3: 0x0027CC,
+            player4: 0x6C00CD,
         };
 
-        // Player Start Positions (on main path)
         const playerStartPositions: Record<string, [number, number]> = {
             player1: [13, 6],
             player2: [6, 1],
@@ -1090,27 +944,22 @@ export default function LudoPage() {
             player4: [8, 13],
         };
 
-        // Player Home Paths to the Center (row, col)
         const playerHomePaths: Record<string, [number, number][]> = {
-            player1: [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]], // Red
-            player2: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]], // Green
-            player3: [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]], // Yellow
-            player4: [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]], // Blue
+            player1: [[13, 7], [12, 7], [11, 7], [10, 7], [9, 7], [8, 7]],
+            player2: [[7, 1], [7, 2], [7, 3], [7, 4], [7, 5], [7, 6]],
+            player3: [[1, 7], [2, 7], [3, 7], [4, 7], [5, 7], [6, 7]],
+            player4: [[7, 13], [7, 12], [7, 11], [7, 10], [7, 9], [7, 8]],
         };
 
-        // Define the top-left corner of each player's 6x6 base area
         const baseStartCoordinates: Record<string, [number, number]> = {
-            player1: [9, 0],   // Player 1 (Red)
-            player2: [0, 0],   // Player 2 (Green)
-            player3: [0, 9],   // Player 3 (Yellow)
-            player4: [9, 9],   // Player 4 (Blue)
+            player1: [9, 0],
+            player2: [0, 0],
+            player3: [0, 9],
+            player4: [9, 9],
         };
 
-        // Define the relative 2x2 pattern for tokens within their 6x6 base
         const relative2x2Pattern: [number, number][] = [[2, 2], [2, 3], [3, 2], [3, 3]];
 
-
-        // --- Load Player Start Base GLB Models (6x6 areas) ---
         const playerStartBaseModelPaths = {
             player1: '/models/p1-start.glb',
             player2: '/models/p2-start.glb',
@@ -1118,7 +967,6 @@ export default function LudoPage() {
             player4: '/models/p4-start.glb',
         };
 
-        // Load center.glb
         loader.load('/models/center.glb', (gltf) => {
             const model = gltf.scene;
             model.position.set(0, 0.001, 0);
@@ -1139,7 +987,6 @@ export default function LudoPage() {
             checkAllModelsLoaded();
         });
 
-        // Load grid.glb
         loader.load('/models/grid.glb', (gltf) => {
             const gridModel = gltf.scene;
             gridModel.position.set(0, 0.005, 0);
@@ -1182,18 +1029,16 @@ export default function LudoPage() {
                     title: `Error loading ${playerId} start base model`, description: `Could not load ${playerId} starting area model.`,
                     status: "error", duration: 5000, isClosable: true, position: "top-right",
                 });
-                checkAllModelsLoaded();
+                for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); } // Ensure counter increments even on error
             });
         });
 
-        // Visualize Player Start Positions (these are individual cells for path entry)
         for (const player in playerStartPositions) {
             const [row, col] = playerStartPositions[player as keyof typeof playerStartPositions];
             const color = playerColors[player as keyof typeof playerColors];
             addColoredCell(row, col, color);
         }
 
-        // Visualize Player Home Paths
         for (const player in playerHomePaths) {
             const homePath = playerHomePaths[player as keyof typeof playerHomePaths];
             const color = playerColors[player as keyof typeof playerColors];
@@ -1202,7 +1047,6 @@ export default function LudoPage() {
             });
         }
 
-        // Prepare initial players state with correct 2x2 token starting positions
         const initialPlayersData: Record<string, Player> = {};
         ['player1', 'player2', 'player3', 'player4'].forEach(id => {
             const [baseStartRow, baseStartCol] = baseStartCoordinates[id];
@@ -1212,7 +1056,7 @@ export default function LudoPage() {
                 const gridPos: [number, number] = [baseStartRow + relativeRow, baseStartCol + relativeCol];
                 initialTokenStates.push({
                     gridPos: gridPos,
-                    pathIndex: -1, // -1 indicates in base
+                    pathIndex: -1,
                     isInBase: true,
                     isInHomePath: false,
                     isHome: false,
@@ -1225,14 +1069,13 @@ export default function LudoPage() {
                 color: playerColors[id as keyof typeof playerColors],
                 startPosition: playerStartPositions[id],
                 homePath: playerHomePaths[id],
-                basePositions: initialTokenStates.map(token => token.gridPos), // Store base positions for reference
+                basePositions: initialTokenStates.map(token => token.gridPos),
                 homePathMainPathEntryIndex: playerHomePathMainPathEntryIndices[id],
             };
-            tokenMeshMapRef.current.set(id, []); // Initialize empty array for meshes in the ref
+            tokenMeshMapRef.current.set(id, []);
         });
-        setPlayers(initialPlayersData); // Set initial players state here
+        setPlayers(initialPlayersData);
 
-        // --- Load Player GLB Models (4 instances per player) ---
         const playerModelPaths = {
             player1: '/models/player1.glb',
             player2: '/models/player2.glb',
@@ -1240,7 +1083,6 @@ export default function LudoPage() {
             player4: '/models/player4.glb',
         };
 
-        // Load one model per player type, then clone it for each token
         Object.entries(playerModelPaths).forEach(([playerId, path]) => {
             loader.load(path, (gltf) => {
                 const originalPlayerMesh = gltf.scene;
@@ -1251,22 +1093,18 @@ export default function LudoPage() {
                     }
                 });
 
-                // Clone the mesh for each of the 4 tokens
                 for (let i = 0; i < 4; i++) {
-                    const clonedMesh = originalPlayerMesh.clone(); // Deep clone
+                    const clonedMesh = originalPlayerMesh.clone();
 
-                    // Set initial position based on token state
                     const player = initialPlayersData[playerId];
                     const initialTokenGridPos = player.tokens[i].gridPos;
                     const worldPos = gridToWorld(initialTokenGridPos[0], initialTokenGridPos[1]);
-                    clonedMesh.position.set(worldPos.x, 0.5, worldPos.z);
+                    clonedMesh.position.set(worldPos.x, 0.01, worldPos.z);
                     clonedMesh.scale.set(0.5, 0.5, 0.5);
 
-                    // Add a unique identifier to the mesh for raycasting
                     clonedMesh.userData = { playerId: playerId, tokenIndex: i };
                     scene.add(clonedMesh);
 
-                    // Store the mesh in the ref, not in React state
                     tokenMeshMapRef.current.get(playerId)?.push(clonedMesh);
                     checkAllModelsLoaded();
                 }
@@ -1276,14 +1114,10 @@ export default function LudoPage() {
                     title: `Error loading ${playerId} model`, description: `Could not load ${playerId} character.`,
                     status: "error", duration: 5000, isClosable: true, position: "top-right",
                 });
-                // Still call checkAllModelsLoaded to ensure loading state resolves even on error
-                for (let i = 0; i < 4; i++) {
-                    checkAllModelsLoaded();
-                }
+                for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
             });
         });
 
-        // --- Handle Window Resize ---
         const handleResize = () => {
             if (cameraRef.current && rendererRef.current) {
                 cameraRef.current.aspect = window.innerWidth / window.innerHeight;
@@ -1294,25 +1128,26 @@ export default function LudoPage() {
         handleResize();
         window.addEventListener("resize", handleResize);
 
-        // --- Mouse event listeners for token selection ---
         const onMouseMove = (event: MouseEvent) => {
             mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
         };
 
         const onMouseClick = () => {
-            // Use refs to access the latest state values
             if (cameraRef.current && sceneRef.current &&
                 gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' &&
                 currentPlayerIdRef.current === humanPlayerId) {
 
                 if (rolledDiceValueRef.current === null) {
-                    console.error("onMouseClick: Dice value is null when trying to move token. This should not happen.");
                     return;
                 }
 
                 raycaster.current.setFromCamera(mouse.current, cameraRef.current);
-                const intersects = raycaster.current.intersectObjects(sceneRef.current.children, true);
+                // Optimize raycasting by only checking known token meshes
+                const allTokenMeshes: THREE.Object3D[] = [];
+                tokenMeshMapRef.current.forEach(meshes => allTokenMeshes.push(...meshes));
+
+                const intersects = raycaster.current.intersectObjects(allTokenMeshes, true);
 
                 for (let i = 0; i < intersects.length; i++) {
                     const intersectedObject = intersects[i].object;
@@ -1323,7 +1158,6 @@ export default function LudoPage() {
 
                     if (currentParent && currentParent.userData.playerId && currentParent.userData.tokenIndex !== undefined) {
                         const { playerId: clickedPlayerId, tokenIndex: clickedTokenIndex } = currentParent.userData;
-                        // Pass the current dice value from the ref to handleTokenClickRef
                         handleTokenClickRef.current?.(clickedPlayerId, clickedTokenIndex);
                         break;
                     }
@@ -1334,8 +1168,6 @@ export default function LudoPage() {
         window.addEventListener('mousemove', onMouseMove);
         window.addEventListener('click', onMouseClick);
 
-
-        // --- Cleanup Function ---
         return () => {
             if (animationFrameId.current) {
                 cancelAnimationFrame(animationFrameId.current);
@@ -1348,11 +1180,9 @@ export default function LudoPage() {
                 mountRef.current.removeChild(rendererRef.current.domElement);
                 rendererRef.current.dispose();
             }
-            // Dispose of player meshes and bodies (only if they are not shared geometries/materials)
             tokenMeshMapRef.current.forEach(meshes => {
                 meshes.forEach(mesh => {
                     scene.remove(mesh);
-                    // Dispose of geometry and material if they are unique to this mesh
                     if ((mesh as THREE.Mesh).isMesh) {
                         const m = mesh as THREE.Mesh;
                         if (m.geometry) m.geometry.dispose();
@@ -1364,33 +1194,27 @@ export default function LudoPage() {
                     }
                 });
             });
-            // Bodies are not explicitly stored in React state, so no need to clean them up here
-            // unless they were added to a separate ref like physicsBodiesRef.
         };
-    }, []); // Empty dependency array to run only once for setup
+    }, [cameraFocalLength, cameraVerticalAngle, cameraRotationY, gridToWorld, toast, humanPlayerId, pathCoordinates, playerHomePathMainPathEntryIndices]); // Added static deps
 
-    // New useEffect to start animation and render initial frame once loading is complete
     useEffect(() => {
         if (!isLoading && sceneRef.current && cameraRef.current && rendererRef.current) {
-            rendererRef.current.render(sceneRef.current, cameraRef.current); // Render initial frame
-            animate(); // Start the continuous animation loop
+            rendererRef.current.render(sceneRef.current, cameraRef.current);
+            animate();
         }
-    }, [isLoading, animate]); // Depend on isLoading and animate (which is useCallback)
+    }, [isLoading, animate]);
 
-
-    // Effect to set up game mode and initial player roles (runs once after loading is complete)
     useEffect(() => {
         if (!isLoading && !hasInitializedGame.current) {
-            hasInitializedGame.current = true; // Mark as initialized
+            hasInitializedGame.current = true;
 
-            setCurrentPlayerId(playerOrder[0]); // Use the already stable playerOrder
-            setGamePhase('ROLL_DICE'); // Start the game phase
-            setRollsLeft(3); // Initial rolls for the first player
+            setCurrentPlayerId(playerOrder[0]);
+            setGamePhase('ROLL_DICE');
+            setRollsLeft(1);
 
-            // Show welcome toast after initial setup
             let title = "Welcome to Ludo Sync!";
             let description = "Select a game mode from the home page.";
-            if (gameMode === "play-with-bot") { // Use the gameMode derived from searchParams at the top
+            if (gameMode === "play-with-bot") {
                 title = "Game Mode: Bot Only";
                 description = "You're playing against the AI (Player 3). Player 2 and 4 are inactive.";
             } else if (gameMode === "local-friends") {
@@ -1402,80 +1226,65 @@ export default function LudoPage() {
             }
             toast({ title, description, status: "info", duration: 5000, isClosable: true, position: "top-right", });
 
-            // If the first player is a bot, trigger their roll
-            if (playerOrder[0] === botPlayerId) { // Use botPlayerId directly from useMemo
+            if (playerOrder[0] === botPlayerId) {
                 setTimeout(() => {
-                    rollDiceRef.current?.(); // Call via ref
+                    rollDiceRef.current?.();
                 }, 1500);
             }
         }
-    }, [isLoading, searchParams, toast, humanPlayerId, botPlayerId, gameMode, playerOrder, cameraFocalLength, cameraVerticalAngle]);
+    }, [isLoading, searchParams, toast, humanPlayerId, botPlayerId, gameMode, playerOrder]);
 
-
-    // This effect ensures that all tokens are correctly positioned after any state update
     useEffect(() => {
         playerOrder.forEach(pId => {
-            const player = players[pId]; // This 'players' is from the component's render cycle, guaranteed to be latest
+            const player = players[pId];
             if (player) {
-                // Adjust all active tokens
                 player.tokens.forEach(token => {
                     if (!token.isHome && token.gridPos && token.gridPos[0] !== -1 && token.gridPos[1] !== -1) {
                         adjustTokensInCell(token.gridPos[0], token.gridPos[1]);
                     }
                 });
-                // Also adjust tokens in base (for captured tokens returning home)
                 player.basePositions.forEach(basePos => {
                     adjustTokensInCell(basePos[0], basePos[1]);
                 });
             }
         });
-    }, [players, adjustTokensInCell, playerOrder]); // This effect runs whenever 'players' or 'adjustTokensInCell' changes
+    }, [players, adjustTokensInCell, playerOrder]);
 
-
-    // Callback to get the current camera FOV for display in FocalLengthControls
     const getCameraFocalLengthForDisplay = useCallback(() => {
         return cameraRef.current ? cameraRef.current.fov : cameraFocalLength;
-    }, [cameraFocalLength]); // Dependency on cameraFocalLength to re-create if initial state changes
+    }, [cameraFocalLength]);
 
-
-    // Effect to manage movable token indicators
     useEffect(() => {
-        // Ensure scene is available before trying to add meshes
         if (!sceneRef.current) return;
 
-        // First, hide all existing indicators
         indicatorMeshesRef.current.forEach(mesh => mesh.visible = false);
 
-        // Only show indicators when it's the SELECT_TOKEN_TO_MOVE phase
-        if (gamePhase === 'SELECT_TOKEN_TO_MOVE') { // Corrected game phase
-            // Ensure dice has been rolled and current player is human
+        if (gamePhase === 'SELECT_TOKEN_TO_MOVE') {
             if (rolledDiceValue !== null && currentPlayerId === humanPlayerId) {
-                const movableTokens = getMovableTokens(currentPlayerId, rolledDiceValue); // Pass required arguments
+                const movableTokens = getMovableTokens(currentPlayerId, rolledDiceValue);
 
-                movableTokens.forEach((tokenIndex) => { // movableTokens is an array of indices now
-                    const key = `${currentPlayerId}-${tokenIndex}`; // Key should include current player
+                movableTokens.forEach((tokenIndex) => {
+                    const key = `${currentPlayerId}-${tokenIndex}`;
                     let indicatorMesh = indicatorMeshesRef.current.get(key);
 
-                    // Get the actual token's 3D mesh to position the indicator sphere
-                    const tokenMesh = tokenMeshMapRef.current.get(currentPlayerId)?.[tokenIndex]; // Use currentPlayerId
+                    const tokenMesh = tokenMeshMapRef.current.get(currentPlayerId)?.[tokenIndex];
 
                     if (tokenMesh) {
-                        // If indicator mesh doesn't exist for this token, create it and add to scene
                         if (!indicatorMesh) {
                             indicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
                             sceneRef.current.add(indicatorMesh);
                             indicatorMeshesRef.current.set(key, indicatorMesh);
                         }
-
-                        // Position the indicator slightly above the token
                         indicatorMesh.position.copy(tokenMesh.position);
-                        indicatorMesh.position.y += 0.8; // Adjust this value based on your token size/scale
-                        indicatorMesh.visible = true; // Make it visible
+                        indicatorMesh.position.y += 2;
+                        indicatorMesh.scale.set(0.5, 0.5, 0.5); // Adjust these values to make it smaller (e.g., 0.1 for 10% of original size)
+                        indicatorMesh.visible = true;
                     }
                 });
             }
         }
-    }, [gamePhase, currentPlayerId, rolledDiceValue, humanPlayerId, getMovableTokens, sceneRef, indicatorGeometry, indicatorMaterial]); // Dependencies
+    }, [gamePhase, currentPlayerId, rolledDiceValue, humanPlayerId, getMovableTokens, sceneRef, indicatorGeometry, indicatorMaterial]);
+
 
     return (
         <Box
@@ -1507,7 +1316,6 @@ export default function LudoPage() {
                 </Center>
             )}
 
-            {/* Game Info Box (top-left) */}
             {!isLoading && gamePhase !== 'GAME_OVER' && (
                 <Box
                     position="absolute"
@@ -1536,7 +1344,6 @@ export default function LudoPage() {
                 </Box>
             )}
 
-            {/* Roll Dice Button (bottom-right) */}
             {!isLoading && gamePhase === 'ROLL_DICE' && currentPlayerId === humanPlayerId && (
                 <Box
                     position="absolute"
@@ -1550,7 +1357,6 @@ export default function LudoPage() {
                 </Box>
             )}
 
-            {/* Camera Vertical Rotation Slider (right side, vertical) */}
             {!isLoading && (
                 <Flex
                     position="absolute"
@@ -1558,7 +1364,7 @@ export default function LudoPage() {
                     right="4"
                     transform="translateY(-50%)"
                     zIndex="10"
-                    height="250px" // Increased height to accommodate buttons
+                    height="250px"
                     width="40px"
                     flexDirection="column"
                     alignItems="center"
@@ -1571,7 +1377,7 @@ export default function LudoPage() {
                         aria-label="Increase vertical angle"
                         icon={<ChevronUpIcon />}
                         size="sm"
-                        onClick={() => setCameraVerticalAngle(prev => Math.min(prev + 0.01, Math.PI / 2))} // Max 90 degrees
+                        onClick={() => setCameraVerticalAngle(prev => Math.min(prev + 0.01, Math.PI / 2))}
                         colorScheme="teal"
                         mb={1}
                     />
@@ -1601,7 +1407,6 @@ export default function LudoPage() {
                 </Flex>
             )}
 
-            {/* Camera Horizontal Rotation Slider (bottom center, horizontal) */}
             {!isLoading && (
                 <Flex
                     position="absolute"
@@ -1609,7 +1414,7 @@ export default function LudoPage() {
                     left="50%"
                     transform="translateX(-50%)"
                     zIndex="10"
-                    width="350px" // Increased width to accommodate buttons
+                    width="350px"
                     bg="rgba(0,0,0,0.6)"
                     borderRadius="md"
                     p={2}
@@ -1649,12 +1454,11 @@ export default function LudoPage() {
                 </Flex>
             )}
 
-            {/* Focal Length Controls (bottom-left) */}
             {!isLoading && (
                 <FocalLengthControls
-                    getFocalLength={getCameraFocalLengthForDisplay} // Pass the getter function
-                    onIncrease={() => setCameraFocalLength(prev => Math.min(prev + 5, 80))} // Increasing FOV zooms OUT
-                    onDecrease={() => setCameraFocalLength(prev => Math.max(prev - 5, 10))} // Decreasing FOV zooms IN
+                    getFocalLength={getCameraFocalLengthForDisplay}
+                    onIncrease={() => setCameraFocalLength(prev => Math.min(prev + 5, 80))}
+                    onDecrease={() => setCameraFocalLength(prev => Math.max(prev - 5, 10))}
                 />
             )}
 
@@ -1675,7 +1479,6 @@ export default function LudoPage() {
                     <Text color="white" fontSize="3xl">
                         {winner.replace('player', 'Player ')} wins!
                     </Text>
-                    {/* You could add a "Play Again" button here */}
                 </Center>
             )}
         </Box>
