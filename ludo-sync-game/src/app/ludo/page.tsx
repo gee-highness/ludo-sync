@@ -855,7 +855,7 @@ function LudoPageContent() {
         mountRef.current.appendChild(renderer.domElement);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 10, 7.5);
+        directionalLight.position.set(5, 10, -5);
         directionalLight.castShadow = true;
         directionalLight.shadow.mapSize.width = 2048;
         directionalLight.shadow.mapSize.height = 2048;
@@ -867,10 +867,8 @@ function LudoPageContent() {
         directionalLight.shadow.camera.bottom = -20;
         scene.add(directionalLight);
 
-        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        const ambientLight = new THREE.AmbientLight(0x404040, 1);
         scene.add(ambientLight);
-
-        // Physics World Initialization removed as it's not used for token movement.
 
         const groundGeometry = new THREE.PlaneGeometry(50, 50, 10, 10);
         const groundMaterial = new THREE.MeshStandardMaterial({
@@ -884,37 +882,13 @@ function LudoPageContent() {
 
         const loader = new GLTFLoader();
         let modelsLoadedCount = 0;
-        const totalModelsToLoad = 1 + 1 + 4 + (4 * 4);
+        const totalModelsToLoad = 1 + 1 + 4 + (4 * 4); // Center, Grid, 4 Start Bases, 16 Tokens
 
         const checkAllModelsLoaded = () => {
             modelsLoadedCount++;
             if (modelsLoadedCount === totalModelsToLoad) {
                 setIsLoading(false);
             }
-        };
-
-        const addColoredCell = (row: number, col: number, color: number, height: number = 0.003) => {
-            const worldPos = gridToWorld(row, col);
-            const cellGeometry = new THREE.PlaneGeometry(1, 1);
-            const cellMaterial = new THREE.MeshStandardMaterial({
-                color: color,
-                side: THREE.DoubleSide,
-                roughness: 0.6,
-                metalness: 0.0,
-            });
-            const cellMesh = new THREE.Mesh(cellGeometry, cellMaterial);
-            cellMesh.position.set(worldPos.x, height, worldPos.z);
-            cellMesh.rotation.x = -Math.PI / 2;
-            cellMesh.receiveShadow = true;
-            cellMesh.castShadow = false;
-            scene.add(cellMesh);
-        };
-
-        const playerColors = {
-            player1: 0xCC1400,
-            player2: 0x00CC00,
-            player3: 0x0027CC,
-            player4: 0x6C00CD,
         };
 
         const playerStartPositions: Record<string, [number, number]> = {
@@ -1009,25 +983,20 @@ function LudoPageContent() {
                     title: `Error loading ${playerId} start base model`, description: `Could not load ${playerId} starting area model.`,
                     status: "error", duration: 5000, isClosable: true, position: "top-right",
                 });
+                // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
             });
         });
 
-        for (const player in playerStartPositions) {
-            const [row, col] = playerStartPositions[player as keyof typeof playerStartPositions];
-            const color = playerColors[player as keyof typeof playerColors];
-            addColoredCell(row, col, color);
-        }
-
-        for (const player in playerHomePaths) {
-            const homePath = playerHomePaths[player as keyof typeof playerHomePaths];
-            const color = playerColors[player as keyof typeof playerColors];
-            homePath.forEach(([row, col]) => {
-                addColoredCell(row, col, color);
-            });
-        }
-
         const initialPlayersData: Record<string, Player> = {};
+        // Player colors are no longer used for dynamic cell coloring, but kept for token color reference if needed later
+        const playerColors = {
+            player1: 0xCC1400,
+            player2: 0x00CC00,
+            player3: 0x0027CC,
+            player4: 0x6C00CD,
+        };
+
         ['player1', 'player2', 'player3', 'player4'].forEach(id => {
             const [baseStartRow, baseStartCol] = baseStartCoordinates[id];
             const initialTokenStates: TokenState[] = [];
@@ -1094,6 +1063,7 @@ function LudoPageContent() {
                     title: `Error loading ${playerId} model`, description: `Could not load ${playerId} character.`,
                     status: "error", duration: 5000, isClosable: true, position: "top-right",
                 });
+                // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
             });
         });
