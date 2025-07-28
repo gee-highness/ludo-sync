@@ -93,6 +93,8 @@ export default function LudoPage() {
     const worldRef = useRef<CANNON.World | null>(null);
     const animationFrameId = useRef<number | null>(null);
 
+
+
     // Ref to store all Three.js token meshes, managed outside React state
     const tokenMeshMapRef = useRef<Map<string, THREE.Object3D[]>>(new Map());
 
@@ -108,6 +110,13 @@ export default function LudoPage() {
     const [playerOrder] = useState<string[]>(['player1', 'player3']); // Order of active players
     const [winner, setWinner] = useState<string | null>(null); // State for winner
     const [rollsLeft, setRollsLeft] = useState<number>(1); // Rolls left for current player
+
+    const playersRef = useRef(players); // Initialize with current players state
+
+    // Effect to keep playersRef.current updated with the latest players state
+    useEffect(() => {
+        playersRef.current = players;
+    }, [players]);
 
     // Camera control states
     // cameraFocalLength is now the TARGET focal length, not the current animated one
@@ -159,6 +168,11 @@ export default function LudoPage() {
     const rolledDiceValueRef = useRef<number | null>(null);
     const rollsLeftRef = useRef<number>(1);
 
+    // For the movable token indicators
+    const indicatorGeometry = useMemo(() => new THREE.SphereGeometry(0.3, 16, 16), []); // Radius 0.3, 16 segments for smoothness
+    const indicatorMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }), []);
+
+    const indicatorMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map()); // Map to store indicator meshes by 'playerId-tokenIndex'
 
     // Helper function to convert grid coordinates to world coordinates
     const gridToWorld = useCallback((row: number, col: number) => {
@@ -417,50 +431,142 @@ export default function LudoPage() {
     }, [gamePhase, currentPlayerId, botPlayerId, winner, toast, getMovableTokens]);
 
 
+    const adjustTokensInCell = useCallback((row: number, col: number) => {
+        console.log(`[adjustTokensInCell] Called for cell [${row}, ${col}]`);
+        const tokensInThisCell: { mesh: THREE.Object3D, playerId: string, tokenIndex: number }[] = [];
+
+        // Access the latest players state via the ref
+        const currentPlayersState = playersRef.current; // <--- CHANGE IS HERE
+
+        playerOrder.forEach(pId => {
+            const player = currentPlayersState[pId]; // Use currentPlayersState
+            if (!player) return;
+
+            player.tokens.forEach((tokenState, tIndex) => {
+                console.log(`[adjustTokensInCell] Checking token ${pId}-${tIndex}: gridPos [${tokenState.gridPos[0]}, ${tokenState.gridPos[1]}], isHome: ${tokenState.isHome}, isInBase: ${tokenState.isInBase}`);
+                if (tokenState.gridPos[0] === row && tokenState.gridPos[1] === col) {
+                    const mesh = tokenMeshMapRef.current.get(pId)?.[tIndex];
+                    if (mesh && mesh.visible) {
+                        tokensInThisCell.push({ mesh, playerId: pId, tokenIndex: tIndex });
+                        console.log(`[adjustTokensInCell] Found visible token ${pId}-${tIndex} at [${row}, ${col}]`);
+                    } else if (mesh) {
+                        console.log(`[adjustTokensInCell] Token ${pId}-${tIndex} at [${row}, ${col}] is not visible (likely home).`);
+                    }
+                }
+            });
+        });
+
+        const numTokens = tokensInThisCell.length;
+        const baseScale = 0.5;
+
+        console.log(`[adjustTokensInCell] Number of tokens found in cell [${row}, ${col}]: ${numTokens}`);
+        console.log(`[adjustTokensInCell] Tokens to arrange:`, tokensInThisCell.map(t => `${t.playerId}-${t.tokenIndex}`));
+
+
+        if (numTokens > 1) {
+            const cellWorldCenter = gridToWorld(row, col);
+            const offsetDistance = 0.2; // Adjust this value to control spread
+            console.log(`[adjustTokensInCell] Cell world center: x=${cellWorldCenter.x}, z=${cellWorldCenter.z}. Offset distance: ${offsetDistance}`);
+
+            let offsets: [number, number][] = [];
+            if (numTokens === 2) {
+                offsets = [[-offsetDistance, 0], [offsetDistance, 0]];
+            } else if (numTokens === 3) {
+                offsets = [
+                    [0, offsetDistance * 0.8],
+                    [-offsetDistance * 0.7, -offsetDistance * 0.4],
+                    [offsetDistance * 0.7, -offsetDistance * 0.4]
+                ];
+            } else if (numTokens === 4) {
+                offsets = [
+                    [-offsetDistance * 0.7, offsetDistance * 0.7],
+                    [offsetDistance * 0.7, offsetDistance * 0.7],
+                    [-offsetDistance * 0.7, -offsetDistance * 0.7],
+                    [offsetDistance * 0.7, -offsetDistance * 0.7]
+                ];
+            } else {
+                console.log(`[adjustTokensInCell] More than 4 tokens (${numTokens}) in cell, applying general scale reduction.`);
+                tokensInThisCell.forEach(({ mesh }, i) => {
+                    console.log(`[adjustTokensInCell] Token ${i}: Before scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
+                    mesh.scale.set(baseScale * 0.7, baseScale * 0.7, baseScale * 0.7);
+                    const cellWorldCenterDefault = gridToWorld(row, col);
+                    mesh.position.set(cellWorldCenterDefault.x, 0.5, cellWorldCenterDefault.z);
+                    console.log(`[adjustTokensInCell] Token ${i}: After scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}, Position: x=${mesh.position.x}, z=${mesh.position.z}`);
+                });
+                return;
+            }
+
+            tokensInThisCell.forEach(({ mesh }, i) => {
+                const [offsetX, offsetZ] = offsets[i];
+                console.log(`[adjustTokensInCell] Token ${i}: Current position x=${mesh.position.x}, z=${mesh.position.z}, scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
+                console.log(`[adjustTokensInCell] Token ${i}: Applying offset [${offsetX}, ${offsetZ}]`);
+
+                mesh.position.set(cellWorldCenter.x + offsetX, 0.5, cellWorldCenter.z + offsetZ);
+                mesh.scale.set(baseScale * 0.9, baseScale * 0.9, baseScale * 0.9); // Slightly smaller when grouped
+
+                console.log(`[adjustTokensInCell] Token ${i}: New position x=${mesh.position.x}, z=${mesh.position.z}, new scale x=${mesh.scale.x}, y=${mesh.scale.y}, z=${mesh.scale.z}`);
+            });
+        } else if (numTokens === 1) {
+            console.log(`[adjustTokensInCell] One token in cell, ensuring it's centered and normal size.`);
+            const token = tokensInThisCell[0];
+            const cellWorldCenter = gridToWorld(row, col);
+            console.log(`[adjustTokensInCell] Token ${token.playerId}-${token.tokenIndex}: Current position x=${token.mesh.position.x}, z=${token.mesh.position.z}, scale x=${token.mesh.scale.x}, y=${token.mesh.scale.y}, z=${token.mesh.scale.z}`);
+
+            token.mesh.position.set(cellWorldCenter.x, 0.5, cellWorldCenter.z);
+            token.mesh.scale.set(baseScale, baseScale, baseScale);
+
+            console.log(`[adjustTokensInCell] Token ${token.playerId}-${token.tokenIndex}: New position x=${token.mesh.position.x}, z=${token.mesh.position.z}, new scale x=${token.mesh.scale.x}, y=${token.mesh.scale.y}, z=${token.mesh.scale.z}`);
+        } else {
+            console.log(`[adjustTokensInCell] No visible tokens found at [${row}, ${col}].`);
+        }
+    }, [gridToWorld, playerOrder]); // REMOVED 'players' from dependencies
+
     // Function to move a token and handle game logic
     const moveToken = useCallback((playerId: string, tokenIndex: number, diceValue: number) => {
+        console.log(`[moveToken] Called for Player: ${playerId}, Token Index: ${tokenIndex}, Dice Value: ${diceValue}`);
         const player = players[playerId];
         if (!player || tokenIndex < 0 || tokenIndex >= player.tokens.length) {
-            console.error(`moveToken: Invalid player or token index. Player: ${playerId}, Index: ${tokenIndex}`);
+            console.error(`[moveToken] Invalid player or token index. Player: ${playerId}, Index: ${tokenIndex}`);
             return;
         }
 
         const currentTokenState = player.tokens[tokenIndex];
+        console.log(`[moveToken] Current token state:`, currentTokenState);
         const potentialNextState = calculateNextPosition(currentTokenState, diceValue, playerId);
 
         if (!potentialNextState) {
-            console.error("moveToken: Attempted to move to an invalid position. This should not happen if getMovableTokens is correct.");
+            console.error("[moveToken] Attempted to move to an invalid position. This should not happen if getMovableTokens is correct.");
             return;
         }
+        console.log(`[moveToken] Potential next state:`, potentialNextState);
 
         setGamePhase('ANIMATING_MOVE');
 
-        // Perform capture logic if not going to home and not on a safe spot
         let capturedTokenInfo: { playerId: string; tokenIndex: number; originalBasePos: [number, number]; } | null = null;
         const isTargetSafeSpot = safeSpots.has(JSON.stringify(potentialNextState.gridPos));
 
-        // Check for capture of opponent's token OR self-capture (if moving out of base)
-        if (!potentialNextState.isHome) { // Captures only happen if not landing home
+        if (!potentialNextState.isHome) {
             for (const opponentId of playerOrder) {
                 const opponentPlayer = players[opponentId];
                 if (!opponentPlayer) continue;
+                if (opponentId === playerId) continue;
 
                 for (let oppIndex = 0; oppIndex < opponentPlayer.tokens.length; oppIndex++) {
                     const opponentToken = opponentPlayer.tokens[oppIndex];
-                    // A token can be captured if it's not in base, not home, and on the target square
                     if (!opponentToken.isInBase && !opponentToken.isHome &&
                         opponentToken.gridPos[0] === potentialNextState.gridPos[0] &&
                         opponentToken.gridPos[1] === potentialNextState.gridPos[1]) {
 
-                        // If it's an opponent's token AND the target is not a safe spot, capture it.
-                        // If it's your own token AND the current token is moving out of base (dice=6), capture it (self-capture).
-                        if ((opponentId !== playerId && !isTargetSafeSpot)) {
+                        if (!isTargetSafeSpot) {
                             capturedTokenInfo = {
                                 playerId: opponentId,
                                 tokenIndex: oppIndex,
                                 originalBasePos: opponentPlayer.basePositions[oppIndex],
                             };
+                            console.log(`[moveToken] Captured token detected:`, capturedTokenInfo);
                             break;
+                        } else {
+                            console.log(`[moveToken] Opponent token found at target, but it's a safe spot. No capture.`);
                         }
                     }
                 }
@@ -468,11 +574,8 @@ export default function LudoPage() {
             }
         }
 
-
-        // Update the position in state *before* animation
         setPlayers(prevPlayers => {
             const newPlayers = { ...prevPlayers };
-            // Update current player's token
             newPlayers[playerId] = {
                 ...newPlayers[playerId],
                 tokens: newPlayers[playerId].tokens.map((token, idx) =>
@@ -480,7 +583,6 @@ export default function LudoPage() {
                 ),
             };
 
-            // If a token was captured, update its state to be back in base
             if (capturedTokenInfo) {
                 const { playerId: capturedPId, tokenIndex: capturedTIdx, originalBasePos } = capturedTokenInfo;
                 newPlayers[capturedPId] = {
@@ -488,7 +590,7 @@ export default function LudoPage() {
                     tokens: newPlayers[capturedPId].tokens.map((token, idx) =>
                         idx === capturedTIdx ? {
                             gridPos: originalBasePos,
-                            pathIndex: -1, // Indicate back in base
+                            pathIndex: -1,
                             isInBase: true,
                             isInHomePath: false,
                             isHome: false,
@@ -496,51 +598,71 @@ export default function LudoPage() {
                     ),
                 };
             }
+            console.log(`[moveToken] Players state updated. New state of all players:`, newPlayers);
             return newPlayers;
         });
 
-        // Get the actual Three.js mesh from the ref
         const tokenMesh = tokenMeshMapRef.current.get(playerId)?.[tokenIndex];
         if (!tokenMesh) {
-            console.error(`moveToken: Mesh for player ${playerId} token ${tokenIndex} not found in ref.`);
+            console.error(`[moveToken] Mesh for player ${playerId} token ${tokenIndex} not found in ref.`);
             return;
         }
+        console.log(`[moveToken] Moving mesh for token ${playerId}-${tokenIndex}. Initial mesh position: x=${tokenMesh.position.x}, z=${tokenMesh.position.z}`);
 
-        const animationDurationPerStep = 0.2; // seconds per grid cell
-        const pathSegment: [number, number][] = []; // Path for animation
 
-        // Determine animation path
+        const animationDurationPerStep = 0.2;
+        const pathSegment: [number, number][] = [];
+
+        // Determine path segment for animation
         if (currentTokenState.isInBase) {
+            // Moving from base to start position
             pathSegment.push(player.startPosition);
-        } else if (currentTokenState.isInHomePath) {
-            const currentHomePathIndex = player.homePath.findIndex(p => p[0] === currentTokenState.gridPos[0] && p[1] === currentTokenState.gridPos[1]);
-            for (let i = 1; i <= diceValue; i++) {
-                if (currentHomePathIndex + i < player.homePath.length) {
-                    pathSegment.push(player.homePath[currentHomePathIndex + i]);
-                } else if (currentHomePathIndex + i === player.homePath.length) {
-                    pathSegment.push([-1, -1]); // Represent "home"
-                    break;
-                } else {
-                    break; // Overshot home
+        } else if (potentialNextState.isInHomePath) {
+            // Moving from main path into home path
+            const startIndex = currentTokenState.pathIndex;
+            const entryIndex = player.homePathMainPathEntryIndex;
+
+            if (startIndex <= entryIndex) {
+                for (let i = startIndex + 1; i <= entryIndex; i++) {
+                    pathSegment.push(pathCoordinates[i % pathCoordinates.length]);
+                }
+            } else {
+                for (let i = startIndex + 1; i < pathCoordinates.length; i++) {
+                    pathSegment.push(pathCoordinates[i]);
+                }
+                for (let i = 0; i <= entryIndex; i++) {
+                    pathSegment.push(pathCoordinates[i]);
                 }
             }
-        } else { // On main path
-            const currentMainPathIndex = currentTokenState.pathIndex;
-            for (let i = 1; i <= diceValue; i++) {
-                let nextPathIndex = (currentMainPathIndex + i);
-                // Check if entering home path
-                if (currentMainPathIndex <= player.homePathMainPathEntryIndex && nextPathIndex > player.homePathMainPathEntryIndex) {
-                    const stepsIntoHomePath = nextPathIndex - player.homePathMainPathEntryIndex - 1;
-                    if (stepsIntoHomePath < player.homePath.length) {
-                        pathSegment.push(player.homePath[stepsIntoHomePath]);
-                    } else if (stepsIntoHomePath === player.homePath.length) {
-                        pathSegment.push([-1, -1]); // Represent "home"
-                        break;
-                    } else {
-                        return null; // Overshot home
-                    }
-                } else {
-                    pathSegment.push(pathCoordinates[nextPathIndex % pathCoordinates.length]);
+
+            const stepsIntoHomePath = (potentialNextState.pathIndex ?? 0) + 1;
+            for (let i = 0; i < stepsIntoHomePath; i++) {
+                pathSegment.push(player.homePath[i]);
+            }
+        } else if (potentialNextState.isHome) {
+            // Moving from home path to home center
+            const startIndex = currentTokenState.pathIndex;
+            for (let i = startIndex + 1; i < player.homePath.length; i++) {
+                pathSegment.push(player.homePath[i]);
+            }
+            // Add the "home" position as the final point in the path segment for animation
+            // This is a placeholder; its actual coordinates will be (0,0,0) in world space.
+            pathSegment.push([-1, -1]); // Using a dummy gridPos for home
+        } else {
+            // Moving on main path
+            const startIndex = currentTokenState.pathIndex;
+            const endIndex = potentialNextState.pathIndex;
+
+            if (startIndex < endIndex) {
+                for (let i = startIndex + 1; i <= endIndex; i++) {
+                    pathSegment.push(pathCoordinates[i]);
+                }
+            } else { // Wrap around
+                for (let i = startIndex + 1; i < pathCoordinates.length; i++) {
+                    pathSegment.push(pathCoordinates[i]);
+                }
+                for (let i = 0; i <= endIndex; i++) {
+                    pathSegment.push(pathCoordinates[i]);
                 }
             }
         }
@@ -553,29 +675,38 @@ export default function LudoPage() {
             let animationProgress = (currentTime - startTime) / (totalAnimationDuration * 1000);
 
             if (animationProgress < 1) {
+                // Interpolate position along the path segment
                 const currentSegmentIndex = Math.min(Math.floor(animationProgress * pathSegment.length), pathSegment.length - 1);
-                const segmentProgress = (animationProgress * pathSegment.length) - currentSegmentIndex; // Progress within the current segment
+                const segmentProgress = (animationProgress * pathSegment.length) - currentSegmentIndex;
 
-                let startPoint: THREE.Vector3;
+                let startGridPos: [number, number];
                 if (currentSegmentIndex === 0) {
-                    startPoint = gridToWorld(currentTokenState.gridPos[0], currentTokenState.gridPos[1]);
+                    startGridPos = currentTokenState.isInBase ? player.basePositions[tokenIndex] : currentTokenState.gridPos;
                 } else {
-                    const prevPos = pathSegment[currentSegmentIndex - 1];
-                    startPoint = gridToWorld(prevPos[0], prevPos[1]);
+                    startGridPos = pathSegment[currentSegmentIndex - 1];
                 }
 
-                const endPoint = potentialNextState.isHome && currentSegmentIndex === pathSegment.length - 1 ? new THREE.Vector3(0, 0.5, 0) : gridToWorld(pathSegment[currentSegmentIndex][0], pathSegment[currentSegmentIndex][1]);
+                const endGridPos = pathSegment[currentSegmentIndex];
 
-                tokenMesh.position.x = startPoint.x + (endPoint.x - startPoint.x) * segmentProgress;
-                tokenMesh.position.z = startPoint.z + (endPoint.z - startPoint.z) * segmentProgress;
-                tokenMesh.position.y = 0.5 + Math.sin(segmentProgress * Math.PI) * 0.2; // Bounce effect
+                const startWorldPos = gridToWorld(startGridPos[0], startGridPos[1]);
+
+                let endWorldPos: THREE.Vector3;
+                if (endGridPos[0] === -1 && endGridPos[1] === -1) { // Special case for home position
+                    endWorldPos = new THREE.Vector3(0, 0.5, 0); // Center of the board
+                } else {
+                    endWorldPos = gridToWorld(endGridPos[0], endGridPos[1]);
+                }
+
+                tokenMesh.position.x = startWorldPos.x + (endWorldPos.x - startWorldPos.x) * segmentProgress;
+                tokenMesh.position.y = 0.5; // Always keep tokens on the board surface
+                tokenMesh.position.z = startWorldPos.z + (endWorldPos.z - startWorldPos.z) * segmentProgress;
 
                 animationFrameId.current = requestAnimationFrame(animateTokenStep);
             } else {
-                // Animation finished, snap to final position
+                // Animation finished: Ensure the token is exactly at its final destination
                 if (potentialNextState.isHome) {
-                    tokenMesh.visible = false; // Hide token when it's home
-                    tokenMesh.position.set(0, 0.5, 0); // Move to center of home for consistency
+                    tokenMesh.visible = false;
+                    tokenMesh.position.set(0, 0.5, 0); // Explicitly set to home center
                     toast({
                         title: "Token Home!",
                         description: `${playerId}'s token reached home.`,
@@ -584,20 +715,22 @@ export default function LudoPage() {
                         isClosable: true,
                         position: "top-right",
                     });
+                    console.log(`[moveToken] Token ${playerId}-${tokenIndex} went home. Mesh hidden and reset position.`);
                 } else {
+                    // Set to the exact final grid position
                     const finalWorldPos = gridToWorld(potentialNextState.gridPos[0], potentialNextState.gridPos[1]);
-                    tokenMesh.position.set(finalWorldPos.x, 0.5, finalWorldPos.z); // Snap to final position
+                    tokenMesh.position.set(finalWorldPos.x, 0.5, finalWorldPos.z);
+                    console.log(`[moveToken] Animation complete. Token ${playerId}-${tokenIndex} set to final position: x=${tokenMesh.position.x}, z=${tokenMesh.position.z}.`);
                 }
 
-                // Handle captured token animation (move back to base)
                 if (capturedTokenInfo) {
                     const capturedTokenMesh = tokenMeshMapRef.current.get(capturedTokenInfo.playerId)?.[capturedTokenInfo.tokenIndex];
                     if (capturedTokenMesh) {
-                        const capturedTokenWorldPos = gridToWorld(capturedTokenInfo.originalBasePos[0], capturedTokenInfo.originalBasePos[1]);
-                        capturedTokenMesh.position.set(capturedTokenWorldPos.x, 0.5, capturedTokenWorldPos.z);
-                        capturedTokenMesh.visible = true; // Ensure it's visible
+                        const originalBaseWorldPos = gridToWorld(capturedTokenInfo.originalBasePos[0], capturedTokenInfo.originalBasePos[1]);
+                        capturedTokenMesh.position.set(originalBaseWorldPos.x, 0.5, originalBaseWorldPos.z);
+                        capturedTokenMesh.visible = true; // Ensure captured token is visible when returned to base
+                        console.log(`[moveToken] Captured token ${capturedTokenInfo.playerId}-${capturedTokenInfo.tokenIndex} returned to base: x=${capturedTokenMesh.position.x}, z=${capturedTokenMesh.position.z}`);
                     }
-
 
                     toast({
                         title: "Token Captured!",
@@ -611,7 +744,7 @@ export default function LudoPage() {
 
                 checkWinCondition();
 
-                // If a 6 was rolled, the player gets another turn. Otherwise, turn passes.
+                // Proceed to next game phase
                 if (diceValue === 6) {
                     toast({
                         title: "Rolled a 6!",
@@ -621,12 +754,12 @@ export default function LudoPage() {
                         isClosable: true,
                         position: "top-right",
                     });
-                    setGamePhase('ROLL_DICE'); // Current player gets another turn
+                    setGamePhase('ROLL_DICE');
                     if (currentPlayerId === botPlayerId) {
-                        setTimeout(() => rollDiceRef.current?.(), 1500); // Call via ref
+                        setTimeout(() => rollDiceRef.current?.(), 1500);
                     }
                 } else {
-                    setTimeout(() => endTurnRef.current?.(), 1500); // Call via ref
+                    setTimeout(() => endTurnRef.current?.(), 1500);
                 }
             }
         };
@@ -1279,11 +1412,70 @@ export default function LudoPage() {
     }, [isLoading, searchParams, toast, humanPlayerId, botPlayerId, gameMode, playerOrder, cameraFocalLength, cameraVerticalAngle]);
 
 
+    // This effect ensures that all tokens are correctly positioned after any state update
+    useEffect(() => {
+        playerOrder.forEach(pId => {
+            const player = players[pId]; // This 'players' is from the component's render cycle, guaranteed to be latest
+            if (player) {
+                // Adjust all active tokens
+                player.tokens.forEach(token => {
+                    if (!token.isHome && token.gridPos && token.gridPos[0] !== -1 && token.gridPos[1] !== -1) {
+                        adjustTokensInCell(token.gridPos[0], token.gridPos[1]);
+                    }
+                });
+                // Also adjust tokens in base (for captured tokens returning home)
+                player.basePositions.forEach(basePos => {
+                    adjustTokensInCell(basePos[0], basePos[1]);
+                });
+            }
+        });
+    }, [players, adjustTokensInCell, playerOrder]); // This effect runs whenever 'players' or 'adjustTokensInCell' changes
+
+
     // Callback to get the current camera FOV for display in FocalLengthControls
     const getCameraFocalLengthForDisplay = useCallback(() => {
         return cameraRef.current ? cameraRef.current.fov : cameraFocalLength;
     }, [cameraFocalLength]); // Dependency on cameraFocalLength to re-create if initial state changes
 
+
+    // Effect to manage movable token indicators
+    useEffect(() => {
+        // Ensure scene is available before trying to add meshes
+        if (!sceneRef.current) return;
+
+        // First, hide all existing indicators
+        indicatorMeshesRef.current.forEach(mesh => mesh.visible = false);
+
+        // Only show indicators when it's the SELECT_TOKEN_TO_MOVE phase
+        if (gamePhase === 'SELECT_TOKEN_TO_MOVE') { // Corrected game phase
+            // Ensure dice has been rolled and current player is human
+            if (rolledDiceValue !== null && currentPlayerId === humanPlayerId) {
+                const movableTokens = getMovableTokens(currentPlayerId, rolledDiceValue); // Pass required arguments
+
+                movableTokens.forEach((tokenIndex) => { // movableTokens is an array of indices now
+                    const key = `${currentPlayerId}-${tokenIndex}`; // Key should include current player
+                    let indicatorMesh = indicatorMeshesRef.current.get(key);
+
+                    // Get the actual token's 3D mesh to position the indicator sphere
+                    const tokenMesh = tokenMeshMapRef.current.get(currentPlayerId)?.[tokenIndex]; // Use currentPlayerId
+
+                    if (tokenMesh) {
+                        // If indicator mesh doesn't exist for this token, create it and add to scene
+                        if (!indicatorMesh) {
+                            indicatorMesh = new THREE.Mesh(indicatorGeometry, indicatorMaterial);
+                            sceneRef.current.add(indicatorMesh);
+                            indicatorMeshesRef.current.set(key, indicatorMesh);
+                        }
+
+                        // Position the indicator slightly above the token
+                        indicatorMesh.position.copy(tokenMesh.position);
+                        indicatorMesh.position.y += 0.8; // Adjust this value based on your token size/scale
+                        indicatorMesh.visible = true; // Make it visible
+                    }
+                });
+            }
+        }
+    }, [gamePhase, currentPlayerId, rolledDiceValue, humanPlayerId, getMovableTokens, sceneRef, indicatorGeometry, indicatorMaterial]); // Dependencies
 
     return (
         <Box
