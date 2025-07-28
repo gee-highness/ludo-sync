@@ -2,8 +2,8 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import * as THREE from "three";
-import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex } from "@chakra-ui/react";
-import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from '@chakra-ui/icons';
+import { Box, Spinner, Center, Text, useToast, Button, Slider, SliderTrack, SliderThumb, IconButton, Flex, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalCloseButton, VStack } from "@chakra-ui/react";
+import { ChevronUpIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, InfoIcon } from '@chakra-ui/icons';
 import { useSearchParams } from "next/navigation";
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
@@ -159,6 +159,14 @@ function LudoPageContent() {
     const indicatorMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 }), []);
     const indicatorMeshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
 
+    // State for logs and modal
+    const [gameLogs, setGameLogs] = useState<string[]>([]);
+    const [showLogsModal, setShowLogsModal] = useState(false);
+
+    const addLog = useCallback((logMessage: string) => {
+        setGameLogs(prevLogs => [logMessage, ...prevLogs]);
+    }, []);
+
     const gridToWorld = useCallback((row: number, col: number) => {
         const worldX = col - 7;
         const worldZ = row - 7;
@@ -166,18 +174,18 @@ function LudoPageContent() {
     }, []);
 
     const pathCoordinates: [number, number][] = useMemo(() => [
-        [13, 6], [12, 6], [11, 6], [10, 6], [9, 6], [8, 6],
+        [13, 6], [12, 6], [11, 6], [10, 6], [9, 6],
         [8, 5], [8, 4], [8, 3], [8, 2], [8, 1], [8, 0],
         [7, 0],
         [6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [6, 5],
         [5, 6], [4, 6], [3, 6], [2, 6], [1, 6], [0, 6],
         [0, 7],
         [0, 8], [1, 8], [2, 8], [3, 8], [4, 8], [5, 8],
-        [6, 8], [6, 9], [6, 10], [6, 11], [6, 12], [6, 13],
+        [6, 9], [6, 10], [6, 11], [6, 12], [6, 13], [6, 14],
         [7, 14],
         [8, 14], [8, 13], [8, 12], [8, 11], [8, 10], [8, 9],
         [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [14, 8],
-        [14, 7]
+        [14, 7], [14, 6]
     ], []);
 
     const playerHomePathMainPathEntryIndices: Record<string, number> = useMemo(() => ({
@@ -274,18 +282,20 @@ function LudoPageContent() {
             if (tokensInHome === 4) {
                 setWinner(playerId);
                 setGamePhase('GAME_OVER');
+                const winMessage = `${playerId.replace('player', 'Player ')} wins the game!`;
                 toast({
                     title: "Game Over!",
-                    description: `${playerId.replace('player', 'Player ')} wins the game!`,
+                    description: winMessage,
                     status: "success",
                     duration: null,
                     isClosable: true,
                     position: "top",
                 });
+                addLog(`GAME OVER: ${winMessage}`);
                 break;
             }
         }
-    }, [playerOrder, toast]);
+    }, [playerOrder, toast, addLog]);
 
     const endTurn = useCallback(() => {
         setRolledDiceValue(null);
@@ -296,13 +306,14 @@ function LudoPageContent() {
 
         setCurrentPlayerId(nextPlayer);
         setGamePhase('ROLL_DICE');
+        addLog(`Turn ends for ${currentPlayerId.replace('player', 'Player ')}. Next turn: ${nextPlayer.replace('player', 'Player ')}`);
 
         if (nextPlayer === botPlayerId) {
             setTimeout(() => {
                 rollDiceRef.current?.();
             }, 1500);
         }
-    }, [currentPlayerId, playerOrder, botPlayerId]);
+    }, [currentPlayerId, playerOrder, botPlayerId, addLog]);
 
     const rollDice = useCallback(() => {
         if (gamePhaseRef.current !== 'ROLL_DICE' || winner) {
@@ -311,6 +322,7 @@ function LudoPageContent() {
 
         const diceResult = Math.floor(Math.random() * 6) + 1;
         setRolledDiceValue(diceResult);
+        addLog(`${currentPlayerIdRef.current.replace('player', 'Player ')} rolled a ${diceResult}.`);
         toast({
             title: "Dice Rolled!",
             description: `You rolled a ${diceResult}!`,
@@ -318,6 +330,7 @@ function LudoPageContent() {
             duration: 2000,
             isClosable: true,
             position: "top-right",
+            fontSize: "xl", // Keep this one big
         });
 
         const movableTokens = getMovableTokens(currentPlayerIdRef.current, diceResult);
@@ -326,12 +339,14 @@ function LudoPageContent() {
             setRollsLeft(prev => prev + 1);
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
+                addLog(`Player ${currentPlayerIdRef.current.replace('player', 'Player ')} can move a token. A 6 was rolled, granting another turn.`);
                 if (currentPlayerIdRef.current === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
                     }, 1000);
                 }
             } else {
+                addLog(`Player ${currentPlayerIdRef.current.replace('player', 'Player ')} rolled a 6 but has no movable tokens. Gets another turn.`);
                 toast({
                     title: "Rolled a 6, but no moves!",
                     description: "You get another turn!",
@@ -339,6 +354,7 @@ function LudoPageContent() {
                     duration: 2000,
                     isClosable: true,
                     position: "top-right",
+                    fontSize: "sm",
                 });
                 setTimeout(() => rollDiceRef.current?.(), 1500);
             }
@@ -346,6 +362,7 @@ function LudoPageContent() {
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
                 setRollsLeft(prev => prev - 1);
+                addLog(`Player ${currentPlayerIdRef.current.replace('player', 'Player ')} can move a token.`);
                 if (currentPlayerIdRef.current === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
@@ -354,6 +371,7 @@ function LudoPageContent() {
             } else {
                 if (rollsLeftRef.current > 1) {
                     setRollsLeft(prev => prev - 1);
+                    addLog(`Player ${currentPlayerIdRef.current.replace('player', 'Player ')} has no possible moves. ${rollsLeftRef.current - 1} rolls left.`);
                     toast({
                         title: "No possible moves",
                         description: `You have ${rollsLeftRef.current - 1} rolls left.`,
@@ -361,9 +379,11 @@ function LudoPageContent() {
                         duration: 2000,
                         isClosable: true,
                         position: "top-right",
+                        fontSize: "sm",
                     });
                     setTimeout(() => rollDiceRef.current?.(), 1500);
                 } else {
+                    addLog(`Player ${currentPlayerIdRef.current.replace('player', 'Player ')} has no possible moves. Turn passes.`);
                     toast({
                         title: "No possible moves",
                         description: "Your tokens cannot move. Turn passes.",
@@ -371,12 +391,13 @@ function LudoPageContent() {
                         duration: 2000,
                         isClosable: true,
                         position: "top-right",
+                        fontSize: "sm",
                     });
                     setTimeout(() => endTurnRef.current?.(), 1500);
                 }
             }
         }
-    }, [botPlayerId, winner, toast, getMovableTokens]);
+    }, [botPlayerId, winner, toast, getMovableTokens, addLog]);
 
     const adjustTokensInCell = useCallback((row: number, col: number) => {
         const tokensInThisCell: { mesh: THREE.Object3D, playerId: string, tokenIndex: number }[] = [];
@@ -422,7 +443,7 @@ function LudoPageContent() {
                     [-offsetDistance * 0.7, offsetDistance * 0.7],
                     [offsetDistance * 0.7, offsetDistance * 0.7],
                     [-offsetDistance * 0.7, -offsetDistance * 0.7],
-                    [offsetDistance * 0.7, -offsetDistance * 0.7]
+                    offsetDistance * 0.7, -offsetDistance * 0.7
                 ];
             } else {
                 tokensInThisCell.forEach(({ mesh }) => {
@@ -455,6 +476,8 @@ function LudoPageContent() {
         }
 
         setGamePhase('ANIMATING_MOVE');
+        addLog(`${playerId.replace('player', 'Player ')} is moving token ${tokenIndex + 1} with a roll of ${diceValue}.`);
+
 
         let capturedTokenInfo: { playerId: string; tokenIndex: number; originalBasePos: [number, number]; } | null = null;
         const isTargetSafeSpot = safeSpots.has(JSON.stringify(potentialNextState.gridPos));
@@ -604,13 +627,15 @@ function LudoPageContent() {
                 if (potentialNextState.isHome) {
                     tokenMesh.visible = false;
                     tokenMesh.position.set(0, 0.01, 0);
+                    addLog(`${playerId.replace('player', 'Player ')}'s token ${tokenIndex + 1} reached home.`);
                     toast({
                         title: "Token Home!",
-                        description: `${playerId}'s token reached home.`,
-                        status: "success",
+                        description: `${playerId.replace('player', 'Player ')}'s token reached home.`,
+                        status: "info",
                         duration: 2000,
                         isClosable: true,
                         position: "top-right",
+                        fontSize: "sm",
                     });
                 } else {
                     const finalWorldPos = gridToWorld(potentialNextState.gridPos[0], potentialNextState.gridPos[1]);
@@ -624,20 +649,22 @@ function LudoPageContent() {
                         capturedTokenMesh.position.set(originalBaseWorldPos.x, 0.01, originalBaseWorldPos.z);
                         capturedTokenMesh.visible = true;
                     }
-
+                    addLog(`${playerId.replace('player', 'Player ')} captured ${capturedTokenInfo.playerId.replace('player', 'Player ')}'s token ${capturedTokenInfo.tokenIndex + 1}!`);
                     toast({
                         title: "Token Captured!",
-                        description: `${playerId} captured a ${capturedTokenInfo.playerId}'s token!`,
+                        description: `${playerId.replace('player', 'Player ')} captured a ${capturedTokenInfo.playerId.replace('player', 'Player ')}'s token!`,
                         status: "warning",
                         duration: 3000,
                         isClosable: true,
                         position: "top-right",
+                        fontSize: "sm",
                     });
                 }
 
                 checkWinCondition();
 
                 if (diceValue === 6) {
+                    addLog(`${playerId.replace('player', 'Player ')} rolled a 6, getting another turn.`);
                     toast({
                         title: "Rolled a 6!",
                         description: "You get another turn!",
@@ -645,6 +672,7 @@ function LudoPageContent() {
                         duration: 2000,
                         isClosable: true,
                         position: "top-right",
+                        fontSize: "sm",
                     });
                     setGamePhase('ROLL_DICE');
                     if (currentPlayerIdRef.current === botPlayerId) {
@@ -657,7 +685,7 @@ function LudoPageContent() {
         };
         animateTokenStep();
 
-    }, [calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates]);
+    }, [calculateNextPosition, gridToWorld, toast, safeSpots, playerOrder, botPlayerId, checkWinCondition, pathCoordinates, addLog]);
 
     const makeBotMove = useCallback((diceValue: number, movableTokens: number[]) => {
         const botPlayer = playersRef.current[currentPlayerIdRef.current];
@@ -673,6 +701,7 @@ function LudoPageContent() {
                 const token = botPlayer.tokens[index];
                 if (token.isInBase) {
                     chosenTokenIndex = index;
+                    addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) chooses to move token ${index + 1} from base with a 6.`);
                     break;
                 }
             }
@@ -697,6 +726,7 @@ function LudoPageContent() {
                             oppToken.gridPos[0] === potentialNextState.gridPos[0] &&
                             oppToken.gridPos[1] === potentialNextState.gridPos[1]) {
                             chosenTokenIndex = index;
+                            addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) chooses to capture opponent's token with token ${index + 1}.`);
                             break;
                         }
                     }
@@ -727,18 +757,23 @@ function LudoPageContent() {
                     chosenTokenIndex = index;
                 }
             }
+            if (chosenTokenIndex !== null) {
+                addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) chooses token ${chosenTokenIndex + 1} to move furthest.`);
+            }
         }
 
         if (chosenTokenIndex === null && movableTokens.length > 0) {
             chosenTokenIndex = movableTokens[0];
+            addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) picks default token ${chosenTokenIndex + 1}.`);
         }
 
         if (chosenTokenIndex !== null) {
             moveTokenRef.current?.(currentPlayerIdRef.current, chosenTokenIndex, diceValue);
         } else {
+            addLog(`Bot (${currentPlayerIdRef.current.replace('player', 'Player ')}) has no valid moves. Turn ends.`);
             setTimeout(() => endTurnRef.current?.(), 0);
         }
-    }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates]);
+    }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates, addLog]);
 
     const handleTokenClick = useCallback((playerId: string, tokenIndex: number) => {
         if (gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' && currentPlayerIdRef.current === playerId && playerId === humanPlayerId) {
@@ -747,8 +782,10 @@ function LudoPageContent() {
             }
             const movableTokens = getMovableTokens(playerId, rolledDiceValueRef.current);
             if (movableTokens.includes(tokenIndex)) {
+                addLog(`${playerId.replace('player', 'Player ')} clicked token ${tokenIndex + 1} to move.`);
                 moveTokenRef.current?.(playerId, tokenIndex, rolledDiceValueRef.current);
             } else {
+                addLog(`Invalid move: ${playerId.replace('player', 'Player ')} tried to move token ${tokenIndex + 1} but it's not a valid move.`);
                 toast({
                     title: "Invalid Move",
                     description: "This token cannot be moved with the current dice roll.",
@@ -756,10 +793,11 @@ function LudoPageContent() {
                     duration: 1500,
                     isClosable: true,
                     position: "top-right",
+                    fontSize: "sm",
                 });
             }
         }
-    }, [humanPlayerId, getMovableTokens, toast]);
+    }, [humanPlayerId, getMovableTokens, toast, addLog]);
 
     const animate = useCallback(() => {
         animationFrameId.current = requestAnimationFrame(animate);
@@ -888,6 +926,7 @@ function LudoPageContent() {
             modelsLoadedCount++;
             if (modelsLoadedCount === totalModelsToLoad) {
                 setIsLoading(false);
+                addLog("All 3D models loaded successfully.");
             }
         };
 
@@ -934,9 +973,10 @@ function LudoPageContent() {
             checkAllModelsLoaded();
         }, undefined, (error) => {
             console.error('An error occurred while loading the center GLB model:', error);
+            addLog("Error loading center model.");
             toast({
                 title: "Error loading center model", description: "Could not load the center Ludo piece.",
-                status: "error", duration: 5000, isClosable: true, position: "top-right",
+                status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
             });
             checkAllModelsLoaded();
         });
@@ -955,9 +995,10 @@ function LudoPageContent() {
             checkAllModelsLoaded();
         }, undefined, (error) => {
             console.error('An error occurred while loading the grid GLB model:', error);
+            addLog("Error loading grid model.");
             toast({
                 title: "Error loading grid model", description: "Could not load the Ludo grid overlay.",
-                status: "error", duration: 5000, isClosable: true, position: "top-right",
+                status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
             });
             checkAllModelsLoaded();
         });
@@ -979,9 +1020,10 @@ function LudoPageContent() {
                 checkAllModelsLoaded();
             }, undefined, (error) => {
                 console.error(`An error occurred while loading ${playerId} start base GLB model:`, error);
+                addLog(`Error loading ${playerId} start base model.`);
                 toast({
                     title: `Error loading ${playerId} start base model`, description: `Could not load ${playerId} starting area model.`,
-                    status: "error", duration: 5000, isClosable: true, position: "top-right",
+                    status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
                 });
                 // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
@@ -1059,9 +1101,10 @@ function LudoPageContent() {
                 }
             }, undefined, (error) => {
                 console.error(`An error occurred while loading ${playerId} GLB model:`, error);
+                addLog(`Error loading ${playerId} token model.`);
                 toast({
                     title: `Error loading ${playerId} model`, description: `Could not load ${playerId} character.`,
-                    status: "error", duration: 5000, isClosable: true, position: "top-right",
+                    status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
                 });
                 // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
@@ -1144,7 +1187,7 @@ function LudoPageContent() {
                 });
             });
         };
-    }, [gridToWorld, toast, humanPlayerId, pathCoordinates, playerHomePathMainPathEntryIndices]); // Removed camera state variables
+    }, [gridToWorld, toast, humanPlayerId, pathCoordinates, playerHomePathMainPathEntryIndices, addLog]); // Removed camera state variables
 
     useEffect(() => {
         if (!isLoading && sceneRef.current && cameraRef.current && rendererRef.current) {
@@ -1166,14 +1209,18 @@ function LudoPageContent() {
             if (gameMode === "play-with-bot") {
                 title = "Game Mode: Bot Only";
                 description = "You're playing against the AI (Player 3). Player 2 and 4 are inactive.";
+                addLog("Game Mode: Bot Only. Player 1 (human) vs Player 3 (bot).");
             } else if (gameMode === "local-friends") {
                 title = "Game Mode: Friends (Over the Table)";
                 description = "You've chosen to play with friends locally. All players are human.";
+                addLog("Game Mode: Local Friends. All players are human.");
             } else if (gameMode === "multiplayer") {
                 title = "Game Mode: Multiplayer (Online)";
                 description = "You've chosen to play with others online! (Basic bot for Player 3).";
+                addLog("Game Mode: Multiplayer. Player 1 (human) vs Player 3 (basic bot).");
             }
-            toast({ title, description, status: "info", duration: 5000, isClosable: true, position: "top-right", });
+            toast({ title, description, status: "info", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm", });
+            addLog("Game initialized.");
 
             if (playerOrder[0] === botPlayerId) {
                 setTimeout(() => {
@@ -1181,7 +1228,7 @@ function LudoPageContent() {
                 }, 1500);
             }
         }
-    }, [isLoading, searchParams, toast, humanPlayerId, botPlayerId, gameMode, playerOrder]);
+    }, [isLoading, searchParams, toast, humanPlayerId, botPlayerId, gameMode, playerOrder, addLog]);
 
     useEffect(() => {
         playerOrder.forEach(pId => {
@@ -1292,12 +1339,13 @@ function LudoPageContent() {
 
             {!isLoading && gamePhase === 'ROLL_DICE' && currentPlayerId === humanPlayerId && (
                 <Box
-                    position="absolute"
-                    bottom="4"
-                    right="4"
+                    position="fixed" // Changed to fixed
+                    bottom="50%"
+                    left="50%"
+                    transform="translate(-50%, 50%)" // Centered
                     zIndex="10"
                 >
-                    <Button onClick={() => rollDiceRef.current?.()} colorScheme="teal" size="lg" p={6} borderRadius="full" boxShadow="lg">
+                    <Button onClick={() => rollDiceRef.current?.()} colorScheme="teal" size="xl" p={8} borderRadius="full" boxShadow="lg"> {/* Increased size and padding */}
                         Roll Dice
                     </Button>
                 </Box>
@@ -1405,6 +1453,40 @@ function LudoPageContent() {
                     onDecrease={() => setCameraFocalLength(prev => Math.max(prev - 5, 10))}
                 />
             )}
+
+            {/* View Logs Button */}
+            {!isLoading && (
+                <Box
+                    position="absolute"
+                    top="4"
+                    right="4"
+                    zIndex="10"
+                >
+                    <Button onClick={() => setShowLogsModal(true)} colorScheme="gray" size="sm" leftIcon={<InfoIcon />}>
+                        View Logs
+                    </Button>
+                </Box>
+            )}
+
+            {/* Logs Modal */}
+            <Modal isOpen={showLogsModal} onClose={() => setShowLogsModal(false)} size="xl">
+                <ModalOverlay />
+                <ModalContent bg="rgba(0,0,0,0.8)" color="white" borderRadius="md">
+                    <ModalHeader>Game Logs</ModalHeader>
+                    <ModalCloseButton />
+                    <ModalBody maxHeight="70vh" overflowY="auto">
+                        <VStack spacing={2} align="stretch">
+                            {gameLogs.length === 0 ? (
+                                <Text>No logs available yet.</Text>
+                            ) : (
+                                gameLogs.map((log, index) => (
+                                    <Text key={index} fontSize="sm">{log}</Text>
+                                ))
+                            )}
+                        </VStack>
+                    </ModalBody>
+                </ModalContent>
+            </Modal>
 
             {gamePhase === 'GAME_OVER' && winner && (
                 <Center
