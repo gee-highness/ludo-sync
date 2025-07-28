@@ -329,8 +329,8 @@ function LudoPageContent() {
             status: "success",
             duration: 2000,
             isClosable: true,
-            position: "top-right",
-            fontSize: "xl", // Keep this one big
+            position: "top",
+            //fontSize: "xl", // Keep this one big
         });
 
         const movableTokens = getMovableTokens(currentPlayerIdRef.current, diceResult);
@@ -353,8 +353,8 @@ function LudoPageContent() {
                     status: "info",
                     duration: 2000,
                     isClosable: true,
-                    position: "top-right",
-                    fontSize: "sm",
+                    position: "top",
+                    //fontSize: "sm",
                 });
                 setTimeout(() => rollDiceRef.current?.(), 1500);
             }
@@ -378,8 +378,8 @@ function LudoPageContent() {
                         status: "info",
                         duration: 2000,
                         isClosable: true,
-                        position: "top-right",
-                        fontSize: "sm",
+                        position: "top",
+                        //fontSize: "sm",
                     });
                     setTimeout(() => rollDiceRef.current?.(), 1500);
                 } else {
@@ -390,8 +390,8 @@ function LudoPageContent() {
                         status: "info",
                         duration: 2000,
                         isClosable: true,
-                        position: "top-right",
-                        fontSize: "sm",
+                        position: "top",
+                        //fontSize: "sm",
                     });
                     setTimeout(() => endTurnRef.current?.(), 1500);
                 }
@@ -443,7 +443,7 @@ function LudoPageContent() {
                     [-offsetDistance * 0.7, offsetDistance * 0.7],
                     [offsetDistance * 0.7, offsetDistance * 0.7],
                     [-offsetDistance * 0.7, -offsetDistance * 0.7],
-                    offsetDistance * 0.7, -offsetDistance * 0.7
+                    [offsetDistance * 0.7, -offsetDistance * 0.7]
                 ];
             } else {
                 tokensInThisCell.forEach(({ mesh }) => {
@@ -634,8 +634,8 @@ function LudoPageContent() {
                         status: "info",
                         duration: 2000,
                         isClosable: true,
-                        position: "top-right",
-                        fontSize: "sm",
+                        position: "top",
+                        //fontSize: "sm",
                     });
                 } else {
                     const finalWorldPos = gridToWorld(potentialNextState.gridPos[0], potentialNextState.gridPos[1]);
@@ -656,8 +656,8 @@ function LudoPageContent() {
                         status: "warning",
                         duration: 3000,
                         isClosable: true,
-                        position: "top-right",
-                        fontSize: "sm",
+                        position: "top",
+                        //fontSize: "sm",
                     });
                 }
 
@@ -671,8 +671,8 @@ function LudoPageContent() {
                         status: "info",
                         duration: 2000,
                         isClosable: true,
-                        position: "top-right",
-                        fontSize: "sm",
+                        position: "top",
+                        //fontSize: "sm",
                     });
                     setGamePhase('ROLL_DICE');
                     if (currentPlayerIdRef.current === botPlayerId) {
@@ -792,8 +792,8 @@ function LudoPageContent() {
                     status: "error",
                     duration: 1500,
                     isClosable: true,
-                    position: "top-right",
-                    fontSize: "sm",
+                    position: "top",
+                    //fontSize: "sm",
                 });
             }
         }
@@ -976,7 +976,7 @@ function LudoPageContent() {
             addLog("Error loading center model.");
             toast({
                 title: "Error loading center model", description: "Could not load the center Ludo piece.",
-                status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
+                status: "error", duration: 5000, isClosable: true, position: "top", //fontSize: "sm",
             });
             checkAllModelsLoaded();
         });
@@ -998,7 +998,7 @@ function LudoPageContent() {
             addLog("Error loading grid model.");
             toast({
                 title: "Error loading grid model", description: "Could not load the Ludo grid overlay.",
-                status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
+                status: "error", duration: 5000, isClosable: true, position: "top", //fontSize: "sm",
             });
             checkAllModelsLoaded();
         });
@@ -1023,7 +1023,7 @@ function LudoPageContent() {
                 addLog(`Error loading ${playerId} start base model.`);
                 toast({
                     title: `Error loading ${playerId} start base model`, description: `Could not load ${playerId} starting area model.`,
-                    status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
+                    status: "error", duration: 5000, isClosable: true, position: "top", //fontSize: "sm",
                 });
                 // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
@@ -1104,7 +1104,7 @@ function LudoPageContent() {
                 addLog(`Error loading ${playerId} token model.`);
                 toast({
                     title: `Error loading ${playerId} model`, description: `Could not load ${playerId} character.`,
-                    status: "error", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm",
+                    status: "error", duration: 5000, isClosable: true, position: "top",// fontSize: "sm",
                 });
                 // Ensure checkAllModelsLoaded is called even on error to prevent infinite loading
                 for (let i = 0; i < 4; i++) { checkAllModelsLoaded(); }
@@ -1219,7 +1219,9 @@ function LudoPageContent() {
                 description = "You've chosen to play with others online! (Basic bot for Player 3).";
                 addLog("Game Mode: Multiplayer. Player 1 (human) vs Player 3 (basic bot).");
             }
-            toast({ title, description, status: "info", duration: 5000, isClosable: true, position: "top-right", fontSize: "sm", });
+            toast({
+                title, description, status: "info", duration: 5000, isClosable: true, position: "top", //fontSize: "sm",
+            });
             addLog("Game initialized.");
 
             if (playerOrder[0] === botPlayerId) {
