@@ -9,17 +9,17 @@ export default function Home() {
 
   const handleBotOnly = () => {
     console.log("Starting game: Play with Bot");
-    router.push('/ludo?mode=play-with-bot');
+    router.push('/chakra-ludo?mode=play-with-bot');
   };
 
   const handlePlayWithFriendsLocal = () => {
     console.log("Starting game: Play with Friends (Over the Table)");
-    router.push('/ludo?mode=local-friends');
+    router.push('/chakra-ludo?mode=local-friends');
   };
 
   const handlePlayMultiplayer = () => {
     console.log("Starting game: Play Multiplayer");
-    router.push('/ludo?mode=multiplayer');
+    router.push('/chakra-ludo?mode=multiplayer');
   };
 
   return (
