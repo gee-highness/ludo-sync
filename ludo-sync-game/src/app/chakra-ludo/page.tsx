@@ -1366,7 +1366,7 @@ function LudoGameClient() {
                         case 'player2': // Green - Left
                             buttonPositionProps = { left: '4', top: '50%' }; // Position on left, vertically centered
                             containerTransform = 'translateY(-50%)'; // Center vertically
-                            buttonContentRotation = '-90deg'; // Rotate button content -90 degrees for upright viewing from left
+                            buttonContentRotation = '90deg'; // Rotate button content -90 degrees for upright viewing from left
                             break;
                         case 'player3': // Blue - Top
                             buttonPositionProps = { top: '4', left: '50%' };
@@ -1376,7 +1376,7 @@ function LudoGameClient() {
                         case 'player4': // Purple - Right
                             buttonPositionProps = { right: '4', top: '50%' }; // Position on right, vertically centered
                             containerTransform = 'translateY(-50%)'; // Center vertically
-                            buttonContentRotation = '90deg'; // Rotate button content 90 degrees for upright viewing from right
+                            buttonContentRotation = '-90deg'; // Rotate button content 90 degrees for upright viewing from right
                             break;
                     }
 
