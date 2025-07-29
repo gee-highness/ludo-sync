@@ -13,7 +13,7 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    files: ["src/app/chakra-ludo/page.tsx", "src/app/ludo/page.tsx"], // Apply these overrides only to page.tsx
+    files: ["src/app/chakra-ludo/page.tsx", "src/app/page.tsx"], // Apply these overrides only to page.tsx
     rules: {
       "prefer-const": "warn",
       "react-hooks/exhaustive-deps": "off",
