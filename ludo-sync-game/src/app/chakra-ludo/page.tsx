@@ -458,11 +458,11 @@ function LudoGameClient() {
                 if (currentPlayer === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
-                    }, 1000);
+                    }, 500);
                 }
             } else {
                 addLog(`Player ${currentPlayer.replace('player', 'Player ')} rolled a 6 but has no movable tokens. Gets another turn.`);
-                setTimeout(() => rollDiceRef.current?.(), 1500);
+                setTimeout(() => rollDiceRef.current?.(), 500);
             }
         } else {
             if (movableTokens.length > 0) {
@@ -472,16 +472,16 @@ function LudoGameClient() {
                 if (currentPlayer === botPlayerId) {
                     setTimeout(() => {
                         makeBotMoveRef.current?.(diceResult, movableTokens);
-                    }, 1000);
+                    }, 500);
                 }
             } else {
                 if (rollsLeftRef.current > 1) {
                     setRollsLeft(prev => prev - 1);
                     addLog(`Player ${currentPlayer.replace('player', 'Player ')} has no possible moves. ${rollsLeftRef.current - 1} rolls left.`);
-                    setTimeout(() => rollDiceRef.current?.(), 1500);
+                    setTimeout(() => rollDiceRef.current?.(), 500);
                 } else {
                     addLog(`Player ${currentPlayer.replace('player', 'Player ')} has no possible moves. Turn passes.`);
-                    setTimeout(() => endTurnRef.current?.(), 1500);
+                    setTimeout(() => endTurnRef.current?.(), 500);
                 }
             }
         }
