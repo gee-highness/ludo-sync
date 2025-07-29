@@ -141,6 +141,8 @@ function LudoGameClient() {
     const [diceAnimationStartPos, setDiceAnimationStartPos] = useState<{ top: number, left: number } | null>(null);
     const [boardCenterPixelPos, setBoardCenterPixelPos] = useState<{ top: number, left: number } | null>(null);
 
+    const [highlightedMovableTokenIndices, setHighlightedMovableTokenIndices] = useState<number[]>([]);
+
 
     const addLog = useCallback((logMessage: string) => {
         setGameLogs(prevLogs => [logMessage, ...prevLogs]);
@@ -410,6 +412,7 @@ function LudoGameClient() {
     const endTurn = useCallback(() => {
         // Removed setRolledDiceValue(null); // Keep the last rolled value visible
         setRollsLeft(1);
+        setHighlightedMovableTokenIndices([]); // Clear highlights when a move starts
         setSelectedTokenIndex(null); // Clear selected token
         setDiceRollHistory([]); // Reset dice history on turn end
         // Set isDiceAnimating to false when the turn ends to ensure the button is re-enabled
@@ -431,21 +434,16 @@ function LudoGameClient() {
         }
     }, [currentPlayerId, playerOrder, botPlayerId, addLog]);
 
-    // New callback function to handle logic after dice animation ends
     const handleDiceAnimationEnd = useCallback(() => {
-        //setIsDiceAnimating(false); // Fix: Ensure dice button is re-enabled immediately after animation callback fires
-
-        // Now, proceed with the game logic that depends on the dice roll
-        const diceResult = rolledDiceValueRef.current; // Use ref to get the latest value
+        const diceResult = rolledDiceValueRef.current;
         const currentPlayer = currentPlayerIdRef.current;
 
         if (diceResult === null) {
             console.error("Dice animation ended but rolledDiceValue is null.");
-            setGamePhase('ROLL_DICE'); // Reset to roll dice phase
+            setGamePhase('ROLL_DICE');
             return;
         }
 
-        // Set the value for the persistent previous dice display
         setPreviousDiceDisplayValue(diceResult);
 
         const movableTokens = getMovableTokens(currentPlayer, diceResult);
@@ -454,6 +452,7 @@ function LudoGameClient() {
             setRollsLeft(prev => prev + 1);
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
+                setHighlightedMovableTokenIndices(movableTokens); // Set movable tokens for highlighting
                 addLog(`Player ${currentPlayer.replace('player', 'Player ')} can move a token. A 6 was rolled, granting another turn.`);
                 if (currentPlayer === botPlayerId) {
                     setTimeout(() => {
@@ -468,6 +467,7 @@ function LudoGameClient() {
             if (movableTokens.length > 0) {
                 setGamePhase('SELECT_TOKEN_TO_MOVE');
                 setRollsLeft(prev => prev - 1);
+                setHighlightedMovableTokenIndices(movableTokens); // Set movable tokens for highlighting
                 addLog(`Player ${currentPlayer.replace('player', 'Player ')} can move a token.`);
                 if (currentPlayer === botPlayerId) {
                     setTimeout(() => {
@@ -578,6 +578,7 @@ function LudoGameClient() {
 
     const moveToken = useCallback((playerId: string, tokenIndex: number, diceValue: number) => {
         setIsDiceAnimating(false);
+        setHighlightedMovableTokenIndices([]); // Clear highlights when a move starts
         const player = playersRef.current[playerId];
         if (!player || tokenIndex < 0 || tokenIndex >= player.tokens.length) {
             return;
@@ -646,6 +647,7 @@ function LudoGameClient() {
         let currentPathStep = 0;
 
         const animateStep = () => {
+            setHighlightedMovableTokenIndices([]); // Clear highlights when a move starts
             if (currentPathStep >= fullAnimationGridPath.length) {
                 // All steps animated, apply final state and clean up
                 setHoppingToken(null);
@@ -861,7 +863,15 @@ function LudoGameClient() {
     }, [calculateNextPosition, playerOrder, safeSpots, pathCoordinates, addLog]);
 
     const handleTokenClick = useCallback((playerId: string, tokenIndex: number) => {
-        if (gamePhaseRef.current === 'SELECT_TOKEN_TO_MOVE' && currentPlayerIdRef.current === playerId && playerId === humanPlayerId) {
+        // Only allow clicks if it's the 'SELECT_TOKEN_TO_MOVE' phase and it's the current player's turn
+        if (gamePhaseRef.current !== 'SELECT_TOKEN_TO_MOVE' || currentPlayerIdRef.current !== playerId) {
+            return; // Not the right phase or not current player's token
+        }
+
+        // Determine if the current player is a human player who should be able to click
+        const canPlayerClick = (gameMode === 'local-friends') || (playerId === humanPlayerId);
+
+        if (canPlayerClick) {
             if (rolledDiceValueRef.current === null) {
                 return;
             }
@@ -875,7 +885,8 @@ function LudoGameClient() {
                 // Removed toast
             }
         }
-    }, [humanPlayerId, getMovableTokens, addLog]);
+        // If it's a bot's turn, or a non-human player in a multiplayer scenario, do nothing on click
+    }, [humanPlayerId, getMovableTokens, addLog, gameMode]); // Added gameMode to dependencies
 
     // Initialize refs
     useEffect(() => { rollDiceRef.current = rollDice; }, [rollDice]);
@@ -1191,14 +1202,38 @@ function LudoGameClient() {
                                 ? `translate(${stackingOffsets[idx].x}, ${stackingOffsets[idx].y})`
                                 : 'translate(0,0)'; // No transform if only one token or too many
 
+                            // Determine if this token should be highlighted as movable
+                            const isMovableHighlight =
+                                gamePhase === 'SELECT_TOKEN_TO_MOVE' &&
+                                currentPlayerId === token.playerId &&
+                                highlightedMovableTokenIndices.includes(token.tokenIndex) &&
+                                currentPlayerId === humanPlayerId; // Only highlight for the human player
+
+                            // Determine if this token is currently selected (clicked by player)
+                            const isSelectedHighlight =
+                                selectedTokenIndex === token.tokenIndex &&
+                                currentPlayerId === token.playerId &&
+                                gamePhase === 'SELECT_TOKEN_TO_MOVE';
+
+                            let borderStyle = 'none';
+                            let boxShadowStyle = 'none';
+
+                            if (isSelectedHighlight) {
+                                borderStyle = '3px solid white';
+                                boxShadowStyle = '0 0 0 4px ' + token.color;
+                            } else if (isMovableHighlight) {
+                                borderStyle = '3px solid white'; // Thick white border
+                                boxShadowStyle = '0 0 0 4px white'; // White glow
+                            }
+
                             return (
                                 <Circle
                                     key={`${token.playerId}-${token.tokenIndex}`}
                                     size={tokensInCell.length > 1 ? '55%' : '75%'} // Adjust size if multiple tokens for better visibility
                                     bg={token.color}
-                                    border={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '3px solid white' : 'none'} // Thicker border
-                                    boxShadow={selectedTokenIndex === token.tokenIndex && currentPlayerId === token.playerId && gamePhase === 'SELECT_TOKEN_TO_MOVE' ? '0 0 0 4px ' + token.color : 'none'} // Larger glow
-                                    cursor={gamePhase === 'SELECT_TOKEN_TO_MOVE' && currentPlayerId === humanPlayerId ? 'pointer' : 'default'}
+                                    border={borderStyle} // Apply dynamic border style
+                                    boxShadow={boxShadowStyle} // Apply dynamic box shadow style
+                                    cursor={isMovableHighlight || isSelectedHighlight ? 'pointer' : 'default'} // Cursor for both highlight types
                                     onClick={() => handleTokenClickRef.current?.(token.playerId, token.tokenIndex)}
                                     position="absolute" // Always absolute for precise positioning within cell
                                     transform={isHopping ? 'translateY(0)' : stackingTransform} // Let animation handle transform if hopping
@@ -1212,8 +1247,7 @@ function LudoGameClient() {
             }
         }
         return cells;
-    }, [getCellType, players, responsiveCellSize, gamePhase, currentPlayerId, humanPlayerId, selectedTokenIndex, hoppingToken]);
-
+    }, [getCellType, players, responsiveCellSize, gamePhase, currentPlayerId, humanPlayerId, selectedTokenIndex, hoppingToken, highlightedMovableTokenIndices]); // Ensure highlightedMovableTokenIndices is in dependencies
 
     if (isLoading) {
         return (
