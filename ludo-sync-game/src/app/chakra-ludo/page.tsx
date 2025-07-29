@@ -22,6 +22,7 @@ import { InfoIcon, QuestionIcon } from '@chakra-ui/icons'; // Import QuestionIco
 import { useSearchParams } from "next/navigation";
 import { keyframes } from "@chakra-ui/system";
 import DiceAnimation from "@/components/DiceAnimation";
+import Link from "next/link";
 
 
 interface TokenState {
@@ -1539,6 +1540,18 @@ function LudoGameClient() {
                         </Button>
                     </Center>
                 )}
+
+                {/* "Made by Synapse Digital" link */}
+                <Box
+                    position="absolute"
+                    bottom="4"
+                    right="4"
+                    zIndex="10"
+                >
+                    <Text fontSize="sm" color="gray.400">
+                        Made by <Text as="span" fontWeight="bold"><Link href='https://synapse-digital.vercel.app'> Synapse Digital</Link></Text>
+                    </Text>
+                </Box>
             </Box>
         </Suspense>
     );

@@ -1,8 +1,9 @@
 "use client";
 
-import { VStack, Button, Text, Center } from "@chakra-ui/react";
+import { VStack, Button, Text, Center, Box } from "@chakra-ui/react";
 import React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function Home() {
   const router = useRouter();
@@ -50,6 +51,17 @@ export default function Home() {
           Play Multiplayer
         </Button>
       </VStack>
+      {/* "Made by Synapse Digital" link */}
+      <Box
+        position="absolute"
+        bottom="4"
+        right="4"
+        zIndex="10"
+      >
+        <Text fontSize="sm" color="gray.400">
+          Made by <Text as="span" fontWeight="bold"><Link href='https://synapse-digital.vercel.app'> Synapse Digital</Link></Text>
+        </Text>
+      </Box>
     </Center>
   );
 }
