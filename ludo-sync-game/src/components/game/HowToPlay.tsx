@@ -40,6 +40,12 @@ export const HowToPlay = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             "After a full lap your token climbs its coloured home column.",
             "You need the exact number to step into the centre. Reaching home earns another roll.",
           ]} />
+          <Section title="Tycoon mode" items={[
+            "Everyone starts with $1500. Land on an unowned square to buy it; land on someone else's and pay rent.",
+            "Own a whole colour group to double the rent, then build up to three times on each square when you land on it.",
+            "Leaving the yard pays $100, reaching home pays $250, and a capture takes $50. 🎁 and ❓ draw cards; 💸 is tax.",
+            "If you cannot pay, buildings and squares are sold at half price. Still short means bankrupt and out.",
+          ]} />
           <Section title="Tips" items={[
             "Space or Enter rolls the dice. Tab moves between glowing tokens and Enter picks one.",
             "Turn on token symbols in Settings if colours are hard to tell apart.",

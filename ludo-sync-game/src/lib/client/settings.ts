@@ -83,6 +83,7 @@ export const sanitizeSettings = (raw: unknown): Settings => {
       blockades: bool(rr.blockades, d.rules.blockades),
       twoDice: bool(rr.twoDice, d.rules.twoDice),
       safeSquares: bool(rr.safeSquares, d.rules.safeSquares),
+      tycoon: bool(rr.tycoon, d.rules.tycoon ?? false),
     },
   };
 };

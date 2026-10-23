@@ -2,7 +2,7 @@ import type { Seat } from "./board";
 
 export type BotLevel = "easy" | "normal" | "hard";
 export type PlayerKind = "human" | "bot";
-export type Phase = "roll" | "move" | "over";
+export type Phase = "roll" | "move" | "decide" | "over";
 export type BonusReason = "six" | "capture" | "finish";
 
 export interface Rules {
@@ -18,6 +18,8 @@ export interface Rules {
   twoDice: boolean;
   /** Start squares and stars cannot be captured on. */
   safeSquares: boolean;
+  /** Tycoon mode: squares can be bought, rented, built on, and money decides who stays in. */
+  tycoon?: boolean;
 }
 
 export const DEFAULT_RULES: Readonly<Rules> = {
@@ -41,6 +43,24 @@ export interface Player extends PlayerSetup {
   tokens: number[];
 }
 
+/** What is waiting on a decision from the player whose turn it is. */
+export interface PendingDecision {
+  seat: Seat;
+  /** Ring index of the square they landed on. */
+  ring: number;
+  kind: "buy" | "build";
+}
+
+/** The economy of a Tycoon game. Arrays are indexed by seat (cash) or ring index (owner, level). */
+export interface TycoonState {
+  cash: number[];
+  /** Seat owning each ring square, or -1. */
+  owner: number[];
+  /** Houses built on each square, 0 to 3. */
+  level: number[];
+  pending: PendingDecision | null;
+}
+
 export interface GameState {
   version: 1;
   rules: Rules;
@@ -62,12 +82,18 @@ export interface GameState {
   rng: number;
   /** Counts every applied action. */
   seq: number;
+  /** Present only when `rules.tycoon` is on. */
+  tycoon?: TycoonState;
 }
 
 export type Action =
   | { type: "roll" }
   | { type: "move"; token: number; die: number }
-  | { type: "forfeit"; seat: Seat };
+  | { type: "forfeit"; seat: Seat }
+  /** Tycoon: act on the square the player just landed on. */
+  | { type: "buy" }
+  | { type: "pass" }
+  | { type: "build" };
 
 export interface MoveOption {
   token: number;
@@ -90,7 +116,12 @@ export type GameEvent =
   | { type: "bonus"; seat: Seat; reason: BonusReason }
   | { type: "turn"; seat: Seat }
   | { type: "forfeit"; seat: Seat }
-  | { type: "win"; seat: Seat };
+  | { type: "win"; seat: Seat }
+  | { type: "money"; seat: Seat; amount: number; note: string; other?: Seat }
+  | { type: "buy"; seat: Seat; ring: number; price: number }
+  | { type: "build"; seat: Seat; ring: number; level: number }
+  | { type: "card"; seat: Seat; deck: "chance" | "chest"; text: string }
+  | { type: "bankrupt"; seat: Seat };
 
 export interface StepResult {
   state: GameState;

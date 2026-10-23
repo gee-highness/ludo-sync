@@ -27,6 +27,7 @@ import { HowToPlay } from "./HowToPlay";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { WinnerOverlay } from "./WinnerOverlay";
 import { LogDrawer, LogList } from "./LogPanel";
+import { DecisionCard } from "./DecisionCard";
 
 export interface GameScreenProps {
   state: GameState;
@@ -71,7 +72,7 @@ export default function GameScreen(props: GameScreenProps) {
 
   const reduceMotion = settings.motion === "reduce" || (settings.motion === "auto" && !!caps?.reducedMotion);
   const speed = reduceMotion && settings.speed === "normal" ? "fast" : settings.speed;
-  const renderer = resolveRenderer(settings.renderer, caps);
+  const renderer = state.rules.tycoon ? "2d" : resolveRenderer(settings.renderer, caps);
 
   useWakeLock(settings.keepAwake && state.phase !== "over");
 
@@ -173,6 +174,7 @@ export default function GameScreen(props: GameScreenProps) {
   const status = (() => {
     if (shown.phase === "over") return "Game over";
     if (busy) return `${me.name}…`;
+    if (shown.phase === "decide") return iAct ? "Your call: buy, build or pass" : `${me.name} is deciding…`;
     if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: roll the dice";
     if (iAct) return choice !== null ? "Choose which number to use" : mySeats.length > 1 ? `${me.name}, pick a glowing token` : "Pick a glowing token";
     if (me.kind === "bot") return `${me.name} is thinking…`;
@@ -189,7 +191,7 @@ export default function GameScreen(props: GameScreenProps) {
     <Box as="ul" display="grid" gridTemplateColumns={wide ? "1fr" : "repeat(2, minmax(0, 1fr))"} gap={2} m={0} p={0} role="list" aria-label="Players">
       {shown.players.map(p => (
         <PlayerCard key={p.seat} player={p} current={p.seat === me.seat && shown.phase !== "over"} isMe={mySeats.length === 1 && mySeats[0] === p.seat}
-          symbols={settings.symbols} compact={!wide} away={props.away?.has(p.seat)} tag={props.tags?.[p.seat]} />
+          symbols={settings.symbols} compact={!wide} away={props.away?.has(p.seat)} tag={props.tags?.[p.seat]} cash={shown.tycoon?.cash[p.seat]} />
       ))}
     </Box>
   );
@@ -233,6 +235,7 @@ export default function GameScreen(props: GameScreenProps) {
           pb={2}
         >
           {players}
+          {iAct && shown.phase === "decide" && <DecisionCard state={shown} act={act} />}
           <HStack spacing={3} justify="center" align="center">
             <Dice
               values={shown.rolled} rollKey={anim.rollKey} canRoll={canRoll} onRoll={roll} accent={accent} tumble={!reduceMotion && speed !== "instant"}

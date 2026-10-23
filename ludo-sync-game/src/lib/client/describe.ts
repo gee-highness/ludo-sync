@@ -1,4 +1,5 @@
 import { SEAT_INFO, YARD, type Seat } from "../ludo/board";
+import { SQUARES } from "../ludo/tycoon";
 import type { BonusReason, GameEvent, GameState } from "../ludo/types";
 
 export interface LogLine {
@@ -25,6 +26,19 @@ export const describeEvent = (e: GameEvent, state: GameState): LogLine | null =>
     case "turn": return { seat: e.seat, text: `${who}'s turn` };
     case "forfeit": return { seat: e.seat, text: `${who} left the game` };
     case "win": return { seat: e.seat, text: `${who} wins!` };
+    case "money": {
+      const amt = `$${Math.abs(e.amount)}`;
+      if (e.other !== undefined) {
+        return e.amount < 0
+          ? { seat: e.seat, text: `${who} paid ${amt} to ${nameOf(state, e.other)} (${e.note})` }
+          : { seat: e.seat, text: `${who} collected ${amt} from ${nameOf(state, e.other)} (${e.note})` };
+      }
+      return { seat: e.seat, text: `${who} ${e.amount < 0 ? "paid" : "got"} ${amt} (${e.note})` };
+    }
+    case "buy": return { seat: e.seat, text: `${who} bought ${SQUARES[e.ring].name} for $${e.price}` };
+    case "build": return { seat: e.seat, text: `${who} built on ${SQUARES[e.ring].name} (level ${e.level})` };
+    case "card": return { seat: e.seat, text: `${who} drew a card. ${e.text}` };
+    case "bankrupt": return { seat: e.seat, text: `${who} went bankrupt` };
   }
 };
 

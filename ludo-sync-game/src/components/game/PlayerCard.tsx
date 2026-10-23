@@ -15,11 +15,13 @@ interface Props {
   away?: boolean;
   /** Extra line, such as "Host". */
   tag?: string;
+  /** Tycoon: money in hand. */
+  cash?: number;
 }
 
 const LEVEL_LABEL = { easy: "Easy", normal: "Normal", hard: "Hard" } as const;
 
-export const PlayerCard = ({ player, current, isMe, symbols, compact, away, tag }: Props) => {
+export const PlayerCard = ({ player, current, isMe, symbols, compact, away, tag, cash }: Props) => {
   const info = SEAT_INFO[player.seat];
   const home = tokensHome(player);
   return (
@@ -39,6 +41,7 @@ export const PlayerCard = ({ player, current, isMe, symbols, compact, away, tag 
         <Text fontSize={compact ? "xs" : "sm"} fontWeight={700} noOfLines={1} color="white">
           {player.name}{isMe ? " (you)" : ""}
         </Text>
+        {cash !== undefined && <Text fontSize={compact ? "2xs" : "xs"} color="green.200" fontWeight={700}>${cash}</Text>}
         {!compact && (
           <HStack spacing={1} mt={0.5}>
             {player.kind === "bot" && <Badge colorScheme="gray" fontSize="2xs">Bot · {LEVEL_LABEL[player.level ?? "normal"]}</Badge>}

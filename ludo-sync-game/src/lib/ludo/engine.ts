@@ -4,6 +4,10 @@ import {
 } from "./board";
 import { freshSeed, rollDice } from "./rng";
 import {
+  CAPTURE_LOOT, ENTER_BONUS, HOME_BONUS, MAX_LEVEL, SQUARES, cloneTycoon, createTycoon, houseCost, landOn, releaseSeat,
+  settleDebts, transfer,
+} from "./tycoon";
+import {
   DEFAULT_RULES, type Action, type BonusReason, type GameEvent, type GameState, type MoveOption,
   type Player, type PlayerSetup, type Rules, type StepResult,
 } from "./types";
@@ -34,6 +38,7 @@ export const createGame = (setups: PlayerSetup[], rules: Rules = DEFAULT_RULES, 
   return {
     version: 1, rules: { ...rules }, players, turn: 0, phase: "roll", dice: [], rolled: [], sixes: 0,
     earned: null, winner: null, rng: seed >>> 0, seq: 0,
+    ...(rules.tycoon ? { tycoon: createTycoon() } : {}),
   };
 };
 
@@ -182,13 +187,73 @@ const doMove = (s: GameState, token: number, die: number): StepResult | null => 
   if (single >= 0) dice.splice(single, 1);
   else dice.length = 0; // a sum spends both dice
 
-  const next: GameState = withSeq({ ...s, players, dice, earned });
+  let next: GameState = withSeq({ ...s, players, dice, earned });
   if (mine.tokens.every(t => t === FINISH)) {
     events.push({ type: "win", seat: me.seat });
     return { state: { ...next, phase: "over", dice: [], earned: null, winner: me.seat }, events };
   }
-  if (dice.length === 0 || legalMoves(next).length === 0) return endOfRoll({ ...next, dice: [] }, events);
-  return { state: next, events };
+  if (next.tycoon) {
+    const eco = economyAfterMove(next, me.seat, option, events);
+    if (eco.over) return eco.over;
+    next = eco.state;
+    if (next.tycoon!.pending) return { state: { ...next, phase: "decide" }, events };
+  }
+  return afterMove(next, events);
+};
+
+/** Spends are done: keep moving with what is left of the roll, or finish the roll. */
+const afterMove = (s: GameState, events: GameEvent[]): StepResult => {
+  if (s.dice.length === 0 || legalMoves({ ...s, phase: "move" }).length === 0) return endOfRoll({ ...s, dice: [] }, events);
+  return { state: { ...s, phase: "move" }, events };
+};
+
+/** Money and property effects of the move that was just made. Bankrupt players are forfeited. */
+const economyAfterMove = (
+  s: GameState, seat: Seat, o: MoveOption, events: GameEvent[],
+): { state: GameState; over?: StepResult } => {
+  const t = cloneTycoon(s.tycoon!);
+  let rng = s.rng;
+  if (o.entersBoard) transfer(t, seat, ENTER_BONUS, "left the yard", events);
+  if (o.finishes) transfer(t, seat, HOME_BONUS, "token home", events);
+  for (const e of [...events]) if (e.type === "capture") transfer(t, seat, CAPTURE_LOOT, "capture", events, e.victim);
+  const ring = ringIndexOf(seat, o.to);
+  if (ring !== null) rng = landOn(t, s.players, seat, ring, rng, events);
+
+  let state: GameState = { ...s, rng, tycoon: t };
+  const broke = settleDebts(t, state.players, events);
+  for (const b of broke) {
+    events.push({ type: "bankrupt", seat: b });
+    releaseSeat(t, b);
+    const r = doForfeit(state, b);
+    if (!r) continue;
+    events.push(...r.events);
+    state = r.state;
+    if (state.phase === "over") return { state, over: { state, events } };
+  }
+  if (broke.includes(seat)) return { state, over: { state, events } };
+  return { state };
+};
+
+const doDecide = (s: GameState, kind: "buy" | "pass" | "build"): StepResult | null => {
+  const t0 = s.tycoon;
+  const p = t0?.pending;
+  if (s.phase !== "decide" || !t0 || !p || p.seat !== currentPlayer(s).seat) return null;
+  const t = cloneTycoon(t0);
+  t.pending = null;
+  const events: GameEvent[] = [];
+  const sq = SQUARES[p.ring];
+  if (kind === "buy") {
+    if (p.kind !== "buy" || t.cash[p.seat] < sq.price) return null;
+    t.cash[p.seat] -= sq.price;
+    t.owner[p.ring] = p.seat;
+    events.push({ type: "buy", seat: p.seat, ring: p.ring, price: sq.price });
+  } else if (kind === "build") {
+    if (p.kind !== "build" || t.cash[p.seat] < houseCost(p.ring) || t.level[p.ring] >= MAX_LEVEL) return null;
+    t.cash[p.seat] -= houseCost(p.ring);
+    t.level[p.ring] += 1;
+    events.push({ type: "build", seat: p.seat, ring: p.ring, level: t.level[p.ring] });
+  }
+  return afterMove(withSeq({ ...s, tycoon: t }), events);
 };
 
 const doForfeit = (s: GameState, seat: Seat): StepResult | null => {
@@ -197,6 +262,11 @@ const doForfeit = (s: GameState, seat: Seat): StepResult | null => {
   if (idx < 0) return null;
   const players = s.players.filter((_, i) => i !== idx);
   const events: GameEvent[] = [{ type: "forfeit", seat }];
+  if (s.tycoon) {
+    const t = cloneTycoon(s.tycoon);
+    releaseSeat(t, seat);
+    s = { ...s, tycoon: t };
+  }
   if (players.length === 1) {
     events.push({ type: "win", seat: players[0].seat });
     return { state: withSeq({ ...s, players, turn: 0, phase: "over", dice: [], earned: null, winner: players[0].seat }), events };
@@ -217,6 +287,7 @@ export const applyAction = (s: GameState, action: Action): StepResult | null => 
     case "roll": return doRoll(s);
     case "move": return doMove(s, action.token, action.die);
     case "forfeit": return doForfeit(s, action.seat);
+    case "buy": case "pass": case "build": return doDecide(s, action.type);
   }
 };
 

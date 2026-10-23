@@ -17,6 +17,7 @@ interface Slot { kind: SlotKind; name: string; level: BotLevel }
 export type Preset = "bot" | "local";
 
 const RULE_INFO: { key: keyof Rules; label: string; hint: string }[] = [
+  { key: "tycoon", label: "Tycoon mode", hint: "Buy squares, collect rent, build and bankrupt your rivals. Plays on the flat board" },
   { key: "twoDice", label: "Two dice", hint: "Spend each die separately, or add them together when they differ" },
   { key: "threeSixes", label: "Three sixes lose the turn", hint: "Rolling three sixes in a row forfeits your turn" },
   { key: "captureBonus", label: "Capture bonus", hint: "Roll again after capturing a token" },
@@ -114,7 +115,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
           {RULE_INFO.map(r => (
             <HStack key={r.key} justify="space-between" spacing={4}>
               <Box><Text fontWeight={600} fontSize="sm">{r.label}</Text><Text color="gray.400" fontSize="xs">{r.hint}</Text></Box>
-              <Switch colorScheme="teal" isChecked={rules[r.key]} aria-label={r.label} onChange={e => setRules(x => ({ ...x, [r.key]: e.target.checked }))} />
+              <Switch colorScheme="teal" isChecked={!!rules[r.key]} aria-label={r.label} onChange={e => setRules(x => ({ ...x, [r.key]: e.target.checked }))} />
             </HStack>
           ))}
         </VStack>

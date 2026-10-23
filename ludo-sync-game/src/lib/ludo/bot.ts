@@ -1,5 +1,6 @@
 import { FINISH, HOME_COLUMN_START, LAST_RING_PROGRESS, isSafeRingIndex, ringIndexOf, type Seat } from "./board";
 import { currentPlayer, legalMoves } from "./engine";
+import { SQUARES, houseCost } from "./tycoon";
 import type { Action, BotLevel, GameState, MoveOption } from "./types";
 
 type Rand = () => number;
@@ -60,9 +61,29 @@ export const chooseMove = (s: GameState, rand: Rand = Math.random): MoveOption |
   return best;
 };
 
+/** Tycoon: whether a bot buys or builds. Harder bots keep a smaller cash cushion when a purchase completes a set. */
+const decide = (s: GameState, rand: Rand): Action => {
+  const t = s.tycoon;
+  const p = t?.pending;
+  if (!t || !p) return { type: "pass" };
+  const level = currentPlayer(s).level ?? "normal";
+  const cash = t.cash[p.seat];
+  const sq = SQUARES[p.ring];
+  const cost = p.kind === "buy" ? sq.price : houseCost(p.ring);
+  if (level === "easy") return rand() < 0.5 && cash >= cost ? { type: p.kind } : { type: "pass" };
+  let reserve = level === "hard" ? 150 : 100;
+  if (p.kind === "build") reserve += 100;
+  if (p.kind === "buy" && level === "hard" && sq.kind === "property") {
+    const mates = SQUARES.filter(x => x.group === sq.group && x.ring !== p.ring);
+    if (mates.every(x => t.owner[x.ring] === p.seat)) reserve = 0;
+  }
+  return cash - cost >= reserve ? { type: p.kind } : { type: "pass" };
+};
+
 /** The next action for whoever's turn it is, as an automatic player would take it. */
 export const autoAction = (s: GameState, rand: Rand = Math.random): Action | null => {
   if (s.phase === "roll") return { type: "roll" };
+  if (s.phase === "decide") return decide(s, rand);
   if (s.phase === "move") {
     const m = chooseMove(s, rand);
     return m ? { type: "move", token: m.token, die: m.die } : null;
