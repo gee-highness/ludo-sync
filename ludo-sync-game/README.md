@@ -61,3 +61,10 @@ Tycoon always plays on the flat board. Every number is tunable in the rules edit
   (`src/lib/client/pieces.ts`, `pieceShapes.ts`). Eight packs, randomise, copy, reset, and export/import as text.
   Designs are saved on your device. In online rooms each player's designs are sent to the room (validated and clamped by
   the host), so everyone sees every player's pieces the way that player made them; seats without designs use the standard pieces.
+
+## City scenery
+Switch it on in Settings (on by default). The flat board gets a skyline backdrop (`components/scenery/CityBackdrop.tsx`), street
+details on the ring and a lived-in room in every start area (`components/board/YardHome.tsx`). The 3D board gets a procedural city
+(`components/board/scenery3d.ts`): buildings with lit windows, neon signs, street lamps, trees, traffic and people, and the same rooms
+built in 3D. Time of day (dusk, night, day) changes the light, sky and windows. Scenery pauses with reduced motion and the 3D city is
+lighter on low-power devices.

@@ -11,6 +11,7 @@ import type { BotLevel, PlayerSetup, Rules } from "@/lib/ludo/types";
 import { updateSettings, useSettings } from "@/lib/client/settings";
 import { sound } from "@/lib/client/audio";
 import RulesEditor from "./RulesEditor";
+import { CityBackdrop } from "../scenery/CityBackdrop";
 
 type SlotKind = "off" | "human" | "bot";
 interface Slot { kind: SlotKind; name: string; level: BotLevel }
@@ -63,8 +64,9 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
   };
 
   return (
-    <Flex minH="100dvh" bg="#10172E" color="white" justify="center" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
-      <VStack w="100%" maxW="560px" align="stretch" spacing={5}>
+    <Flex minH="100dvh" bg="#10172E" color="white" justify="center" position="relative" isolation="isolate" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+      {settings.scenery === "city" && <CityBackdrop timeOfDay={settings.timeOfDay} />}
+      <VStack w="100%" maxW="560px" align="stretch" spacing={5} p={3} borderRadius="2xl" bg={settings.scenery === "city" ? "blackAlpha.700" : undefined} backdropFilter={settings.scenery === "city" ? "blur(8px)" : undefined}>
         <HStack>
           <IconButton aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
           <Heading size="md">{preset === "bot" ? "Play vs bots" : "Pass and play"}</Heading>

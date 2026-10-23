@@ -28,6 +28,7 @@ import { SettingsDrawer } from "./SettingsDrawer";
 import { WinnerOverlay } from "./WinnerOverlay";
 import { LogDrawer, LogList } from "./LogPanel";
 import { DecisionCard } from "./DecisionCard";
+import { CityBackdrop } from "../scenery/CityBackdrop";
 
 export interface GameScreenProps {
   state: GameState;
@@ -198,9 +199,10 @@ export default function GameScreen(props: GameScreenProps) {
 
   return (
     <Flex
-      direction="column" h="100dvh" w="100%" bg="#10172E" color="white" overflow="hidden"
+      direction="column" h="100dvh" w="100%" bg="#10172E" color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
+      {settings.scenery === "city" && <CityBackdrop timeOfDay={settings.timeOfDay} calm={reduceMotion} />}
       <HStack px={2} py={1.5} spacing={1} flexShrink={0}>
         <IconButton aria-label="Leave game" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={exit.onOpen} />
         <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
@@ -258,7 +260,7 @@ export default function GameScreen(props: GameScreenProps) {
           </HStack>
           {props.panelExtra}
           {(
-            <Box bg="whiteAlpha.100" borderRadius="xl" p={3} maxH="200px" overflowY="auto"
+            <Box bg={settings.scenery === "city" ? "blackAlpha.600" : "whiteAlpha.100"} borderRadius="xl" p={3} maxH="200px" overflowY="auto"
               display={wide ? "block" : "none"} sx={wide ? undefined : { "@media (min-height: 780px)": { display: "block" } }}>
               <Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text>
               <LogList lines={lines} limit={8} />

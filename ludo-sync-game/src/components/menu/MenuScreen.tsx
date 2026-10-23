@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 import { loadGame, type SavedGame } from "@/lib/client/save";
 import { loadStats, type Stats } from "@/lib/client/stats";
 import { sound } from "@/lib/client/audio";
+import { useSettings } from "@/lib/client/settings";
+import { CityBackdrop } from "@/components/scenery/CityBackdrop";
 import { HowToPlay } from "@/components/game/HowToPlay";
 import { SettingsDrawer } from "@/components/game/SettingsDrawer";
 import { InstallButton } from "@/components/pwa/InstallButton";
@@ -16,6 +18,7 @@ export default function MenuScreen() {
   const router = useRouter();
   const help = useDisclosure();
   const prefs = useDisclosure();
+  const [settings] = useSettings();
   const [saved, setSaved] = useState<SavedGame | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
 
@@ -24,9 +27,10 @@ export default function MenuScreen() {
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
   return (
-    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #26335f 0%, #10172E 60%)" color="white" justify="center" align="center"
+    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #26335f 0%, #10172E 60%)" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
       px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
-      <VStack w="100%" maxW="420px" spacing={4} py={6}>
+      {settings.scenery === "city" && <CityBackdrop timeOfDay={settings.timeOfDay} />}
+      <VStack w="100%" maxW="420px" spacing={4} py={6} px={4} borderRadius="2xl" bg={settings.scenery === "city" ? "blackAlpha.600" : undefined} backdropFilter={settings.scenery === "city" ? "blur(8px)" : undefined}>
         <Image src="/icons/icon-192x192.png" alt="" w="96px" h="96px" borderRadius="22px" boxShadow="0 10px 30px rgba(0,0,0,.45)" />
         <Heading size="2xl" letterSpacing="-0.02em">Ludo Sync</Heading>
         <Text color="gray.300" textAlign="center">Classic Ludo for 2 to 4 players. Works fully offline.</Text>

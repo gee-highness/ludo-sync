@@ -9,6 +9,7 @@ import type { MoveOption } from "@/lib/ludo/types";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
 import { PieceShape } from "./PieceShape";
+import { RoadMarks, YardHome } from "./YardHome";
 import type { BoardProps } from "./types";
 import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
@@ -25,6 +26,7 @@ const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", s
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
 const PALETTES: Record<BoardTheme, Palette> = {
+  city: { bg: "#141824", cell: "#3B4254", line: "#2A3040", panel: "#E2C79B", inactiveCol: "#59607A" },
   classic: { bg: "#1A202C", cell: "#F7FAFC", line: "#A0AEC0", panel: "#fff", inactiveCol: "#A0AEC0" },
   midnight: { bg: "#05070F", cell: "#2D3748", line: "#4A5568", panel: "#1A202C", inactiveCol: "#4A5568" },
   forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
@@ -57,6 +59,9 @@ const CSS = `
   .dust-dot { animation: dust .55s ease-out forwards; }
   .shock { animation: shock .7s ease-out forwards; }
   .ghost { animation: ghost 1.2s ease-in-out infinite; }
+  .yh-bulb { animation: bulb 1.8s ease-in-out infinite; }
+  @keyframes bulb { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .reduce .yh-bulb { animation: none; }
   .twinkle { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .yard-glow { animation: yardGlow 1.4s ease-in-out infinite; }
   .banner { animation: banner 1.6s ease-out forwards; }
@@ -144,10 +149,12 @@ export default function Board2D({
       let fill = pal.cell;
       if (info.kind === "column") fill = active ? seatInfo!.light : pal.inactiveCol;
       if (info.kind === "start") fill = active ? seatInfo!.main : INACTIVE;
+      const roadIdx = settings.boardTheme === "city" && (info.kind === "ring" || info.kind === "star" || info.kind === "start") ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       const tycoonRing = state.tycoon && info.kind !== "column" ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       cells.push(
         <g key={`${row}-${col}`}>
           <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />
+          {roadIdx >= 0 && <RoadMarks ringIdx={roadIdx} row={row} col={col} />}
           {tycoonRing >= 0 && state.tycoon && (() => {
             const sq = SQUARES[tycoonRing];
             const owner = state.tycoon!.owner[tycoonRing];
@@ -183,6 +190,7 @@ export default function Board2D({
     }
   }
 
+  const city = settings.scenery === "city";
   const yards = SEATS.map(seat => {
     const info = SEAT_INFO[seat];
     const x0 = seat === 1 || seat === 0 ? -0.5 : 8.5;
@@ -194,6 +202,7 @@ export default function Board2D({
         <rect x={x0} y={y0} width={6} height={6} fill={active ? info.main : INACTIVE} />
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
         <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={active ? 0.88 : 0.35} />
+        {city && active && <YardHome seat={seat} layer="room" />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
           return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={0.28} stroke={active ? info.dark : "#2D3748"} strokeWidth={0.06} />;
@@ -242,6 +251,7 @@ export default function Board2D({
       <g transform={`rotate(${rotation} 7 7)`}>
         {yards}
         {cells}
+        {city && SEATS.filter(seat => playing.has(seat)).map(seat => <YardHome key={`spill${seat}`} seat={seat} layer="spill" />)}
         {centre}
         {ghosts}
         {placed.map(t => {
