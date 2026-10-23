@@ -280,3 +280,36 @@ describe("reconnect, kick, leave", () => {
     flip = false;
   });
 });
+
+describe("piece designs", () => {
+  it("shows each player's own pieces to everyone, cleaned of bad values", async () => {
+    const { host, guests } = await setup();
+    const g = guests[0];
+    const crowns = Array.from({ length: 4 }, () => ({ shape: "crown", primary: "#112233", mark: "♛", size: 99 }));
+    g.setPieces(crowns as never);
+    const stars = Array.from({ length: 4 }, () => ({ shape: "star", pattern: "dots" }));
+    host.setPieces(stars as never);
+
+    await until(() => {
+      const slot = host.getSnapshot().room.slots[1];
+      return slot.kind === "human" && !!slot.pieces;
+    }, "host sees the guest's pieces");
+    const seen = host.getSnapshot().room.slots[1];
+    expect(seen.kind === "human" && seen.pieces?.[0]).toMatchObject({ shape: "crown", primary: "#112233", mark: "♛", size: 1.5 });
+
+    await until(() => {
+      const s = g.getSnapshot().room?.slots[0];
+      return s?.kind === "human" && !!s.pieces;
+    }, "guest sees the host's pieces");
+    const hostSlot = g.getSnapshot().room!.slots[0];
+    expect(hostSlot.kind === "human" && hostSlot.pieces?.[3]).toMatchObject({ shape: "star", pattern: "dots" });
+  });
+
+  it("ignores a pieces message that is not exactly four designs", async () => {
+    const { host, guests } = await setup();
+    guests[0].setPieces([{ shape: "crown" }] as never);
+    await new Promise(r => setTimeout(r, 60));
+    const slot = host.getSnapshot().room.slots[1];
+    expect(slot.kind === "human" && slot.pieces).toBeFalsy();
+  });
+});

@@ -2,6 +2,7 @@ import type { Seat } from "../ludo/board";
 import { parseGameState, parsePlayerAction } from "../ludo/validate";
 import type { Action, BotLevel, GameEvent, GameState, Rules } from "../ludo/types";
 import { isClientId } from "./crypto";
+import { sanitizeDesign, type PieceDesign } from "../client/pieces";
 
 export const PROTOCOL = 1;
 export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏"] as const;
@@ -11,7 +12,7 @@ export const MAX_NAME = 20;
 export type SlotView =
   | { seat: Seat; kind: "empty" }
   | { seat: Seat; kind: "bot"; name: string; level: BotLevel }
-  | { seat: Seat; kind: "human"; name: string; connected: boolean; host: boolean };
+  | { seat: Seat; kind: "human"; name: string; connected: boolean; host: boolean; pieces?: PieceDesign[] };
 
 export interface RoomView {
   code: string;
@@ -37,6 +38,8 @@ export type ClientMsg =
   | { t: "name"; name: string }
   | { t: "seat"; seat: Seat }
   | { t: "react"; emoji: string }
+  /** The sender's four piece designs, so everyone sees their pieces the way they made them. */
+  | { t: "pieces"; designs: PieceDesign[] }
   | { t: "sync" }
   | { t: "bye" };
 
@@ -55,6 +58,10 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 export const cleanText = (v: unknown, fallback: string): string =>
   (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, MAX_NAME) : "") || fallback;
 
+/** Four designs, each cleaned into range. Anything else is dropped. */
+export const parsePieces = (v: unknown): PieceDesign[] | null =>
+  Array.isArray(v) && v.length === 4 ? v.map(sanitizeDesign) : null;
+
 export const parseClientMsg = (raw: unknown): ClientMsg | null => {
   if (!isObj(raw) || typeof raw.t !== "string") return null;
   switch (raw.t) {
@@ -72,6 +79,10 @@ export const parseClientMsg = (raw: unknown): ClientMsg | null => {
         ? { t: "seat", seat: raw.seat as Seat } : null;
     case "react":
       return typeof raw.emoji === "string" && (REACTIONS as readonly string[]).includes(raw.emoji) ? { t: "react", emoji: raw.emoji } : null;
+    case "pieces": {
+      const designs = parsePieces(raw.designs);
+      return designs ? { t: "pieces", designs } : null;
+    }
     case "sync": return { t: "sync" };
     case "bye": return { t: "bye" };
     default: return null;
@@ -88,7 +99,8 @@ const parseSlots = (v: unknown): SlotView[] | null => {
     else if (s.kind === "bot" && typeof s.name === "string" && (s.level === "easy" || s.level === "normal" || s.level === "hard")) {
       out.push({ seat: i as Seat, kind: "bot", name: cleanText(s.name, "Bot"), level: s.level });
     } else if (s.kind === "human" && typeof s.name === "string") {
-      out.push({ seat: i as Seat, kind: "human", name: cleanText(s.name, "Guest"), connected: s.connected === true, host: s.host === true });
+      const pieces = parsePieces(s.pieces) ?? undefined;
+      out.push({ seat: i as Seat, kind: "human", name: cleanText(s.name, "Guest"), connected: s.connected === true, host: s.host === true, ...(pieces ? { pieces } : {}) });
     } else return null;
   }
   return out;

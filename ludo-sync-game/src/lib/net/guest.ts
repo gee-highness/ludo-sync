@@ -1,3 +1,4 @@
+import type { PieceDesign } from "../client/pieces";
 import type { Seat } from "../ludo/board";
 import type { Action, GameState } from "../ludo/types";
 import { FrameBus } from "../client/frames";
@@ -185,6 +186,8 @@ export class GuestClient {
   };
   react(emoji: string) { this.send({ t: "react", emoji }); }
   rename(name: string) { this.send({ t: "name", name }); }
+  /** Tells the room how this player's pieces look. */
+  setPieces(designs: PieceDesign[]) { this.send({ t: "pieces", designs }); }
   claimSeat(seat: Seat) { this.send({ t: "seat", seat }); }
 
   /** Leaves on purpose; the host frees the seat (or counts a forfeit). */

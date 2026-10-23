@@ -1,3 +1,4 @@
+import type { PieceDesign } from "../client/pieces";
 import { SEAT_INFO, SEATS, type Seat } from "../ludo/board";
 import { autoAction } from "../ludo/bot";
 import { applyAction, createGame, currentPlayer } from "../ludo/engine";
@@ -24,6 +25,7 @@ interface Member {
   chan: SecureChannel | null;
   check: string;
   lastReact: number;
+  pieces: PieceDesign[] | null;
 }
 
 export interface MemberView { id: string; name: string; seat: Seat | null; connected: boolean; check: string; host: boolean }
@@ -82,7 +84,7 @@ export class HostSession {
     this.turnMs = opts.turnMs ?? DEFAULT_TURN_MS;
     this.now = opts.now ?? Date.now;
     this.code = opts.code ?? newRoomCode();
-    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0 });
+    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null });
     this.slots[0] = { kind: "human", id: HOST_ID };
     this.refresh();
   }
@@ -171,7 +173,7 @@ export class HostSession {
       old?.close();
     } else {
       if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
-      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0 };
+      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null };
       this.members.set(msg.id, m);
       if (this.phase === "lobby") {
         const free = this.slots.findIndex(s => s.kind === "empty");
@@ -193,6 +195,11 @@ export class HostSession {
       }
       case "name":
         m.name = msg.name;
+        this.refresh();
+        this.broadcastRooms();
+        break;
+      case "pieces":
+        m.pieces = msg.designs;
         this.refresh();
         this.broadcastRooms();
         break;
@@ -239,6 +246,13 @@ export class HostSession {
 
   setTurnMs(ms: number) {
     this.turnMs = Math.max(0, Math.min(300_000, Math.floor(ms)));
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  /** Sets the host's own piece designs, which everyone then sees. */
+  setPieces(designs: PieceDesign[]) {
+    this.members.get(HOST_ID)!.pieces = designs;
     this.refresh();
     this.broadcastRooms();
   }
@@ -404,7 +418,7 @@ export class HostSession {
       if (s.kind === "empty") return { seat, kind: "empty" };
       if (s.kind === "bot") return { seat, kind: "bot", name: s.name, level: s.level };
       const m = this.members.get(s.id);
-      return { seat, kind: "human", name: m?.name ?? "Player", connected: !!m && (m.host || !!m.chan?.open), host: !!m?.host };
+      return { seat, kind: "human", name: m?.name ?? "Player", connected: !!m && (m.host || !!m.chan?.open), host: !!m?.host, ...(m?.pieces ? { pieces: m.pieces } : {}) };
     });
   }
 

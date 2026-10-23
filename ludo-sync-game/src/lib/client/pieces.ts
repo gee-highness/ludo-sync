@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { SEATS, SEAT_INFO, TOKENS_PER_PLAYER, type Seat } from "../ludo/board";
 import { readJSON, writeJSON } from "./storage";
 
@@ -166,32 +166,49 @@ export const importDesigns = (text: string): SeatDesigns | null => {
 // ---- store -----------------------------------------------------------------------------------------
 
 let current: SeatDesigns = defaultDesigns();
+/** What other players in an online game have designed for their own colours; null outside online play. */
+let remote: Partial<Record<Seat, PieceDesign[]>> | null = null;
+let view: SeatDesigns = current;
 let loaded = false;
 const listeners = new Set<() => void>();
+const recompute = () => { view = remote ? ({ ...current, ...remote } as SeatDesigns) : current; };
 const ensureLoaded = () => {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
   current = sanitizeDesigns(readJSON("pieces", null));
+  recompute();
 };
 const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
-const snapshot = () => { ensureLoaded(); return current; };
-const serverSnapshot = () => SERVER_DEFAULT;
+const snapshot = () => { ensureLoaded(); return view; };
 const SERVER_DEFAULT = defaultDesigns();
+const serverSnapshot = () => SERVER_DEFAULT;
 
+/** The designs as drawn right now: yours for your own seats, other players' for theirs. */
 export const getDesigns = snapshot;
+/** Only your own saved designs, never what other players sent. */
+export const getLocalDesigns = (): SeatDesigns => { ensureLoaded(); return current; };
 export const setDesigns = (next: SeatDesigns) => {
   ensureLoaded();
   current = sanitizeDesigns(next);
   writeJSON("pieces", current);
+  recompute();
   listeners.forEach(l => l());
 };
 export const updatePiece = (seat: Seat, token: number, patch: Partial<PieceDesign>) => {
-  const all = snapshot();
+  const all = getLocalDesigns();
   setDesigns({ ...all, [seat]: all[seat].map((d, i) => (i === token ? sanitizeDesign({ ...d, ...patch }) : d)) } as SeatDesigns);
 };
 
+/** Online games draw other players' seats with the designs they sent. Pass null to go back to your own. */
+export const setRemoteDesigns = (next: Partial<Record<Seat, PieceDesign[]>> | null) => {
+  ensureLoaded();
+  remote = next ? Object.fromEntries(Object.entries(next).map(([k, v]) => [k, Array.from({ length: TOKENS_PER_PLAYER }, (_, i) => sanitizeDesign(v?.[i]))])) as Partial<Record<Seat, PieceDesign[]>> : null;
+  recompute();
+  listeners.forEach(l => l());
+};
+
 export const useDesigns = (): SeatDesigns => useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-export const useSetDesigns = () => useCallback(setDesigns, []);
+export const useLocalDesigns = (): SeatDesigns => { useDesigns(); return getLocalDesigns(); };
 
 // ---- colour helpers --------------------------------------------------------------------------------
 

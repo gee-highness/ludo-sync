@@ -59,4 +59,5 @@ Tycoon always plays on the flat board. Every number is tunable in the rules edit
   eight patterns, four finishes, outline, glow, a letter or emoji mark, size, 3D depth, base, idle animation and move trail.
   Designs render on the flat board (`PieceShape.tsx`) and the 3D board (`pieces3d.ts`) from one definition
   (`src/lib/client/pieces.ts`, `pieceShapes.ts`). Eight packs, randomise, copy, reset, and export/import as text.
-  Designs live on this device; opponents online currently see your pieces as you set them for their colour.
+  Designs are saved on your device. In online rooms each player's designs are sent to the room (validated and clamped by
+  the host), so everyone sees every player's pieces the way that player made them; seats without designs use the standard pieces.

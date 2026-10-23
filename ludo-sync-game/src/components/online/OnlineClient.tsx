@@ -8,7 +8,7 @@ import { cleanName } from "@/lib/ludo/engine";
 import { cleanRoomCode, isRoomCode } from "@/lib/net/crypto";
 import { extractRoomCode } from "@/lib/net/identity";
 import { getSettings, updateSettings } from "@/lib/client/settings";
-import { useGuestClient, useHostSession } from "./hooks";
+import { useGuestClient, useHostSession, usePieceSync } from "./hooks";
 import { Lobby } from "./Lobby";
 import OnlineGame from "./OnlineGame";
 import { ScanButton } from "./ScanButton";
@@ -37,6 +37,7 @@ const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: 
 
 function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   const { session, snap } = useHostSession(name, getSettings().rules);
+  usePieceSync(snap?.room ?? null, session ? d => session.setPieces(d) : undefined);
   if (!session || !snap || snap.status === "opening") {
     return <Center minH="100dvh" bg="#10172E"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
   }
@@ -70,6 +71,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
 
 function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit: () => void }) {
   const { client, snap } = useGuestClient(code, name);
+  usePieceSync(snap?.room ?? null, client ? d => client.setPieces(d) : undefined);
   if (!client || !snap) return <Center minH="100dvh" bg="#10172E"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onExit} />;
   if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the room or lost their connection." onBack={onExit} />;

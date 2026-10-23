@@ -13,7 +13,7 @@ import { PieceShape } from "../board/PieceShape";
 import { SHAPE_LABEL } from "@/lib/client/pieceShapes";
 import {
   BASES, DEFAULT_DESIGN, FINISHES, IDLES, PACKS, PATTERNS, SHAPES, TRAILS, applyPack, defaultDesigns, exportDesigns, importDesigns, randomDesign,
-  resolveDesign, sanitizeDesign, setDesigns, updatePiece, useDesigns, type PieceDesign,
+  resolveDesign, sanitizeDesign, setDesigns, updatePiece, useLocalDesigns, type PieceDesign,
 } from "@/lib/client/pieces";
 
 const PiecePreview3D = dynamic(() => import("./PiecePreview3D"), { ssr: false, loading: () => <Box h="220px" /> });
@@ -48,7 +48,7 @@ const ColourField = ({ label, value, fallback, onChange, allowNone, noneLabel }:
 );
 
 export default function PieceMaker() {
-  const designs = useDesigns();
+  const designs = useLocalDesigns();
   const toast = useToast();
   const [seat, setSeat] = useState<Seat>(0);
   const [token, setToken] = useState<number | "all">("all");
