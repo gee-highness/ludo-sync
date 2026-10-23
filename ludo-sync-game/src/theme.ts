@@ -1,33 +1,30 @@
-// src/theme.ts
-import { extendTheme, type ThemeConfig } from "@chakra-ui/react"; // ✅ CORRECT
+import { extendTheme, type ThemeConfig } from "@chakra-ui/react";
 
-// Optional: Add your color mode config (light/dark)
 const config: ThemeConfig = {
-    initialColorMode: "light",
-    useSystemColorMode: false,
+  initialColorMode: "dark",
+  useSystemColorMode: false,
 };
 
-// Extend the default theme with your custom config
 const theme = extendTheme({
-    config,
-    colors: {
-        brand: {
-            50: "#e3f2ff",
-            100: "#b3d4ff",
-            200: "#81b5ff",
-            300: "#4f96ff",
-            400: "#1d78ff",
-            500: "#045fe6", // base brand color
-            600: "#0049b4",
-            700: "#003282",
-            800: "#001b51",
-            900: "#000421",
-        },
+  config,
+  styles: {
+    global: {
+      "html, body": { bg: "#10172E", color: "white" },
     },
-    fonts: {
-        heading: `'Inter', sans-serif`,
-        body: `'Inter', sans-serif`,
+  },
+  colors: {
+    brand: {
+      50: "#e3f2ff", 100: "#b3d4ff", 200: "#81b5ff", 300: "#4f96ff", 400: "#1d78ff",
+      500: "#045fe6", 600: "#0049b4", 700: "#003282", 800: "#001b51", 900: "#000421",
     },
+  },
+  fonts: {
+    heading: `var(--font-inter), 'Inter', system-ui, sans-serif`,
+    body: `var(--font-inter), 'Inter', system-ui, sans-serif`,
+  },
+  components: {
+    Button: { baseStyle: { _focusVisible: { boxShadow: "0 0 0 3px rgba(255,255,255,.85)" } } },
+  },
 });
 
 export default theme;

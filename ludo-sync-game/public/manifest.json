@@ -23,13 +23,13 @@
     {
       "name": "Play vs Bot",
       "short_name": "Vs Bot",
-      "url": "/chakra-ludo?mode=play-with-bot&source=shortcut",
+      "url": "/play?preset=bot&quick=1&source=shortcut",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Pass and Play",
       "short_name": "Pass & Play",
-      "url": "/chakra-ludo?mode=local-friends&source=shortcut",
+      "url": "/play?preset=local&quick=1&source=shortcut",
       "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]

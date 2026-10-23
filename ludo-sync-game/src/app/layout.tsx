@@ -2,7 +2,7 @@ import { Inter } from "next/font/google";
 import { ChakraProviders } from "@/components/ChakraProviders"; // Import the client component
 import type { Metadata, Viewport } from "next";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
 // Define metadata for the PWA manifest
 export const metadata: Metadata = {
@@ -30,8 +30,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" style={{ background: "#10172E" }}>
+      <body className={inter.variable} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
         <ChakraProviders> {/* Use the client-side ChakraProviders */}
           {children}
         </ChakraProviders>
