@@ -42,9 +42,15 @@ export const seatTokens = (state: GameState): TokenView[] =>
   );
 
 /** Every token's drawing position, with squares shared by several tokens fanned out. */
-export const placeTokens = (tokens: TokenView[]): PlacedToken[] => {
+export const placeTokens = (tokens: TokenView[], moving?: { seat: Seat; token: number } | null): PlacedToken[] => {
   const groups = new Map<string, TokenView[]>();
+  const travelling: PlacedToken[] = [];
   for (const t of tokens) {
+    // a token passing through is drawn exactly on its square, so the tokens it passes do not shuffle aside and back
+    if (moving && t.seat === moving.seat && t.token === moving.token) {
+      travelling.push({ ...t, at: { ...t.point }, scale: 1 });
+      continue;
+    }
     const key = `${t.point.x.toFixed(2)},${t.point.y.toFixed(2)}`;
     groups.set(key, [...(groups.get(key) ?? []), t]);
   }
@@ -56,5 +62,5 @@ export const placeTokens = (tokens: TokenView[]): PlacedToken[] => {
       out.push({ ...t, at: { x: t.point.x + off.x, y: t.point.y + off.y }, scale: fixed ? 1 : stackScale(group.length) });
     });
   }
-  return out;
+  return [...out, ...travelling];
 };

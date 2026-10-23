@@ -14,5 +14,7 @@ const PATTERNS: Record<Buzz, number | number[]> = {
 /** Short vibration where the device supports it and the player has not turned it off. */
 export const buzz = (kind: Buzz) => {
   if (!getSettings().haptics) return;
+  // browsers refuse to vibrate before the person has touched the page; do not even try
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   try { navigator.vibrate?.(PATTERNS[kind]); } catch { /* unsupported */ }
 };

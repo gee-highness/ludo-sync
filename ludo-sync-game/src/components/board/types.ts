@@ -15,4 +15,6 @@ export interface BoardProps {
   reduceMotion: boolean;
   /** Time for one hop, so the tokens' movement matches the animation timeline. */
   hopMs: number;
+  /** The token currently hopping across the board, if any. */
+  moving?: { seat: Seat; token: number } | null;
 }

@@ -5,6 +5,7 @@ import { planSteps, rollMs, stepMs, withToken, type AnimStep } from "@/lib/clien
 import type { Frame, FrameBus } from "@/lib/client/frames";
 import type { SpeedPref } from "@/lib/client/settings";
 import type { GameState } from "@/lib/ludo/types";
+import type { Seat } from "@/lib/ludo/board";
 
 export interface AnimatedGame {
   /** What the screen should draw right now: lags the real state while tokens are still travelling. */
@@ -13,6 +14,8 @@ export interface AnimatedGame {
   busy: boolean;
   /** Increases on every roll so the dice can replay their tumble. */
   rollKey: number;
+  /** The token currently hopping square by square; null when everything is at rest. */
+  moving: { seat: Seat; token: number } | null;
 }
 
 interface Options {
@@ -33,6 +36,7 @@ export const useAnimatedGame = (bus: FrameBus, initial: GameState, options: Opti
   const [shown, setShown] = useState<GameState>(initial);
   const [busy, setBusy] = useState(false);
   const [rollKey, setRollKey] = useState(0);
+  const [moving, setMoving] = useState<{ seat: Seat; token: number } | null>(null);
 
   const opts = useRef(options);
   opts.current = options;
@@ -62,11 +66,13 @@ export const useAnimatedGame = (bus: FrameBus, initial: GameState, options: Opti
       }
       for (const step of planSteps(prev, frame.state)) {
         shownRef.current = withToken(shownRef.current, step.seat, step.token, step.progress);
+        setMoving(m => (m && m.seat === step.seat && m.token === step.token ? m : { seat: step.seat, token: step.token }));
         setShown(shownRef.current);
         opts.current.onStep?.(step);
         await sleep(stepMs(step.kind, speed));
         if (!alive.current) return;
       }
+      setMoving(null);
       show(frame.state);
       opts.current.onFrameEnd?.(frame);
     };
@@ -91,5 +97,5 @@ export const useAnimatedGame = (bus: FrameBus, initial: GameState, options: Opti
     };
   }, [bus]);
 
-  return { shown, busy, rollKey };
+  return { shown, busy, rollKey, moving };
 };

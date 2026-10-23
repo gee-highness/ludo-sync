@@ -51,7 +51,7 @@ const INACTIVE = 0x4a5568;
 const TAU = Math.PI * 2;
 const hex = (css: string) => parseInt(css.slice(1), 16);
 
-type TweenKind = "hop" | "enter" | "return" | "finish";
+type TweenKind = "hop" | "enter" | "return" | "finish" | "slide";
 interface Tween { from: THREE.Vector3; to: THREE.Vector3; t0: number; dur: number; arc: number; smooth: boolean; kind: TweenKind; turns: number }
 
 interface TokenObj {
@@ -561,7 +561,9 @@ export class LudoScene {
         const prev = obj.progress;
         let kind: TweenKind = "hop";
         let dur = input.hopMs, arc = calm ? 0.15 : 0.6, smooth = false, turns = 0;
-        if (p.progress === YARD) { kind = "return"; dur = 520 * f; arc = calm ? 0.3 : 3.0; smooth = true; turns = calm ? 0 : 2; }
+        // the token has not gone anywhere: others just made room, so slide over quietly instead of hopping
+        if (p.progress === prev) { kind = "slide"; dur = 160; arc = 0; smooth = true; }
+        else if (p.progress === YARD) { kind = "return"; dur = 520 * f; arc = calm ? 0.3 : 3.0; smooth = true; turns = calm ? 0 : 2; }
         else if (prev === YARD) { kind = "enter"; dur = 340 * f; arc = calm ? 0.2 : 1.5; smooth = true; turns = calm ? 0 : 1; }
         else if (p.progress === FINISH) { kind = "finish"; dur = 460 * f; arc = calm ? 0.2 : 1.8; smooth = true; turns = calm ? 0 : 2; }
         if (input.hopMs === 0) {
@@ -703,17 +705,19 @@ export class LudoScene {
         obj.root.position.lerpVectors(tw.from, tw.to, e);
         const arc = tw.arc * 4 * k * (1 - k);
         obj.root.position.y += arc;
-        stretch = Math.sin(k * Math.PI) * (calm ? 0 : tw.kind === "hop" ? 0.22 : 0.3);
+        stretch = tw.kind === "slide" ? 0 : Math.sin(k * Math.PI) * (calm ? 0 : tw.kind === "hop" ? 0.22 : 0.3);
         spinY = tw.turns * TAU * e;
-        if (!calm && this.high && k < 1 && obj.trail !== "none") this.emitTrail(obj);
+        if (!calm && this.high && k < 1 && obj.trail !== "none" && tw.kind !== "slide") this.emitTrail(obj);
         if (k >= 1) {
           obj.root.position.copy(tw.to);
           obj.tween = null;
+          if (tw.kind !== "slide") {
           obj.squash = 1;
           this.emit(tw.to, tw.kind === "hop" ? 7 : 16, 0xdfe7f5, { spread: 1.3, up: 0.9, life: 0.5, gravity: 2.5, y: 0.08 });
           if (tw.kind === "enter") { this.shockwave(tw.to, hex(SEAT_INFO[obj.seat].light), 2.2, 520); this.emit(tw.to, 20, hex(SEAT_INFO[obj.seat].light), { up: 3.2, life: 0.8 }); }
           if (tw.kind === "finish") { this.firework(tw.to, hex(SEAT_INFO[obj.seat].light)); this.shockwave(tw.to, 0xffffff, 3.6, 800); if (!calm) this.shake = Math.max(this.shake, 0.5); }
           if (tw.kind === "return") this.emit(tw.to, 10, 0xffffff, { spread: 1.8, up: 1.5, life: 0.6 });
+          }
         } else animating = true;
       }
 

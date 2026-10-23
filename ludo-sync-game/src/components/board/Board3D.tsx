@@ -19,7 +19,7 @@ export interface Board3DProps extends BoardProps {
 
 /** The 3D board: a canvas for pointers, plus hidden buttons so keyboards and screen readers can play too. */
 export default function Board3D(props: Board3DProps) {
-  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality } = props;
+  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<LudoScene | null>(null);
   const cb = useRef(props);
@@ -33,11 +33,11 @@ export default function Board3D(props: Board3DProps) {
   );
   const interactiveSeat = options.length ? state.players[state.turn].seat : null;
   const input: SceneInput = useMemo(() => ({
-    tokens: placeTokens(seatTokens(state)),
+    tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
     interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, scenery: settings.scenery, timeOfDay: settings.timeOfDay,
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, settings.scenery, settings.timeOfDay]);
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, settings.scenery, settings.timeOfDay, moving]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

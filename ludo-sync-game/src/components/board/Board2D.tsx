@@ -90,7 +90,7 @@ const CSS = `
 
 /** The flat board: an SVG that scales to any screen, rotated so `viewSeat` sits at the bottom. */
 export default function Board2D({
-  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs,
+  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving,
 }: BoardProps) {
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
@@ -143,8 +143,8 @@ export default function Board2D({
 
   const placed = useMemo(() => {
     const movableLast = (t: TokenView) => (t.seat === interactiveSeat && byToken.has(t.token) ? 1 : 0);
-    return placeTokens(tokens).sort((x, y) => movableLast(x) - movableLast(y));
-  }, [tokens, interactiveSeat, byToken]);
+    return placeTokens(tokens, moving).sort((x, y) => movableLast(x) - movableLast(y));
+  }, [tokens, interactiveSeat, byToken, moving]);
 
   const cells: React.ReactNode[] = [];
   for (let row = 0; row < 15; row++) {
