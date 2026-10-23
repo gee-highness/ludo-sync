@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "icons": "python3 scripts/generate-icons.py",
+    "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
     "@chakra-ui/icons": "^2.2.4",
