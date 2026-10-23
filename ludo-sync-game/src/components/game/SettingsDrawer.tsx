@@ -4,7 +4,7 @@ import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
 } from "@chakra-ui/react";
-import { DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
+import { BOARD_THEMES, DEFAULT_SETTINGS, TOKEN_STYLES, useSettings, type Settings } from "@/lib/client/settings";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
 
@@ -50,6 +50,16 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <Row label="3D quality" hint="Lower saves battery">
               <Select w="120px" size="sm" value={s.quality} onChange={e => update({ quality: e.target.value as Settings["quality"] })} bg="gray.700">
                 <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>
+              </Select>
+            </Row>
+            <Row label="Board theme" hint="Colours of the flat board">
+              <Select w="120px" size="sm" value={s.boardTheme} onChange={e => update({ boardTheme: e.target.value as Settings["boardTheme"] })} bg="gray.700">
+                {BOARD_THEMES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+              </Select>
+            </Row>
+            <Row label="Token style" hint="Flat board">
+              <Select w="120px" size="sm" value={s.tokenStyle} onChange={e => update({ tokenStyle: e.target.value as Settings["tokenStyle"] })} bg="gray.700">
+                {TOKEN_STYLES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
               </Select>
             </Row>
             <Row label="Animation speed">

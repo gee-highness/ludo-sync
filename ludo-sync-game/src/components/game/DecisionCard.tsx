@@ -2,7 +2,7 @@
 
 import { Box, Button, HStack, Text } from "@chakra-ui/react";
 import { houseCost, rentOf, SQUARES } from "@/lib/ludo/tycoon";
-import type { Action, GameState } from "@/lib/ludo/types";
+import { tuningOf, type Action, type GameState } from "@/lib/ludo/types";
 
 /** Tycoon: the offer to buy or build on the square the player just landed on. */
 export const DecisionCard = ({ state, act }: { state: GameState; act: (a: Action) => boolean }) => {
@@ -33,5 +33,5 @@ export const DecisionCard = ({ state, act }: { state: GameState; act: (a: Action
 const rentAfterBuild = (state: GameState, ring: number) => {
   const t = state.tycoon!;
   const next = { ...t, level: t.level.map((l, i) => (i === ring ? l + 1 : l)) };
-  return rentOf(next, ring);
+  return rentOf(next, ring, tuningOf(state.rules).rentFactor);
 };

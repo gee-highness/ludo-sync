@@ -1,5 +1,6 @@
 import { Inter } from "next/font/google";
 import { ChakraProviders } from "@/components/ChakraProviders"; // Import the client component
+import { ServiceWorker } from "@/components/pwa/ServiceWorker";
 import type { Metadata, Viewport } from "next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -34,6 +35,7 @@ export default function RootLayout({
       <body className={inter.variable} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
         <ChakraProviders> {/* Use the client-side ChakraProviders */}
           {children}
+          <ServiceWorker />
         </ChakraProviders>
       </body>
     </html>

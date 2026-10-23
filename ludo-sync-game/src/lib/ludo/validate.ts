@@ -1,5 +1,6 @@
 import { FINISH, RING_LENGTH, SEATS, TOKENS_PER_PLAYER, YARD, type Seat } from "./board";
 import { MAX_NAME_LENGTH } from "./engine";
+import { parseTuning } from "./tuning";
 import type { Action, BotLevel, GameState, PendingDecision, Player, Rules, TycoonState } from "./types";
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -13,6 +14,11 @@ const parseRules = (v: unknown): Rules | null => {
   for (const k of keys) {
     if (typeof v[k] !== "boolean") return null;
     out[k] = v[k] as boolean;
+  }
+  if (v.tuning !== undefined) {
+    const tuning = parseTuning(v.tuning);
+    if (!tuning) return null;
+    out.tuning = tuning;
   }
   if (v.tycoon !== undefined) {
     if (typeof v.tycoon !== "boolean") return null;

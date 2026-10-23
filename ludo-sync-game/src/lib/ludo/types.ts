@@ -20,7 +20,46 @@ export interface Rules {
   safeSquares: boolean;
   /** Tycoon mode: squares can be bought, rented, built on, and money decides who stays in. */
   tycoon?: boolean;
+  /** Fine-tuning; see RuleTuning. */
+  tuning?: Partial<RuleTuning>;
 }
+
+export type EntryRule = "six" | "six-or-one" | "any";
+
+/** Fine-tuning for every game mode. Anything left out takes its default from DEFAULT_TUNING. */
+export interface RuleTuning {
+  /** Which dice let a token leave the yard. */
+  entry: EntryRule;
+  /** Must the last step into the centre be an exact count? If not, overshooting still gets home. */
+  exactFinish: boolean;
+  /** A six earns another roll. */
+  sixBonus: boolean;
+  /** Sixes in a row that lose the turn (when "three sixes" is on). */
+  sixesLimit: number;
+  /** Tokens a player needs home to win, 1 to 4. */
+  winTokens: number;
+  /** Tycoon: starting cash. */
+  startCash: number;
+  /** Tycoon: paid when a token leaves the yard. */
+  enterBonus: number;
+  /** Tycoon: paid when a token gets home. */
+  homeBonus: number;
+  /** Tycoon: taken from the victim of a capture. */
+  captureLoot: number;
+  /** Tycoon: paid on a tax square. */
+  tax: number;
+  /** Tycoon: multiplies all rent. */
+  rentFactor: number;
+  /** Tycoon: most buildings per square, 0 to 3. */
+  maxBuild: number;
+}
+
+export const DEFAULT_TUNING: Readonly<RuleTuning> = {
+  entry: "six", exactFinish: true, sixBonus: true, sixesLimit: 3, winTokens: 4,
+  startCash: 1500, enterBonus: 100, homeBonus: 250, captureLoot: 50, tax: 100, rentFactor: 1, maxBuild: 3,
+};
+
+export const tuningOf = (rules: Rules): RuleTuning => ({ ...DEFAULT_TUNING, ...rules.tuning });
 
 export const DEFAULT_RULES: Readonly<Rules> = {
   threeSixes: true,

@@ -39,3 +39,8 @@ select {
     scroll-behavior: auto !important;
   }
 }
+
+/* fingers need 44px targets */
+@media (pointer: coarse) {
+  .chakra-button, .chakra-select__wrapper select { min-height: 44px; min-width: 44px; }
+}

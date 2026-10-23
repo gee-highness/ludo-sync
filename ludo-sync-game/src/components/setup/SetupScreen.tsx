@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Box, Button, Divider, Flex, Heading, HStack, IconButton, Input, Select, Switch, Text, VStack,
+  Box, Button, Divider, Flex, Heading, HStack, IconButton, Input, Select, Text, VStack,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
 import { useMemo, useState } from "react";
@@ -10,21 +10,12 @@ import { cleanName } from "@/lib/ludo/engine";
 import type { BotLevel, PlayerSetup, Rules } from "@/lib/ludo/types";
 import { updateSettings, useSettings } from "@/lib/client/settings";
 import { sound } from "@/lib/client/audio";
+import RulesEditor from "./RulesEditor";
 
 type SlotKind = "off" | "human" | "bot";
 interface Slot { kind: SlotKind; name: string; level: BotLevel }
 
 export type Preset = "bot" | "local";
-
-const RULE_INFO: { key: keyof Rules; label: string; hint: string }[] = [
-  { key: "tycoon", label: "Tycoon mode", hint: "Buy squares, collect rent, build and bankrupt your rivals. Plays on the flat board" },
-  { key: "twoDice", label: "Two dice", hint: "Spend each die separately, or add them together when they differ" },
-  { key: "threeSixes", label: "Three sixes lose the turn", hint: "Rolling three sixes in a row forfeits your turn" },
-  { key: "captureBonus", label: "Capture bonus", hint: "Roll again after capturing a token" },
-  { key: "finishBonus", label: "Finish bonus", hint: "Roll again after a token reaches home" },
-  { key: "blockades", label: "Blockades", hint: "Two tokens on one square block opponents" },
-  { key: "safeSquares", label: "Safe squares", hint: "Stars and start squares cannot be captured on" },
-];
 
 export const initialSlots = (preset: Preset, name: string, level: BotLevel): Slot[] => {
   const slot = (kind: SlotKind, n: string): Slot => ({ kind, name: n, level });
@@ -112,12 +103,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
         <Divider borderColor="whiteAlpha.300" />
         <VStack align="stretch" spacing={3} as="section" aria-label="Rules">
           <Heading size="sm" color="teal.200">Rules</Heading>
-          {RULE_INFO.map(r => (
-            <HStack key={r.key} justify="space-between" spacing={4}>
-              <Box><Text fontWeight={600} fontSize="sm">{r.label}</Text><Text color="gray.400" fontSize="xs">{r.hint}</Text></Box>
-              <Switch colorScheme="teal" isChecked={!!rules[r.key]} aria-label={r.label} onChange={e => setRules(x => ({ ...x, [r.key]: e.target.checked }))} />
-            </HStack>
-          ))}
+          <RulesEditor rules={rules} onChange={setRules} />
         </VStack>
 
         {error && <Text color="orange.300" role="alert" fontSize="sm">{error}</Text>}

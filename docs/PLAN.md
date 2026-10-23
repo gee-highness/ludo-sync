@@ -108,10 +108,9 @@ App lives in `ludo-sync-game/`. Run `npm run verify` (lint, typecheck, test, bui
    with six check digits, PeerJS and in-memory transports, authoritative host, reconnect by seat token,
    spectators, reactions, AFK autoplay, integration tests. Terra's reference code is in `gee-highness/terra-finance`
    under `src/lib/sync/` (pairing.ts, crypto.ts, peerTransport.ts).
-4. **Offline-first PWA**: generated service worker route with versioned caches, warm-caching of 3D models and
-   chunks, offline navigation fallback, install prompt (button exists), update toast, persistent storage request.
-5. **All-device optimisation**: perf budgets, bundle splitting, low-power path, touch targets, tested viewports.
-6. **CI** (workflow added; still to do:) Playwright smoke tests, README rewrite, docs.
+4. ~~Offline-first PWA~~ DONE: generated `/sw.js` (versioned caches, shell + model precache, chunk warm-up, offline navigation fallback), update toast, install button, persistent storage.
+5. ~~All-device optimisation~~ DONE: lazy 3D board, low-power defaults to 2D, immutable model caching, optimized package imports, unused physics deps removed.
+6. ~~CI (lint, typecheck, test, build, e2e), Playwright smoke test (`npm run e2e`), README rewrite~~ DONE.
 
 ## Tycoon mode design (Monopoly-style gameplay on the Ludo board)
 Classic Ludo stays untouched. Tycoon is a setup option that adds an economy to the same engine:

@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
+import { parseTuning } from "../ludo/tuning";
 import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
 import { readJSON, writeJSON } from "./storage";
 
@@ -7,6 +8,10 @@ export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type QualityPref = "auto" | "high" | "low";
 export type CameraPref = "tilt" | "top";
+export type BoardTheme = "classic" | "midnight" | "forest" | "sunset" | "paper";
+export type TokenStyle = "glossy" | "flat" | "ring";
+export const BOARD_THEMES: readonly BoardTheme[] = ["classic", "midnight", "forest", "sunset", "paper"];
+export const TOKEN_STYLES: readonly TokenStyle[] = ["glossy", "flat", "ring"];
 
 export interface Settings {
   sound: boolean;
@@ -29,6 +34,9 @@ export interface Settings {
   keepAwake: boolean;
   playerName: string;
   botLevel: BotLevel;
+  /** Colours of the flat board. */
+  boardTheme: BoardTheme;
+  tokenStyle: TokenStyle;
   rules: Rules;
 }
 
@@ -48,6 +56,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   keepAwake: true,
   playerName: "",
   botLevel: "normal",
+  boardTheme: "classic",
+  tokenStyle: "glossy",
   rules: DEFAULT_RULES,
 };
 
@@ -76,6 +86,8 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     keepAwake: bool(r.keepAwake, d.keepAwake),
     playerName: typeof r.playerName === "string" ? r.playerName.slice(0, 20) : d.playerName,
     botLevel: oneOf(r.botLevel, ["easy", "normal", "hard"], d.botLevel),
+    boardTheme: oneOf(r.boardTheme, BOARD_THEMES, d.boardTheme),
+    tokenStyle: oneOf(r.tokenStyle, TOKEN_STYLES, d.tokenStyle),
     rules: {
       threeSixes: bool(rr.threeSixes, d.rules.threeSixes),
       captureBonus: bool(rr.captureBonus, d.rules.captureBonus),
@@ -84,6 +96,7 @@ export const sanitizeSettings = (raw: unknown): Settings => {
       twoDice: bool(rr.twoDice, d.rules.twoDice),
       safeSquares: bool(rr.safeSquares, d.rules.safeSquares),
       tycoon: bool(rr.tycoon, d.rules.tycoon ?? false),
+      ...(parseTuning(rr.tuning) ? { tuning: parseTuning(rr.tuning)! } : {}),
     },
   };
 };

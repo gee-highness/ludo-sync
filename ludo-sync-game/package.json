@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "e2e": "playwright test",
     "icons": "python3 scripts/generate-icons.py",
     "verify": "npm run lint && npm run typecheck && npm test && npm run build"
   },
@@ -21,15 +22,13 @@
     "@emotion/styled": "^11.14.1",
     "@types/three": "^0.178.1",
     "@zxing/library": "^0.21.3",
-    "cannon-es": "^0.20.0",
     "framer-motion": "^10.18.0",
     "next": "15.4.4",
     "peerjs": "^1.5.5",
     "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "three": "^0.178.0",
-    "three-to-cannon": "^5.0.2"
+    "three": "^0.178.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

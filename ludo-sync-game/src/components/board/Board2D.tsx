@@ -6,11 +6,21 @@ import {
   FINISH, RING, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat,
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
+import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import type { BoardProps } from "./types";
 import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
 const INACTIVE = "#4A5568";
+
+interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
+const PALETTES: Record<BoardTheme, Palette> = {
+  classic: { bg: "#1A202C", cell: "#F7FAFC", line: "#A0AEC0", panel: "#fff", inactiveCol: "#A0AEC0" },
+  midnight: { bg: "#05070F", cell: "#2D3748", line: "#4A5568", panel: "#1A202C", inactiveCol: "#4A5568" },
+  forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
+  sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
+  paper: { bg: "#E2E8F0", cell: "#FFFFFF", line: "#CBD5E0", panel: "#fff", inactiveCol: "#CBD5E0" },
+};
 
 interface Burst { id: number; x: number; y: number; color: string; kind: "capture" | "home" | "dust" }
 
@@ -59,6 +69,9 @@ const CSS = `
 export default function Board2D({
   state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs,
 }: BoardProps) {
+  const [settings] = useSettings();
+  const pal = PALETTES[settings.boardTheme];
+  const tokenStyle = settings.tokenStyle;
   const rotation = -90 * viewSeat;
   const playing = useMemo(() => new Set(state.players.map(p => p.seat)), [state.players]);
   const byToken = useMemo(() => optionsByToken(options), [options]);
@@ -110,13 +123,13 @@ export default function Board2D({
       if (info.kind === "void" || info.kind === "yard" || info.kind === "centre") continue;
       const seatInfo = info.seat !== undefined ? SEAT_INFO[info.seat] : null;
       const active = info.seat === undefined || playing.has(info.seat);
-      let fill = "#F7FAFC";
-      if (info.kind === "column") fill = active ? seatInfo!.light : "#A0AEC0";
+      let fill = pal.cell;
+      if (info.kind === "column") fill = active ? seatInfo!.light : pal.inactiveCol;
       if (info.kind === "start") fill = active ? seatInfo!.main : INACTIVE;
       const tycoonRing = state.tycoon && info.kind !== "column" ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       cells.push(
         <g key={`${row}-${col}`}>
-          <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke="#A0AEC0" strokeWidth={0.04} />
+          <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />
           {tycoonRing >= 0 && state.tycoon && (() => {
             const sq = SQUARES[tycoonRing];
             const owner = state.tycoon!.owner[tycoonRing];
@@ -162,7 +175,7 @@ export default function Board2D({
       <g key={seat}>
         <rect x={x0} y={y0} width={6} height={6} fill={active ? info.main : INACTIVE} />
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
-        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="#fff" fillOpacity={active ? 0.88 : 0.35} />
+        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={active ? 0.88 : 0.35} />
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
           return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={0.28} stroke={active ? info.dark : "#2D3748"} strokeWidth={0.06} />;
@@ -207,7 +220,7 @@ export default function Board2D({
           );
         })}
       </defs>
-      <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill="#1A202C" />
+      <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={pal.bg} />
       <g transform={`rotate(${rotation} 7 7)`}>
         {yards}
         {cells}
@@ -244,8 +257,8 @@ export default function Board2D({
                     : t.progress === YARD ? "tok-spin" : "tok-hop"
                 }>
                   <ellipse cy={0.3} rx={0.34} ry={0.12} fill="#000" fillOpacity={0.25} />
-                  <circle className="focus-ring" r={0.38} fill={`url(#tok-${t.seat})`} stroke={movable ? "#fff" : "#fff"} strokeOpacity={movable ? 1 : 0.85} strokeWidth={movable ? 0.09 : 0.06} />
-                  <circle cx={-0.12} cy={-0.14} r={0.1} fill="#fff" fillOpacity={0.6} />
+                  <circle className="focus-ring" r={0.38} fill={tokenStyle === "glossy" ? `url(#tok-${t.seat})` : tokenStyle === "ring" ? "#0F172A" : info.main} stroke={tokenStyle === "ring" ? info.light : "#fff"} strokeOpacity={movable ? 1 : 0.85} strokeWidth={tokenStyle === "ring" ? 0.14 : movable ? 0.09 : 0.06} />
+                  {tokenStyle === "glossy" && <circle cx={-0.12} cy={-0.14} r={0.1} fill="#fff" fillOpacity={0.6} />}
                   {symbols && (
                     <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.4} fontWeight={800} fill="#fff"
                       transform={`rotate(${-rotation})`} aria-hidden>{info.glyph}</text>
@@ -277,7 +290,7 @@ export default function Board2D({
         <g key={`${state.turn}-${state.players.length}`} className="banner" aria-hidden style={{ transformBox: "fill-box", transformOrigin: "center" }}>
           <rect x={3.5} y={6.2} width={8} height={1.6} rx={0.8} fill={SEAT_INFO[turnSeat].dark} fillOpacity={0.92} stroke="#fff" strokeWidth={0.06} />
           <text x={7.5} y={7} textAnchor="middle" dominantBaseline="central" fontSize={0.7} fontWeight={800} fill="#fff">
-            {turnName.length > 12 ? `${turnName.slice(0, 11)}…` : turnName}'s turn
+            {turnName.length > 12 ? `${turnName.slice(0, 11)}…` : turnName}{"'s turn"}
           </text>
         </g>
       )}

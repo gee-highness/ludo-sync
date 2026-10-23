@@ -1,6 +1,6 @@
 import { RING_LENGTH, SEATS, type Seat } from "./board";
 import { nextRandom } from "./rng";
-import type { GameEvent, GameState, Player, TycoonState } from "./types";
+import { DEFAULT_TUNING, type GameEvent, type GameState, type Player, type RuleTuning, type TycoonState } from "./types";
 
 export const START_CASH = 1500;
 export const ENTER_BONUS = 100;
@@ -68,8 +68,8 @@ const SQUARES_IN_GROUP: readonly (readonly number[])[] = GROUP_SIZES.map((_, g) 
 
 export const houseCost = (ring: number) => Math.round(SQUARES[ring].price / 2);
 
-export const createTycoon = (): TycoonState => ({
-  cash: SEATS.map(() => START_CASH),
+export const createTycoon = (startCash: number = START_CASH): TycoonState => ({
+  cash: SEATS.map(() => startCash),
   owner: new Array(RING_LENGTH).fill(-1),
   level: new Array(RING_LENGTH).fill(0),
   pending: null,
@@ -84,7 +84,9 @@ const countOwned = (t: TycoonState, seat: Seat, kind: SquareKind) =>
   SQUARES.filter(s => s.kind === kind && t.owner[s.ring] === seat).length;
 
 /** What a visitor owes for landing on an owned square. */
-export const rentOf = (t: TycoonState, ring: number): number => {
+export const rentOf = (t: TycoonState, ring: number, factor = 1): number => Math.round(baseRent(t, ring) * factor);
+
+const baseRent = (t: TycoonState, ring: number): number => {
   const sq = SQUARES[ring];
   const owner = t.owner[ring] as Seat;
   if (sq.kind === "station") return 25 * countOwned(t, owner, "station");
@@ -126,7 +128,7 @@ export const transfer = (t: TycoonState, seat: Seat, amount: number, note: strin
  * Resolves landing on a ring square. Mutates `t`; returns the new generator state. A purchase or build
  * offer is left in `t.pending` for the player to answer.
  */
-export const landOn = (t: TycoonState, players: Player[], seat: Seat, ring: number, rng: number, events: GameEvent[]): number => {
+export const landOn = (t: TycoonState, players: Player[], seat: Seat, ring: number, rng: number, events: GameEvent[], tune: RuleTuning = DEFAULT_TUNING): number => {
   const sq = SQUARES[ring];
   switch (sq.kind) {
     case "property":
@@ -136,17 +138,17 @@ export const landOn = (t: TycoonState, players: Player[], seat: Seat, ring: numb
       if (owner === -1) {
         if (t.cash[seat] >= sq.price) t.pending = { seat, ring, kind: "buy" };
       } else if (owner !== seat) {
-        const rent = rentOf(t, ring);
+        const rent = rentOf(t, ring, tune.rentFactor);
         t.cash[seat] -= rent;
         t.cash[owner] += rent;
         events.push({ type: "money", seat, amount: -rent, note: `rent for ${sq.name}`, other: owner as Seat });
-      } else if (sq.kind === "property" && ownsFullSet(t, seat, ring) && t.level[ring] < MAX_LEVEL && t.cash[seat] >= houseCost(ring)) {
+      } else if (sq.kind === "property" && ownsFullSet(t, seat, ring) && t.level[ring] < tune.maxBuild && t.cash[seat] >= houseCost(ring)) {
         t.pending = { seat, ring, kind: "build" };
       }
       return rng;
     }
     case "tax":
-      transfer(t, seat, -TAX, "tax", events);
+      transfer(t, seat, -tune.tax, "tax", events);
       return rng;
     case "chance":
     case "chest": {

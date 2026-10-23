@@ -4,11 +4,11 @@ import {
 } from "./board";
 import { freshSeed, rollDice } from "./rng";
 import {
-  CAPTURE_LOOT, ENTER_BONUS, HOME_BONUS, MAX_LEVEL, SQUARES, cloneTycoon, createTycoon, houseCost, landOn, releaseSeat,
+  SQUARES, cloneTycoon, createTycoon, houseCost, landOn, releaseSeat,
   settleDebts, transfer,
 } from "./tycoon";
 import {
-  DEFAULT_RULES, type Action, type BonusReason, type GameEvent, type GameState, type MoveOption,
+  DEFAULT_RULES, tuningOf, type Action, type BonusReason, type GameEvent, type GameState, type MoveOption,
   type Player, type PlayerSetup, type Rules, type StepResult,
 } from "./types";
 
@@ -38,7 +38,7 @@ export const createGame = (setups: PlayerSetup[], rules: Rules = DEFAULT_RULES, 
   return {
     version: 1, rules: { ...rules }, players, turn: 0, phase: "roll", dice: [], rolled: [], sixes: 0,
     earned: null, winner: null, rng: seed >>> 0, seq: 0,
-    ...(rules.tycoon ? { tycoon: createTycoon() } : {}),
+    ...(rules.tycoon ? { tycoon: createTycoon(tuningOf(rules).startCash) } : {}),
   };
 };
 
@@ -86,12 +86,17 @@ export const moveOption = (s: GameState, player: Player, token: number, die: num
   const from = player.tokens[token];
   if (from === FINISH) return null;
   let to: number;
+  const tune = tuningOf(s.rules);
   if (from === YARD) {
-    if (die !== 6) return null;
+    const entry = tune.entry === "any" || die === 6 || (tune.entry === "six-or-one" && die === 1);
+    if (!entry) return null;
     to = 0;
   } else {
     to = from + die;
-    if (to > FINISH) return null;
+    if (to > FINISH) {
+      if (tune.exactFinish) return null;
+      to = FINISH;
+    }
   }
   const blocked = blockedRingIndexes(s, player.seat);
   if (blocked.size) {
@@ -142,10 +147,11 @@ const doRoll = (s: GameState): StepResult | null => {
   const seat = currentPlayer(s).seat;
   const r = rollDice(s.rng, s.rules.twoDice ? 2 : 1);
   const events: GameEvent[] = [{ type: "roll", seat, dice: r.dice }];
+  const tune = tuningOf(s.rules);
   const sixCount = r.dice.filter(d => d === 6).length;
   const sixes = sixCount > 0 ? s.sixes + sixCount : 0;
-  const base: GameState = { ...s, rng: r.state, rolled: r.dice, dice: r.dice, sixes, earned: sixCount > 0 ? "six" : null };
-  if (s.rules.threeSixes && sixes >= 3) {
+  const base: GameState = { ...s, rng: r.state, rolled: r.dice, dice: r.dice, sixes, earned: sixCount > 0 && tune.sixBonus ? "six" : null };
+  if (s.rules.threeSixes && sixes >= tune.sixesLimit) {
     events.push({ type: "penalty", seat });
     return nextTurn(withSeq({ ...base, dice: [], earned: null }), events);
   }
@@ -188,7 +194,7 @@ const doMove = (s: GameState, token: number, die: number): StepResult | null => 
   else dice.length = 0; // a sum spends both dice
 
   let next: GameState = withSeq({ ...s, players, dice, earned });
-  if (mine.tokens.every(t => t === FINISH)) {
+  if (mine.tokens.filter(t => t === FINISH).length >= tuningOf(s.rules).winTokens) {
     events.push({ type: "win", seat: me.seat });
     return { state: { ...next, phase: "over", dice: [], earned: null, winner: me.seat }, events };
   }
@@ -212,12 +218,13 @@ const economyAfterMove = (
   s: GameState, seat: Seat, o: MoveOption, events: GameEvent[],
 ): { state: GameState; over?: StepResult } => {
   const t = cloneTycoon(s.tycoon!);
+  const tune = tuningOf(s.rules);
   let rng = s.rng;
-  if (o.entersBoard) transfer(t, seat, ENTER_BONUS, "left the yard", events);
-  if (o.finishes) transfer(t, seat, HOME_BONUS, "token home", events);
-  for (const e of [...events]) if (e.type === "capture") transfer(t, seat, CAPTURE_LOOT, "capture", events, e.victim);
+  if (o.entersBoard) transfer(t, seat, tune.enterBonus, "left the yard", events);
+  if (o.finishes) transfer(t, seat, tune.homeBonus, "token home", events);
+  for (const e of [...events]) if (e.type === "capture") transfer(t, seat, tune.captureLoot, "capture", events, e.victim);
   const ring = ringIndexOf(seat, o.to);
-  if (ring !== null) rng = landOn(t, s.players, seat, ring, rng, events);
+  if (ring !== null) rng = landOn(t, s.players, seat, ring, rng, events, tune);
 
   let state: GameState = { ...s, rng, tycoon: t };
   const broke = settleDebts(t, state.players, events);
@@ -248,7 +255,7 @@ const doDecide = (s: GameState, kind: "buy" | "pass" | "build"): StepResult | nu
     t.owner[p.ring] = p.seat;
     events.push({ type: "buy", seat: p.seat, ring: p.ring, price: sq.price });
   } else if (kind === "build") {
-    if (p.kind !== "build" || t.cash[p.seat] < houseCost(p.ring) || t.level[p.ring] >= MAX_LEVEL) return null;
+    if (p.kind !== "build" || t.cash[p.seat] < houseCost(p.ring) || t.level[p.ring] >= tuningOf(s.rules).maxBuild) return null;
     t.cash[p.seat] -= houseCost(p.ring);
     t.level[p.ring] += 1;
     events.push({ type: "build", seat: p.seat, ring: p.ring, level: t.level[p.ring] });
