@@ -1,14 +1,26 @@
 import { Inter } from "next/font/google";
 import { ChakraProviders } from "@/components/ChakraProviders"; // Import the client component
-import { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 const inter = Inter({ subsets: ["latin"] });
 
 // Define metadata for the PWA manifest
 export const metadata: Metadata = {
   title: 'Ludo Sync',
-  description: 'A fun Ludo game to play with friends or bots.',
-  manifest: '/manifest.json', // Reference to the PWA manifest file
+  applicationName: 'Ludo Sync',
+  description: 'Classic Ludo for 2 to 4 players. Play bots, pass-and-play, or pair with friends online.',
+  manifest: '/manifest.json',
+  appleWebApp: { capable: true, title: 'Ludo Sync', statusBarStyle: 'black-translucent' },
+  formatDetection: { telephone: false },
+};
+
+// viewport-fit=cover lets the board use the full screen around notches; the UI pads with safe-area insets
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#10172E',
+  colorScheme: 'dark',
 };
 
 
