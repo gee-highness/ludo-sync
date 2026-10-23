@@ -67,6 +67,7 @@ export default function GameScreen(props: GameScreenProps) {
   const [wide] = useMediaQuery("(orientation: landscape) and (min-width: 700px)");
   const [lines, setLines] = useState<LogLine[]>([]);
   const [choice, setChoice] = useState<number | null>(null);
+  const [bonus, setBonus] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const captures = useRef(0);
   const recorded = useRef(false);
@@ -103,9 +104,12 @@ export default function GameScreen(props: GameScreenProps) {
     setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
     frame.events.forEach((e: GameEvent) => {
       switch (e.type) {
-        case "roll": sound.play("dice"); buzz("tap"); break;
+        case "roll": sound.play("dice"); buzz("tap"); setBonus(null); break;
         case "penalty": sound.play("penalty"); buzz("penalty"); break;
-        case "bonus": sound.play("bonus"); buzz("bonus"); break;
+        case "bonus":
+          sound.play("bonus"); buzz("bonus");
+          setBonus(e.reason === "finish" ? "A token is home! Roll again" : e.reason === "capture" ? "Capture! Roll again" : "A six! Roll again");
+          break;
         case "turn": if (mine.current.includes(e.seat)) sound.play("turn"); break;
         case "capture": if (mine.current.includes(e.seat)) captures.current += 1; break;
       }
@@ -176,6 +180,7 @@ export default function GameScreen(props: GameScreenProps) {
     if (shown.phase === "over") return "Game over";
     if (busy) return `${me.name}…`;
     if (shown.phase === "decide") return iAct ? "Your call: buy, build or pass" : `${me.name} is deciding…`;
+    if (canRoll && bonus) return mySeats.length > 1 ? `${me.name}: ${bonus}` : bonus;
     if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: roll the dice";
     if (iAct) return choice !== null ? "Choose which number to use" : mySeats.length > 1 ? `${me.name}, pick a glowing token` : "Pick a glowing token";
     if (me.kind === "bot") return `${me.name} is thinking…`;
@@ -244,7 +249,7 @@ export default function GameScreen(props: GameScreenProps) {
               size={wide ? 64 : 50} label={canRoll ? "Roll the dice" : `Dice showing ${shown.rolled.join(" and ") || "nothing yet"}`}
             />
             <VStack align="start" spacing={1} flex={1} minW={0}>
-              <Text fontSize={wide ? "md" : "sm"} fontWeight={700} role="status">{status}</Text>
+              <Text fontSize={wide ? "md" : "sm"} fontWeight={700} role="status" color={canRoll && bonus ? "yellow.300" : undefined}>{status}</Text>
               {shown.sixes > 0 && shown.phase !== "over" && <Text fontSize="xs" color="yellow.300">Sixes in a row: {shown.sixes}</Text>}
               {choiceOptions.length > 0 && (
                 <HStack spacing={2} flexWrap="wrap">
