@@ -111,7 +111,7 @@ App lives in `ludo-sync-game/`. Run `npm run verify` (lint, typecheck, test, bui
 4. **Offline-first PWA**: generated service worker route with versioned caches, warm-caching of 3D models and
    chunks, offline navigation fallback, install prompt (button exists), update toast, persistent storage request.
 5. **All-device optimisation**: perf budgets, bundle splitting, low-power path, touch targets, tested viewports.
-6. **CI** (GitHub Actions: lint, typecheck, test, build), Playwright smoke tests, README rewrite, docs.
+6. **CI** (workflow added; still to do:) Playwright smoke tests, README rewrite, docs.
 
 ## Tycoon mode design (Monopoly-style gameplay on the Ludo board)
 Classic Ludo stays untouched. Tycoon is a setup option that adds an economy to the same engine:
