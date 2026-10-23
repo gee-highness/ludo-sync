@@ -8,8 +8,12 @@ export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type QualityPref = "auto" | "high" | "low";
 export type CameraPref = "tilt" | "top";
-export type BoardTheme = "classic" | "midnight" | "forest" | "sunset" | "paper";
-export const BOARD_THEMES: readonly BoardTheme[] = ["classic", "midnight", "forest", "sunset", "paper"];
+export type BoardTheme = "city" | "classic" | "midnight" | "forest" | "sunset" | "paper";
+export type SceneryPref = "city" | "off";
+export type TimeOfDay = "day" | "dusk" | "night";
+export const SCENERY_PREFS: readonly SceneryPref[] = ["city", "off"];
+export const TIMES_OF_DAY: readonly TimeOfDay[] = ["dusk", "night", "day"];
+export const BOARD_THEMES: readonly BoardTheme[] = ["city", "classic", "midnight", "forest", "sunset", "paper"];
 
 export interface Settings {
   sound: boolean;
@@ -34,6 +38,9 @@ export interface Settings {
   botLevel: BotLevel;
   /** Colours of the flat board. */
   boardTheme: BoardTheme;
+  /** A city around the board, and homes in the start areas. */
+  scenery: SceneryPref;
+  timeOfDay: TimeOfDay;
   rules: Rules;
 }
 
@@ -53,7 +60,9 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   keepAwake: true,
   playerName: "",
   botLevel: "normal",
-  boardTheme: "classic",
+  boardTheme: "city",
+  scenery: "city",
+  timeOfDay: "dusk",
   rules: DEFAULT_RULES,
 };
 
@@ -83,6 +92,8 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     playerName: typeof r.playerName === "string" ? r.playerName.slice(0, 20) : d.playerName,
     botLevel: oneOf(r.botLevel, ["easy", "normal", "hard"], d.botLevel),
     boardTheme: oneOf(r.boardTheme, BOARD_THEMES, d.boardTheme),
+    scenery: oneOf(r.scenery, SCENERY_PREFS, d.scenery),
+    timeOfDay: oneOf(r.timeOfDay, TIMES_OF_DAY, d.timeOfDay),
     rules: {
       threeSixes: bool(rr.threeSixes, d.rules.threeSixes),
       captureBonus: bool(rr.captureBonus, d.rules.captureBonus),
