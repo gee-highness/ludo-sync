@@ -7,11 +7,21 @@ import {
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
+import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
+import { PieceShape } from "./PieceShape";
 import type { BoardProps } from "./types";
 import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
 const INACTIVE = "#4A5568";
+const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: number; rise: boolean; ring?: boolean }> = {
+  dust: { color: "#CBD5E0", n: 5, d: 0.55, r: 0.07, rise: false },
+  none: { color: "#fff", n: 0, d: 0, r: 0, rise: false },
+  sparkle: { color: "#FACC15", n: 7, d: 0.85, r: 0.06, rise: false },
+  ember: { color: "#FB923C", n: 6, d: 0.7, r: 0.07, rise: true },
+  bubbles: { color: "#7DD3FC", n: 4, d: 0.7, r: 0.1, rise: true, ring: true },
+};
+const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", spin: "tok-idle-spin", pulse: "tok-idle-pulse", wobble: "tok-idle-wobble" } as const;
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
 const PALETTES: Record<BoardTheme, Palette> = {
@@ -22,7 +32,7 @@ const PALETTES: Record<BoardTheme, Palette> = {
   paper: { bg: "#E2E8F0", cell: "#FFFFFF", line: "#CBD5E0", panel: "#fff", inactiveCol: "#CBD5E0" },
 };
 
-interface Burst { id: number; x: number; y: number; color: string; kind: "capture" | "home" | "dust" }
+interface Burst { id: number; x: number; y: number; color: string; kind: "capture" | "home" | TrailId }
 
 const optionsByToken = (options: MoveOption[]) => {
   const map = new Map<number, MoveOption[]>();
@@ -37,6 +47,10 @@ const CSS = `
   .tok-spin { animation: tokSpin calc(var(--hop) * 2.2) ease-in; transform-origin: 0 0; }
   .tok-idle { animation: tokBreath 3.2s ease-in-out infinite; transform-origin: 0 .3px; }
   .tok-bounce { animation: tokBounce .9s ease-in-out infinite; transform-origin: 0 .3px; }
+  .tok-idle-bounce { animation: tokBounce 1.6s ease-in-out infinite; transform-origin: 0 .3px; }
+  .tok-idle-spin { animation: idleSpin 3.5s linear infinite; transform-origin: 0 0; }
+  .tok-idle-pulse { animation: idlePulse 1.8s ease-in-out infinite; transform-origin: 0 0; }
+  .tok-idle-wobble { animation: idleWobble 1.4s ease-in-out infinite; transform-origin: 0 .3px; }
   .tok-dance { animation: tokDance .7s ease-in-out infinite; transform-origin: 0 .3px; }
   .tok-pulse { animation: tokPulse 1.1s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .burst-dot { animation: burst .75s ease-out forwards; }
@@ -51,6 +65,9 @@ const CSS = `
   @keyframes tokBreath { 0%,100%{transform:scale(1,1)} 50%{transform:scale(1.04,.96)} }
   @keyframes tokBounce { 0%,100%{transform:translateY(0) scale(1.06,.94)} 45%{transform:translateY(-.22px) scale(.96,1.06)} }
   @keyframes tokDance { 0%,100%{transform:translateY(0) rotate(-10deg) scale(1.08,.92)} 50%{transform:translateY(-.3px) rotate(10deg) scale(.94,1.08)} }
+  @keyframes idleSpin { to { transform: rotate(360deg) } }
+  @keyframes idlePulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.14)} }
+  @keyframes idleWobble { 0%,100%{transform:rotate(-8deg)} 50%{transform:rotate(8deg)} }
   @keyframes tokPulse { 0%,100%{transform:scale(1);opacity:.95} 50%{transform:scale(1.3);opacity:.35} }
   @keyframes burst { from{transform:translate(0,0) scale(1);opacity:1} to{transform:translate(var(--dx),var(--dy)) scale(.2);opacity:0} }
   @keyframes dust { from{transform:translate(0,.2px) scale(.6);opacity:.7} to{transform:translate(var(--dx),var(--dy)) scale(1.5);opacity:0} }
@@ -59,7 +76,7 @@ const CSS = `
   @keyframes twinkle { 0%,100%{transform:scale(1) rotate(0);opacity:1} 50%{transform:scale(1.25) rotate(14deg);opacity:.55} }
   @keyframes yardGlow { 0%,100%{opacity:.25} 50%{opacity:.85} }
   @keyframes banner { 0%{opacity:0;transform:scale(.6)} 15%{opacity:1;transform:scale(1.05)} 25%{transform:scale(1)} 80%{opacity:1} 100%{opacity:0} }
-  .reduce .tok-hop, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
+  .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
   .reduce .dust-dot, .reduce .shock, .reduce .ghost, .reduce .twinkle, .reduce .yard-glow, .reduce .banner { animation: none; }
   .reduce .banner { opacity: 0; }
   .tok-btn:focus-visible .focus-ring { stroke: #fff; stroke-width: .09; }
@@ -71,7 +88,7 @@ export default function Board2D({
 }: BoardProps) {
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
-  const tokenStyle = settings.tokenStyle;
+  const designs = useDesigns();
   const rotation = -90 * viewSeat;
   const playing = useMemo(() => new Set(state.players.map(p => p.seat)), [state.players]);
   const byToken = useMemo(() => optionsByToken(options), [options]);
@@ -100,7 +117,8 @@ export default function Board2D({
       } else if (before < FINISH && t.progress === FINISH) {
         fresh.push({ id: ++burstId.current, x: t.point.x, y: t.point.y, color: SEAT_INFO[t.seat].light, kind: "home" });
       } else if (t.progress !== before && t.progress >= 0 && t.progress < FINISH) {
-        fresh.push({ id: ++burstId.current, x: t.point.x, y: t.point.y + 0.3, color: "#CBD5E0", kind: "dust" });
+        const trail = designs[t.seat][t.token].trail;
+        if (trail !== "none") fresh.push({ id: ++burstId.current, x: t.point.x, y: t.point.y + 0.3, color: TRAIL_STYLE[trail].color, kind: trail });
       }
     }
     prev.current = next;
@@ -109,7 +127,7 @@ export default function Board2D({
     const ids = new Set(fresh.map(f => f.id));
     const timer = setTimeout(() => setBursts(b => b.filter(x => !ids.has(x.id))), 1000);
     return () => clearTimeout(timer);
-  }, [tokens]);
+  }, [tokens, designs]);
 
   const placed = useMemo(() => {
     const movableLast = (t: TokenView) => (t.seat === interactiveSeat && byToken.has(t.token) ? 1 : 0);
@@ -231,6 +249,7 @@ export default function Board2D({
           const opts = isMine ? byToken.get(t.token) : undefined;
           const movable = !!opts?.length;
           const info = SEAT_INFO[t.seat];
+          const design = resolveDesign(designs[t.seat][t.token], t.seat);
           const label = `${info.name} token ${t.token + 1}, ${
             t.progress === YARD ? "in the yard" : t.progress === FINISH ? "home" : t.progress >= 51 ? "on the home column" : "on the board"
           }${movable ? `, can move ${opts!.map(o => o.die).join(" or ")}` : ""}`;
@@ -251,14 +270,13 @@ export default function Board2D({
               <g transform={`scale(${t.scale})`}>
                 {movable && hints && <circle className="tok-pulse" r={0.55} fill="#fff" fillOpacity={0.55} />}
                 {movable && <circle r={0.72} fill="transparent" />}
-                <g className={movable ? "tok-bounce" : "tok-idle"} style={{ animationDelay: `${(t.token * 0.4 + t.seat * 0.2).toFixed(1)}s` }}>
+                <g className={movable ? "tok-bounce" : IDLE_CLASS[design.idle]} style={{ animationDelay: `${(t.token * 0.4 + t.seat * 0.2).toFixed(1)}s` }}>
                 <g key={t.progress} className={
                   state.winner === t.seat && t.progress === FINISH ? "tok-dance"
                     : t.progress === YARD ? "tok-spin" : "tok-hop"
                 }>
-                  <ellipse cy={0.3} rx={0.34} ry={0.12} fill="#000" fillOpacity={0.25} />
-                  <circle className="focus-ring" r={0.38} fill={tokenStyle === "glossy" ? `url(#tok-${t.seat})` : tokenStyle === "ring" ? "#0F172A" : info.main} stroke={tokenStyle === "ring" ? info.light : "#fff"} strokeOpacity={movable ? 1 : 0.85} strokeWidth={tokenStyle === "ring" ? 0.14 : movable ? 0.09 : 0.06} />
-                  {tokenStyle === "glossy" && <circle cx={-0.12} cy={-0.14} r={0.1} fill="#fff" fillOpacity={0.6} />}
+                  <circle className="focus-ring" r={0.44} fill="none" stroke="transparent" strokeWidth={0.06} />
+                  <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} /></g>
                   {symbols && (
                     <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.4} fontWeight={800} fill="#fff"
                       transform={`rotate(${-rotation})`} aria-hidden>{info.glyph}</text>
@@ -272,15 +290,19 @@ export default function Board2D({
         {bursts.map(b => (
           <g key={b.id} transform={`translate(${b.x} ${b.y})`} aria-hidden>
             {b.kind === "capture" && <circle className="shock" fill="none" stroke="#FACC15" r={0.2} />}
-            {Array.from({ length: b.kind === "capture" ? 12 : b.kind === "home" ? 8 : 5 }, (_, i) => {
-              const count = b.kind === "capture" ? 12 : b.kind === "home" ? 8 : 5;
+            {Array.from({ length: b.kind === "capture" ? 12 : b.kind === "home" ? 8 : TRAIL_STYLE[b.kind].n }, (_, i) => {
+              const trail = b.kind === "capture" || b.kind === "home" ? null : TRAIL_STYLE[b.kind];
+              const count = b.kind === "capture" ? 12 : b.kind === "home" ? 8 : trail!.n;
               const a = (i / count) * Math.PI * 2;
-              const d = b.kind === "capture" ? 1.6 : b.kind === "home" ? 1.1 : 0.55;
-              const dust = b.kind === "dust";
+              const d = b.kind === "capture" ? 1.6 : b.kind === "home" ? 1.1 : trail!.d;
+              const rise = trail?.rise;
+              const dx = Math.cos(a) * d * (rise ? 0.5 : 1);
+              const dy = rise ? -d * (0.6 + (i % 3) * 0.25) : trail ? -Math.abs(Math.sin(a)) * d * 0.5 : Math.sin(a) * d;
               return (
-                <circle key={i} className={dust ? "dust-dot" : "burst-dot"} r={dust ? 0.07 : b.kind === "capture" ? 0.13 : 0.1}
-                  fill={dust ? b.color : i % 2 ? b.color : "#fff"}
-                  style={{ "--dx": `${Math.cos(a) * d}px`, "--dy": `${dust ? -Math.abs(Math.sin(a)) * d * 0.5 : Math.sin(a) * d}px` } as React.CSSProperties} />
+                <circle key={i} className={trail && b.kind !== "sparkle" ? "dust-dot" : "burst-dot"} r={trail ? trail.r : b.kind === "capture" ? 0.13 : 0.1}
+                  fill={trail?.ring ? "none" : trail && b.kind !== "sparkle" ? b.color : i % 2 ? b.color : "#fff"}
+                  stroke={trail?.ring ? b.color : undefined} strokeWidth={trail?.ring ? 0.03 : undefined}
+                  style={{ "--dx": `${dx}px`, "--dy": `${dy}px` } as React.CSSProperties} />
               );
             })}
           </g>

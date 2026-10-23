@@ -4,7 +4,8 @@ import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
 } from "@chakra-ui/react";
-import { BOARD_THEMES, DEFAULT_SETTINGS, TOKEN_STYLES, useSettings, type Settings } from "@/lib/client/settings";
+import { BOARD_THEMES, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
+import Link from "next/link";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
 
@@ -57,10 +58,8 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 {BOARD_THEMES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
               </Select>
             </Row>
-            <Row label="Token style" hint="Flat board">
-              <Select w="120px" size="sm" value={s.tokenStyle} onChange={e => update({ tokenStyle: e.target.value as Settings["tokenStyle"] })} bg="gray.700">
-                {TOKEN_STYLES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
-              </Select>
+            <Row label="Pieces" hint="Shapes, colours, patterns, 2D and 3D">
+              <Button as={Link} href="/pieces" size="sm" colorScheme="teal">Piece maker</Button>
             </Row>
             <Row label="Animation speed">
               <Select w="120px" size="sm" value={s.speed} onChange={e => update({ speed: e.target.value as Settings["speed"] })} bg="gray.700">

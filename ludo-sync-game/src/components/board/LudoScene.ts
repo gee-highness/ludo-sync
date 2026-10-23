@@ -3,6 +3,8 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, type PlacedToken } from "./layout";
+import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
+import { buildPiece3D, type Built3D } from "./pieces3d";
 
 export interface SceneInput {
   tokens: PlacedToken[];
@@ -19,6 +21,8 @@ export interface SceneInput {
   reduceMotion: boolean;
   hopMs: number;
   camera: "tilt" | "top";
+  /** What each piece looks like, by seat then token. */
+  designs: Record<Seat, ResolvedDesign[]>;
 }
 
 export interface SceneOptions {
@@ -58,6 +62,15 @@ interface TokenObj {
   ring: THREE.Mesh | null;
   glyph: THREE.Sprite | null;
   phase: number;
+  designKey: string;
+  body: THREE.Object3D | null;
+  built: Built3D | null;
+  ownMaterials: THREE.Material[];
+  /** Set for flat standing pieces, which turn to face the camera. */
+  facing: THREE.Object3D | null;
+  idle: IdleId;
+  trail: TrailId;
+  size: number;
   /** 0..1, how squashed the token is right now (spring that settles after a landing). */
   squash: number;
   hover: number;
@@ -400,6 +413,49 @@ export class LudoScene {
 
   // ---- tokens ---------------------------------------------------------------------------------
 
+  /** Gives a token the look its design asks for, rebuilding only when the design actually changed. */
+  private applyDesign(obj: TokenObj, d: ResolvedDesign) {
+    const key = JSON.stringify(d);
+    if (obj.designKey === key) return;
+    obj.designKey = key;
+    if (obj.body) obj.holder.remove(obj.body);
+    obj.built?.dispose();
+    obj.built = null;
+    obj.ownMaterials.forEach(m => m.dispose());
+    obj.ownMaterials = [];
+    obj.idle = d.idle; obj.trail = d.trail; obj.size = d.size;
+    if (d.shape === "classic") {
+      const tpl = this.templates[obj.seat];
+      if (!tpl) return;
+      const body = tpl.clone(true);
+      body.traverse(c => {
+        const m = c as THREE.Mesh;
+        if (!m.isMesh) return;
+        const own = Array.isArray(m.material) ? m.material.map(x => x.clone()) : m.material.clone();
+        m.material = own;
+        (Array.isArray(own) ? own : [own]).forEach(x => {
+          obj.ownMaterials.push(x);
+          const std = x as THREE.MeshStandardMaterial;
+          if (!std.isMeshStandardMaterial) return;
+          std.color.set(d.primary);
+          std.emissive.set(d.glow ?? d.primary);
+          std.emissiveIntensity = d.glow ? 0.15 + 0.6 * d.glowStrength : 0.18;
+        });
+      });
+      body.position.set(0, this.templateLift[obj.seat] / TOKEN_SCALE, 0);
+      obj.holder.add(body);
+      obj.body = body;
+      obj.facing = null;
+    } else {
+      const built = buildPiece3D(d);
+      built.group.position.y = 0.02 / TOKEN_SCALE;
+      obj.holder.add(built.group);
+      obj.body = built.group;
+      obj.built = built;
+      obj.facing = built.facing;
+    }
+  }
+
   private ensureToken(p: PlacedToken): TokenObj | null {
     const key = tokenKey(p.seat, p.token);
     let obj = this.tokens.get(key);
@@ -407,10 +463,7 @@ export class LudoScene {
     const tpl = this.templates[p.seat];
     if (!tpl) return null;
     const root = new THREE.Group();
-    const body = tpl.clone(true);
-    body.position.set(0, this.templateLift[p.seat] / TOKEN_SCALE, 0);
     const holder = new THREE.Group();
-    holder.add(body);
     holder.scale.setScalar(TOKEN_SCALE);
     root.add(holder);
     const proxy = new THREE.Mesh(new THREE.SphereGeometry(0.78, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
@@ -422,9 +475,20 @@ export class LudoScene {
     obj = {
       root, holder, proxy, seat: p.seat, token: p.token, progress: p.progress, target, scaleTarget: p.scale, tween: null, ring: null, glyph: null,
       phase: Math.random() * TAU, squash: 0, hover: 0, cheerUntil: 0,
+      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1,
     };
     this.tokens.set(key, obj);
     return obj;
+  }
+
+  private emitTrail(obj: TokenObj) {
+    const at = obj.root.position;
+    switch (obj.trail) {
+      case "sparkle": this.emit(at, 2, Math.random() < 0.5 ? 0xfacc15 : 0xffffff, { spread: 0.8, up: 0.6, life: 0.6, gravity: 0.5, y: 0.3 }); break;
+      case "ember": this.emit(at, 2, 0xfb923c, { spread: 0.4, up: 1.4, life: 0.7, gravity: -0.4, y: 0.2 }); break;
+      case "bubbles": this.emit(at, 1, 0x7dd3fc, { spread: 0.5, up: 1.1, life: 0.9, gravity: -0.3, y: 0.3 }); break;
+      default: this.emit(at, 1, hex(SEAT_INFO[obj.seat].light), { spread: 0.5, up: 0.4, life: 0.45, gravity: 1, y: 0.15 });
+    }
   }
 
   update(input: SceneInput) {
@@ -444,6 +508,7 @@ export class LudoScene {
     for (const p of input.tokens) {
       const obj = this.ensureToken(p);
       if (!obj) continue;
+      this.applyDesign(obj, input.designs[p.seat][p.token]);
       seen.add(tokenKey(p.seat, p.token));
       const target = toWorld(p.at);
       if (!obj.target.equals(target)) {
@@ -593,7 +658,7 @@ export class LudoScene {
         obj.root.position.y += arc;
         stretch = Math.sin(k * Math.PI) * (calm ? 0 : tw.kind === "hop" ? 0.22 : 0.3);
         spinY = tw.turns * TAU * e;
-        if (!calm && this.high && k < 1) this.emit(obj.root.position, 1, hex(SEAT_INFO[obj.seat].light), { spread: 0.5, up: 0.4, life: 0.45, gravity: 1, y: 0.15 });
+        if (!calm && this.high && k < 1 && obj.trail !== "none") this.emitTrail(obj);
         if (k >= 1) {
           obj.root.position.copy(tw.to);
           obj.tween = null;
@@ -622,13 +687,24 @@ export class LudoScene {
       if (winner === obj.seat && !calm) bounce = Math.abs(Math.sin(t * 4.2 + obj.token * 0.9)) * 0.95;
       if (now < obj.cheerUntil && !calm) bounce = Math.max(bounce, Math.abs(Math.sin(t * 9)) * 0.55);
 
-      const breathe = lively && !tw ? Math.sin(t * 2.2 + obj.phase) * 0.03 : 0;
+      const idleOn = lively && !tw;
+      const breathe = idleOn && obj.idle === "breathe" ? Math.sin(t * 2.2 + obj.phase) * 0.03 : 0;
+      let tilt = 0, grow = 1;
+      if (idleOn) {
+        if (obj.idle === "bounce") { bounce = Math.max(bounce, Math.abs(Math.sin(t * 2.4 + obj.phase)) * 0.4); animating = true; }
+        else if (obj.idle === "spin") { spinY += t * 1.5 + obj.phase; animating = true; }
+        else if (obj.idle === "pulse") { grow = 1 + Math.sin(t * 3.4 + obj.phase) * 0.09; animating = true; }
+        else if (obj.idle === "wobble") { tilt = Math.sin(t * 3 + obj.phase) * 0.14; animating = true; }
+      }
       const sq = obj.squash;
       const sy = 1 - 0.3 * sq + stretch + breathe;
       const sxz = 1 + 0.24 * sq - stretch * 0.45 - breathe * 0.5;
-      obj.holder.scale.set(TOKEN_SCALE * sxz, TOKEN_SCALE * sy, TOKEN_SCALE * sxz);
+      const k = TOKEN_SCALE * obj.size * grow;
+      obj.holder.scale.set(k * sxz, k * sy, k * sxz);
       obj.holder.rotation.y = spinY;
+      obj.holder.rotation.z = tilt;
       obj.holder.position.y = lift + bounce;
+      if (obj.facing) obj.facing.rotation.y = -this.world.rotation.y;
 
       const s = obj.root.scale.x + (obj.scaleTarget - obj.root.scale.x) * Math.min(1, dt * 14);
       if (Math.abs(s - obj.scaleTarget) > 0.002) { animating = true; obj.root.scale.setScalar(s); } else obj.root.scale.setScalar(obj.scaleTarget);

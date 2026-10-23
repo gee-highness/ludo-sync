@@ -2,7 +2,8 @@
 
 import { Box } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef } from "react";
-import { SEAT_INFO } from "@/lib/ludo/board";
+import { SEAT_INFO, SEATS, type Seat } from "@/lib/ludo/board";
+import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
 import { LudoScene, type SceneInput } from "./LudoScene";
 import { placeTokens, seatTokens } from "./layout";
 import type { BoardProps } from "./types";
@@ -23,13 +24,18 @@ export default function Board3D(props: Board3DProps) {
   const cb = useRef(props);
   cb.current = props;
 
+  const designs = useDesigns();
+  const resolved = useMemo(
+    () => Object.fromEntries(SEATS.map(s => [s, designs[s].map(d => resolveDesign(d, s))])) as Record<Seat, ResolvedDesign[]>,
+    [designs],
+  );
   const interactiveSeat = options.length ? state.players[state.turn].seat : null;
   const input: SceneInput = useMemo(() => ({
     tokens: placeTokens(seatTokens(state)),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera,
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera]);
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved,
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

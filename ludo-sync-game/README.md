@@ -45,6 +45,18 @@ Terra-style: the host shows a room code, QR code and share link; guests join by 
 
 The Three.js board is a dynamic import, shown only when WebGL2 exists. Devices with 2 or fewer cores, 2 GB or less memory, Save-Data or reduced motion default to the 2D board; an FPS watchdog lowers 3D quality, then drops to 2D. Models are served immutable.
 
-## Tycoon mode (planned)
+## Tycoon mode
+Switch it on in the rules. The Ludo ring becomes a property board: buy squares, collect rent (doubled on a full colour
+set), build up to three levels, draw Chance and Community Chest cards, and pay tax. Entering the board, getting home and
+capturing all move money; a player who cannot pay sells buildings and squares at half price, then goes bankrupt.
+Tycoon always plays on the flat board. Every number is tunable in the rules editor. Code: `src/lib/ludo/tycoon.ts`.
 
-A setup option adding a Monopoly-style economy to the same engine: buy properties on ring squares, pay rent, build on full sets, Chance on stars, tax and stations, start money $1500. See `docs/PLAN.md`.
+## Customisation
+- **Rules:** `src/lib/ludo/tuning.ts` lists every tunable (entry roll, exact finish, sixes, tokens to win, Tycoon cash, rent, tax and more),
+  seven built-in presets, and your own saved presets. `RulesEditor` is shared by local setup and the online lobby.
+- **Board themes:** five palettes for the flat board, in Settings.
+- **Piece maker (`/pieces`):** every one of the 16 pieces (4 colours x 4 tokens) has its own design: 18 shapes, two colours,
+  eight patterns, four finishes, outline, glow, a letter or emoji mark, size, 3D depth, base, idle animation and move trail.
+  Designs render on the flat board (`PieceShape.tsx`) and the 3D board (`pieces3d.ts`) from one definition
+  (`src/lib/client/pieces.ts`, `pieceShapes.ts`). Eight packs, randomise, copy, reset, and export/import as text.
+  Designs live on this device; opponents online currently see your pieces as you set them for their colour.
