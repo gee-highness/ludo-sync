@@ -2,45 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  FINISH, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Point, type Seat,
+  FINISH, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat,
 } from "@/lib/ludo/board";
-import type { GameState, MoveOption } from "@/lib/ludo/types";
+import type { MoveOption } from "@/lib/ludo/types";
 import type { BoardProps } from "./types";
+import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
 const INACTIVE = "#4A5568";
 
 interface Burst { id: number; x: number; y: number; color: string; big: boolean }
-interface TokenView { seat: Seat; token: number; progress: number; point: Point; color: string }
-
-/** Offsets for tokens sharing a square, so none is hidden. */
-const STACK: Record<number, Point[]> = {
-  1: [{ x: 0, y: 0 }],
-  2: [{ x: -0.2, y: 0 }, { x: 0.2, y: 0 }],
-  3: [{ x: -0.2, y: 0.14 }, { x: 0.2, y: 0.14 }, { x: 0, y: -0.2 }],
-  4: [{ x: -0.2, y: -0.2 }, { x: 0.2, y: -0.2 }, { x: -0.2, y: 0.2 }, { x: 0.2, y: 0.2 }],
-};
-const stackOffset = (index: number, count: number): Point => {
-  if (count <= 4) return STACK[count][index];
-  const a = (index / count) * Math.PI * 2;
-  return { x: Math.cos(a) * 0.28, y: Math.sin(a) * 0.28 };
-};
-const stackScale = (count: number) => (count === 1 ? 1 : count <= 2 ? 0.72 : count <= 4 ? 0.62 : 0.5);
-
-const tokenKey = (seat: Seat, token: number) => `${seat}-${token}`;
 
 const optionsByToken = (options: MoveOption[]) => {
   const map = new Map<number, MoveOption[]>();
   for (const o of options) map.set(o.token, [...(map.get(o.token) ?? []), o]);
   return map;
 };
-
-const seatTokens = (state: GameState): TokenView[] =>
-  state.players.flatMap(p =>
-    p.tokens.map((progress, token) => ({
-      seat: p.seat, token, progress, point: pointOf(p.seat, token, progress), color: SEAT_INFO[p.seat].main,
-    })),
-  );
 
 const CSS = `
   .tok { transition: transform var(--hop) linear; }
@@ -96,23 +73,9 @@ export default function Board2D({
     return () => clearTimeout(timer);
   }, [tokens]);
 
-  // group tokens sharing a square for stacking
   const placed = useMemo(() => {
-    const groups = new Map<string, TokenView[]>();
-    for (const t of tokens) {
-      const key = `${t.point.x.toFixed(2)},${t.point.y.toFixed(2)}`;
-      groups.set(key, [...(groups.get(key) ?? []), t]);
-    }
-    const out: (TokenView & { at: Point; scale: number })[] = [];
-    for (const group of groups.values()) {
-      group.forEach((t, i) => {
-        const off = t.progress === YARD || t.progress === FINISH ? { x: 0, y: 0 } : stackOffset(i, group.length);
-        const scale = t.progress === YARD || t.progress === FINISH ? 1 : stackScale(group.length);
-        out.push({ ...t, at: { x: t.point.x + off.x, y: t.point.y + off.y }, scale });
-      });
-    }
     const movableLast = (t: TokenView) => (t.seat === interactiveSeat && byToken.has(t.token) ? 1 : 0);
-    return out.sort((a, b) => movableLast(a) - movableLast(b));
+    return placeTokens(tokens).sort((x, y) => movableLast(x) - movableLast(y));
   }, [tokens, interactiveSeat, byToken]);
 
   const cells: React.ReactNode[] = [];

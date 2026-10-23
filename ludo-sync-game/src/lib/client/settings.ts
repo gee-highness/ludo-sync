@@ -6,6 +6,7 @@ export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type QualityPref = "auto" | "high" | "low";
+export type CameraPref = "tilt" | "top";
 
 export interface Settings {
   sound: boolean;
@@ -13,6 +14,8 @@ export interface Settings {
   haptics: boolean;
   renderer: RendererPref;
   quality: QualityPref;
+  /** 3D camera angle. */
+  camera: CameraPref;
   speed: SpeedPref;
   motion: MotionPref;
   /** Draw a shape on each token so colours are never the only cue. */
@@ -35,6 +38,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   haptics: true,
   renderer: "auto",
   quality: "auto",
+  camera: "tilt",
   speed: "normal",
   motion: "auto",
   symbols: false,
@@ -62,6 +66,7 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     haptics: bool(r.haptics, d.haptics),
     renderer: oneOf(r.renderer, ["auto", "3d", "2d"], d.renderer),
     quality: oneOf(r.quality, ["auto", "high", "low"], d.quality),
+    camera: oneOf(r.camera, ["tilt", "top"], d.camera),
     speed: oneOf(r.speed, ["normal", "fast", "instant"], d.speed),
     motion: oneOf(r.motion, ["auto", "reduce", "full"], d.motion),
     symbols: bool(r.symbols, d.symbols),

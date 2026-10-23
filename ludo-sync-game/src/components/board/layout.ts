@@ -1,0 +1,60 @@
+import { FINISH, SEAT_INFO, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
+import type { GameState } from "@/lib/ludo/types";
+
+export interface TokenView {
+  seat: Seat;
+  token: number;
+  progress: number;
+  /** Centre of the square (or yard slot) the token is on. */
+  point: Point;
+  color: string;
+}
+
+export interface PlacedToken extends TokenView {
+  /** Where to draw it, nudged so tokens sharing a square stay visible. */
+  at: Point;
+  scale: number;
+}
+
+/** Offsets for tokens sharing a square, so none is hidden. */
+const STACK: Record<number, Point[]> = {
+  1: [{ x: 0, y: 0 }],
+  2: [{ x: -0.2, y: 0 }, { x: 0.2, y: 0 }],
+  3: [{ x: -0.2, y: 0.14 }, { x: 0.2, y: 0.14 }, { x: 0, y: -0.2 }],
+  4: [{ x: -0.2, y: -0.2 }, { x: 0.2, y: -0.2 }, { x: -0.2, y: 0.2 }, { x: 0.2, y: 0.2 }],
+};
+
+export const stackOffset = (index: number, count: number): Point => {
+  if (count <= 4) return STACK[count][index];
+  const a = (index / count) * Math.PI * 2;
+  return { x: Math.cos(a) * 0.28, y: Math.sin(a) * 0.28 };
+};
+
+export const stackScale = (count: number) => (count === 1 ? 1 : count <= 2 ? 0.72 : count <= 4 ? 0.62 : 0.5);
+
+export const tokenKey = (seat: Seat, token: number) => `${seat}-${token}`;
+
+export const seatTokens = (state: GameState): TokenView[] =>
+  state.players.flatMap(p =>
+    p.tokens.map((progress, token) => ({
+      seat: p.seat, token, progress, point: pointOf(p.seat, token, progress), color: SEAT_INFO[p.seat].main,
+    })),
+  );
+
+/** Every token's drawing position, with squares shared by several tokens fanned out. */
+export const placeTokens = (tokens: TokenView[]): PlacedToken[] => {
+  const groups = new Map<string, TokenView[]>();
+  for (const t of tokens) {
+    const key = `${t.point.x.toFixed(2)},${t.point.y.toFixed(2)}`;
+    groups.set(key, [...(groups.get(key) ?? []), t]);
+  }
+  const out: PlacedToken[] = [];
+  for (const group of groups.values()) {
+    group.forEach((t, i) => {
+      const fixed = t.progress === YARD || t.progress === FINISH;
+      const off = fixed ? { x: 0, y: 0 } : stackOffset(i, group.length);
+      out.push({ ...t, at: { x: t.point.x + off.x, y: t.point.y + off.y }, scale: fixed ? 1 : stackScale(group.length) });
+    });
+  }
+  return out;
+};
