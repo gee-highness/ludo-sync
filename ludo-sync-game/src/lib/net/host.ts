@@ -1,0 +1,442 @@
+import { SEAT_INFO, SEATS, type Seat } from "../ludo/board";
+import { autoAction } from "../ludo/bot";
+import { applyAction, createGame, currentPlayer } from "../ludo/engine";
+import { freshSeed } from "../ludo/rng";
+import { DEFAULT_RULES, type Action, type BotLevel, type GameEvent, type GameState, type PlayerSetup, type Rules } from "../ludo/types";
+import { FrameBus } from "../client/frames";
+import { newRoomCode } from "./crypto";
+import { PROTOCOL, ROOM_ID_PREFIX, cleanText, parseClientMsg, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
+import { SecureChannel } from "./secure";
+import { TransportError, type Endpoint, type Link, type Network } from "./transport";
+
+export const HOST_ID = "host";
+const MAX_MEMBERS = 12;
+/** How long a seat whose owner is offline gets before a bot-style auto-play takes their turn. */
+export const AWAY_GRACE_MS = 8_000;
+export const DEFAULT_TURN_MS = 45_000;
+
+type Slot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
+
+interface Member {
+  id: string;
+  name: string;
+  host: boolean;
+  chan: SecureChannel | null;
+  check: string;
+  lastReact: number;
+}
+
+export interface MemberView { id: string; name: string; seat: Seat | null; connected: boolean; check: string; host: boolean }
+export type HostStatus = "opening" | "ready" | "error" | "closed";
+
+export interface HostSnapshot {
+  status: HostStatus;
+  error?: string;
+  /** False while the pairing service cannot be reached; people already connected keep playing. */
+  online: boolean;
+  code: string;
+  room: RoomView;
+  members: MemberView[];
+}
+
+export interface Reaction { seat: Seat | null; name: string; emoji: string; id: number }
+
+export interface HostOptions {
+  network: Network;
+  name: string;
+  rules?: Rules;
+  turnMs?: number;
+  now?: () => number;
+  code?: string;
+}
+
+/**
+ * The authoritative side of a room. Guests only ask; the host checks seat and phase, applies the move with the
+ * engine, and tells everybody. Bots and AFK players are played from here too.
+ */
+export class HostSession {
+  readonly bus = new FrameBus();
+  private endpoint?: Endpoint;
+  private members = new Map<string, Member>();
+  private banned = new Set<string>();
+  private slots: Slot[] = SEATS.map(() => ({ kind: "empty" }));
+  private phase: "lobby" | "playing" = "lobby";
+  private state: GameState | null = null;
+  private gameId = 0;
+  private n = 0;
+  private rules: Rules;
+  private turnMs: number;
+  private now: () => number;
+  private lastActionAt = 0;
+  private status: HostStatus = "opening";
+  private error?: string;
+  private online = true;
+  private reactionId = 0;
+  private listeners = new Set<(s: HostSnapshot) => void>();
+  private reactionListeners = new Set<(r: Reaction) => void>();
+  private snapshot!: HostSnapshot;
+  code: string;
+
+  constructor(private opts: HostOptions) {
+    this.rules = { ...(opts.rules ?? DEFAULT_RULES) };
+    this.turnMs = opts.turnMs ?? DEFAULT_TURN_MS;
+    this.now = opts.now ?? Date.now;
+    this.code = opts.code ?? newRoomCode();
+    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0 });
+    this.slots[0] = { kind: "human", id: HOST_ID };
+    this.refresh();
+  }
+
+  // ---- lifecycle ---------------------------------------------------------------------------
+
+  async open(): Promise<void> {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const endpoint = await this.opts.network.open(ROOM_ID_PREFIX + this.code);
+        if (this.status === "closed") { endpoint.close(); return; }
+        this.endpoint = endpoint;
+        endpoint.onIncoming(link => this.accept(link));
+        endpoint.onStatus(s => { this.online = s === "open"; if (s === "closed" && this.status === "ready") this.status = "closed"; this.refresh(); });
+        this.status = "ready";
+        this.refresh();
+        return;
+      } catch (e) {
+        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code) { this.code = newRoomCode(); continue; }
+        this.status = "error";
+        this.error = e instanceof TransportError && e.kind === "network"
+          ? "Could not reach the pairing service. Check your connection and try again."
+          : e instanceof TransportError && e.kind === "unavailable-id" ? "That room code is already in use." : "Could not open a room on this device.";
+        this.refresh();
+        return;
+      }
+    }
+  }
+
+  close() {
+    if (this.status === "closed") return;
+    for (const m of this.members.values()) { m.chan?.send({ t: "bye" } satisfies HostMsg); m.chan?.closeAfterSend(); }
+    this.status = "closed";
+    // give the goodbye a moment to leave before the endpoint goes
+    const endpoint = this.endpoint;
+    setTimeout(() => endpoint?.close(), 200);
+    this.refresh();
+  }
+
+  subscribe(cb: (s: HostSnapshot) => void): () => void {
+    this.listeners.add(cb);
+    return () => { this.listeners.delete(cb); };
+  }
+  onReaction(cb: (r: Reaction) => void): () => void {
+    this.reactionListeners.add(cb);
+    return () => { this.reactionListeners.delete(cb); };
+  }
+  getSnapshot(): HostSnapshot { return this.snapshot; }
+
+  // ---- connections -------------------------------------------------------------------------
+
+  private accept(link: Link) {
+    if (this.status !== "ready") { link.close(); return; }
+    const chan = new SecureChannel(link, "host");
+    let member: Member | null = null;
+    chan.onMessage(raw => {
+      const msg = parseClientMsg(raw);
+      if (!msg) return;
+      if (!member) {
+        if (msg.t !== "join") return chan.close();
+        member = this.join(chan, msg);
+        return;
+      }
+      if (member.chan !== chan) return; // superseded by a newer connection
+      this.handle(member, msg);
+    });
+    chan.onClose(() => {
+      if (member && member.chan === chan) { member.chan = null; this.refresh(); this.broadcastRooms(); }
+    });
+    chan.handshake().catch(() => chan.close());
+  }
+
+  private reject(chan: SecureChannel, reason: string) {
+    chan.send({ t: "error", reason } satisfies HostMsg);
+    chan.closeAfterSend();
+  }
+
+  private join(chan: SecureChannel, msg: Extract<ClientMsg, { t: "join" }>): Member | null {
+    if (msg.v !== PROTOCOL) { this.reject(chan, "version"); return null; }
+    if (this.banned.has(msg.id)) { this.reject(chan, "kicked"); return null; }
+    let m = this.members.get(msg.id);
+    if (m) {
+      const old = m.chan;
+      m.chan = chan;
+      m.name = msg.name;
+      old?.close();
+    } else {
+      if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
+      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0 };
+      this.members.set(msg.id, m);
+      if (this.phase === "lobby") {
+        const free = this.slots.findIndex(s => s.kind === "empty");
+        if (free >= 0) this.slots[free] = { kind: "human", id: m.id };
+      }
+    }
+    m.check = chan.check;
+    this.refresh();
+    this.broadcastRooms();
+    return m;
+  }
+
+  private handle(m: Member, msg: ClientMsg) {
+    switch (msg.t) {
+      case "act": {
+        const err = this.actFrom(m, msg.action);
+        if (err) m.chan?.send({ t: "reject", reason: err } satisfies HostMsg);
+        break;
+      }
+      case "name":
+        m.name = msg.name;
+        this.refresh();
+        this.broadcastRooms();
+        break;
+      case "seat": this.claimSeat(m, msg.seat); break;
+      case "react": this.react(m, msg.emoji); break;
+      case "sync": m.chan?.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg); break;
+      case "bye": this.leave(m); break;
+      case "join": break;
+    }
+  }
+
+  // ---- seats -------------------------------------------------------------------------------
+
+  private seatOf(id: string): Seat | null {
+    const i = this.slots.findIndex(s => s.kind === "human" && s.id === id);
+    return i < 0 ? null : (i as Seat);
+  }
+
+  private claimSeat(m: Member, seat: Seat) {
+    if (this.phase !== "lobby" || this.slots[seat].kind !== "empty") return;
+    const old = this.seatOf(m.id);
+    if (old !== null) this.slots[old] = { kind: "empty" };
+    this.slots[seat] = { kind: "human", id: m.id };
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  /** Host only, in the lobby: turn an open or bot seat into the other. */
+  setSlot(seat: Seat, kind: "empty" | "bot", level: BotLevel = "normal"): boolean {
+    if (this.phase !== "lobby" || this.slots[seat].kind === "human") return false;
+    this.slots[seat] = kind === "bot" ? { kind: "bot", level, name: `${SEAT_INFO[seat].name} bot` } : { kind: "empty" };
+    this.refresh();
+    this.broadcastRooms();
+    return true;
+  }
+
+  setRules(rules: Rules): boolean {
+    if (this.phase !== "lobby") return false;
+    this.rules = { ...rules };
+    this.refresh();
+    this.broadcastRooms();
+    return true;
+  }
+
+  setTurnMs(ms: number) {
+    this.turnMs = Math.max(0, Math.min(300_000, Math.floor(ms)));
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  setHostName(name: string) {
+    this.members.get(HOST_ID)!.name = cleanText(name, "Host");
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  kick(seat: Seat): boolean {
+    const slot = this.slots[seat];
+    if (slot.kind !== "human" || slot.id === HOST_ID) return false;
+    const m = this.members.get(slot.id);
+    if (!m) return false;
+    this.banned.add(m.id);
+    m.chan?.send({ t: "kicked" } satisfies HostMsg);
+    m.chan?.closeAfterSend();
+    this.remove(m);
+    return true;
+  }
+
+  /** A guest leaves on purpose: the seat frees up, or they forfeit a game in progress. */
+  private leave(m: Member) {
+    m.chan?.closeAfterSend();
+    this.remove(m);
+  }
+
+  private remove(m: Member) {
+    const seat = this.seatOf(m.id);
+    this.members.delete(m.id);
+    m.chan = null;
+    if (seat !== null) {
+      this.slots[seat] = { kind: "empty" };
+      if (this.phase === "playing" && this.state && this.state.phase !== "over" && this.state.players.some(p => p.seat === seat)) {
+        const r = applyAction(this.state, { type: "forfeit", seat });
+        if (r) this.commit(r.state, r.events);
+      }
+    }
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  // ---- playing -----------------------------------------------------------------------------
+
+  private setups(): PlayerSetup[] {
+    const out: PlayerSetup[] = [];
+    this.slots.forEach((s, i) => {
+      const seat = i as Seat;
+      if (s.kind === "human") out.push({ seat, name: this.members.get(s.id)?.name ?? `Player ${i + 1}`, kind: "human" });
+      else if (s.kind === "bot") out.push({ seat, name: s.name, kind: "bot", level: s.level });
+    });
+    return out;
+  }
+
+  canStart(): boolean {
+    return (this.phase === "lobby" || this.state?.phase === "over") && this.slots.filter(s => s.kind !== "empty").length >= 2;
+  }
+
+  /** Starts the first game, or a rematch once one has finished. */
+  start(): boolean {
+    if (!this.canStart()) return false;
+    this.state = createGame(this.setups(), this.rules, freshSeed());
+    this.phase = "playing";
+    this.gameId += 1;
+    this.n = 0;
+    this.lastActionAt = this.now();
+    this.bus.push(this.state, []);
+    this.refresh();
+    this.broadcastRooms();
+    return true;
+  }
+
+  rematch = () => this.start();
+
+  /** After a game: back to the waiting room, keeping everyone's seats. */
+  toLobby(): boolean {
+    if (this.phase !== "playing" || this.state?.phase !== "over") return false;
+    this.phase = "lobby";
+    this.state = null;
+    this.gameId += 1;
+    this.n = 0;
+    this.refresh();
+    this.broadcastRooms();
+    return true;
+  }
+
+  private commit(state: GameState, events: GameEvent[]) {
+    this.state = state;
+    this.n += 1;
+    this.lastActionAt = this.now();
+    this.bus.push(state, events);
+    const msg: HostMsg = { t: "frame", gameId: this.gameId, n: this.n, state, events };
+    for (const m of this.members.values()) if (m.chan?.established) m.chan.send(msg);
+    this.refresh();
+  }
+
+  /** Returns why an action was refused, or null once it has been applied. */
+  private actFrom(m: Member, action: Exclude<Action, { type: "forfeit" }>): string | null {
+    const s = this.state;
+    if (this.phase !== "playing" || !s) return "no-game";
+    if (s.phase === "over") return "game-over";
+    const seat = this.seatOf(m.id);
+    if (seat === null) return "spectator";
+    const cur = currentPlayer(s);
+    if (cur.seat !== seat || cur.kind !== "human") return "not-your-turn";
+    return this.applyNow(action);
+  }
+
+  private applyNow(action: Action): string | null {
+    if (!this.state) return "no-game";
+    const r = applyAction(this.state, action);
+    if (!r) return "illegal";
+    this.commit(r.state, r.events);
+    return null;
+  }
+
+  /** The host's own device: its own seat, plus bots (driven by the game screen). */
+  act = (action: Action): boolean => {
+    const s = this.state;
+    if (!s || s.phase === "over" || action.type === "forfeit") return false;
+    const cur = currentPlayer(s);
+    const mine = this.seatOf(HOST_ID);
+    if (!(cur.kind === "bot" || (cur.kind === "human" && cur.seat === mine))) return false;
+    return this.applyNow(action) === null;
+  };
+
+  /** Call about once a second: plays for people who are away or have run out of time. Returns true if it acted. */
+  tick(now: number = this.now()): boolean {
+    const s = this.state;
+    if (this.phase !== "playing" || !s || s.phase === "over") return false;
+    const cur = currentPlayer(s);
+    if (cur.kind !== "human" || cur.seat === this.seatOf(HOST_ID)) return false;
+    const slot = this.slots[cur.seat];
+    const m = slot.kind === "human" ? this.members.get(slot.id) : undefined;
+    const away = !m || !m.chan?.open;
+    const limit = away ? AWAY_GRACE_MS : this.turnMs;
+    if (limit <= 0 || now - this.lastActionAt < limit) return false;
+    const action = autoAction(s);
+    return action ? this.applyNow(action) === null : false;
+  }
+
+  // ---- reactions ---------------------------------------------------------------------------
+
+  private react(m: Member, emoji: string) {
+    const t = this.now();
+    if (t - m.lastReact < 700) return;
+    m.lastReact = t;
+    const seat = this.seatOf(m.id);
+    const msg: HostMsg = { t: "reaction", seat, name: m.name, emoji };
+    for (const o of this.members.values()) o.chan?.send(msg);
+    const r: Reaction = { seat, name: m.name, emoji, id: ++this.reactionId };
+    this.reactionListeners.forEach(cb => cb(r));
+  }
+
+  sendReaction(emoji: string) { this.react(this.members.get(HOST_ID)!, emoji); }
+
+  // ---- views -------------------------------------------------------------------------------
+
+  private slotViews(): SlotView[] {
+    return this.slots.map((s, i): SlotView => {
+      const seat = i as Seat;
+      if (s.kind === "empty") return { seat, kind: "empty" };
+      if (s.kind === "bot") return { seat, kind: "bot", name: s.name, level: s.level };
+      const m = this.members.get(s.id);
+      return { seat, kind: "human", name: m?.name ?? "Player", connected: !!m && (m.host || !!m.chan?.open), host: !!m?.host };
+    });
+  }
+
+  private roomFor(m: Member): RoomView {
+    const seated = new Set(this.slots.flatMap(s => (s.kind === "human" ? [s.id] : [])));
+    return {
+      code: this.code,
+      hostName: this.members.get(HOST_ID)!.name,
+      gameId: this.gameId,
+      phase: this.phase,
+      rules: this.rules,
+      turnMs: this.turnMs,
+      slots: this.slotViews(),
+      spectators: [...this.members.keys()].filter(id => !seated.has(id)).length,
+      you: { seat: this.seatOf(m.id) },
+      n: this.n,
+      state: this.state,
+    };
+  }
+
+  private broadcastRooms() {
+    for (const m of this.members.values()) if (m.chan?.established) m.chan.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg);
+  }
+
+  private refresh() {
+    const host = this.members.get(HOST_ID)!;
+    this.snapshot = {
+      status: this.status, error: this.error, online: this.online, code: this.code, room: this.roomFor(host),
+      members: [...this.members.values()].map(m => ({
+        id: m.id, name: m.name, seat: this.seatOf(m.id), connected: m.host || !!m.chan?.open, check: m.check, host: m.host,
+      })),
+    };
+    this.listeners.forEach(cb => cb(this.snapshot));
+  }
+}
