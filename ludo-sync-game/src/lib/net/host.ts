@@ -6,7 +6,7 @@ import { freshSeed } from "../ludo/rng";
 import { DEFAULT_RULES, type Action, type BotLevel, type GameEvent, type GameState, type PlayerSetup, type Rules } from "../ludo/types";
 import { FrameBus } from "../client/frames";
 import { newRoomCode } from "./crypto";
-import { PROTOCOL, ROOM_ID_PREFIX, cleanText, parseClientMsg, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
+import { CHAT_HISTORY, PROTOCOL, ROOM_ID_PREFIX, cleanChat, cleanText, parseClientMsg, type ChatItem, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
 import { SecureChannel } from "./secure";
 import { TransportError, type Endpoint, type Link, type Network } from "./transport";
 
@@ -15,6 +15,8 @@ const MAX_MEMBERS = 12;
 /** How long a seat whose owner is offline gets before a bot-style auto-play takes their turn. */
 export const AWAY_GRACE_MS = 8_000;
 export const DEFAULT_TURN_MS = 45_000;
+const CHAT_BURST = 5;
+const CHAT_WINDOW_MS = 5_000;
 
 type Slot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
 
@@ -26,6 +28,7 @@ interface Member {
   check: string;
   lastReact: number;
   pieces: PieceDesign[] | null;
+  chatAt: number[];
 }
 
 export interface MemberView { id: string; name: string; seat: Seat | null; connected: boolean; check: string; host: boolean }
@@ -39,6 +42,8 @@ export interface HostSnapshot {
   code: string;
   room: RoomView;
   members: MemberView[];
+  /** The last messages in the room's chat, oldest first. */
+  chat: ChatItem[];
 }
 
 export interface Reaction { seat: Seat | null; name: string; emoji: string; id: number }
@@ -74,6 +79,8 @@ export class HostSession {
   private error?: string;
   private online = true;
   private reactionId = 0;
+  private chat: ChatItem[] = [];
+  private chatId = 0;
   private listeners = new Set<(s: HostSnapshot) => void>();
   private reactionListeners = new Set<(r: Reaction) => void>();
   private snapshot!: HostSnapshot;
@@ -84,7 +91,7 @@ export class HostSession {
     this.turnMs = opts.turnMs ?? DEFAULT_TURN_MS;
     this.now = opts.now ?? Date.now;
     this.code = opts.code ?? newRoomCode();
-    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null });
+    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null, chatAt: [] });
     this.slots[0] = { kind: "human", id: HOST_ID };
     this.refresh();
   }
@@ -173,7 +180,7 @@ export class HostSession {
       old?.close();
     } else {
       if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
-      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null };
+      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null, chatAt: [] };
       this.members.set(msg.id, m);
       if (this.phase === "lobby") {
         const free = this.slots.findIndex(s => s.kind === "empty");
@@ -183,6 +190,7 @@ export class HostSession {
     m.check = chan.check;
     this.refresh();
     this.broadcastRooms();
+    chan.send({ t: "chatlog", items: this.chat } satisfies HostMsg);
     return m;
   }
 
@@ -205,7 +213,11 @@ export class HostSession {
         break;
       case "seat": this.claimSeat(m, msg.seat); break;
       case "react": this.react(m, msg.emoji); break;
-      case "sync": m.chan?.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg); break;
+      case "chat": this.postChat(m, msg.text); break;
+      case "sync":
+        m.chan?.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg);
+        m.chan?.send({ t: "chatlog", items: this.chat } satisfies HostMsg);
+        break;
       case "bye": this.leave(m); break;
       case "join": break;
     }
@@ -410,6 +422,30 @@ export class HostSession {
 
   sendReaction(emoji: string) { this.react(this.members.get(HOST_ID)!, emoji); }
 
+  // ---- chat --------------------------------------------------------------------------------
+
+  /** Cleans, rate-limits (5 messages per 5 seconds each) and shares one chat message. Extra messages are dropped silently. */
+  private postChat(m: Member, raw: string) {
+    const text = cleanChat(raw);
+    if (!text || !this.members.has(m.id)) return;
+    const t = this.now();
+    m.chatAt = m.chatAt.filter(x => t - x < CHAT_WINDOW_MS);
+    if (m.chatAt.length >= CHAT_BURST) return;
+    m.chatAt.push(t);
+    const item: ChatItem = { id: ++this.chatId, seat: this.seatOf(m.id), name: m.name, text, at: t };
+    this.chat = [...this.chat, item].slice(-CHAT_HISTORY);
+    const msg: HostMsg = { t: "chat", item };
+    for (const o of this.members.values()) if (o.chan?.established) o.chan.send(msg);
+    this.refresh();
+  }
+
+  /** The host's own message. Returns false if it was empty or sent too fast. */
+  sendChat(text: string): boolean {
+    const before = this.chatId;
+    this.postChat(this.members.get(HOST_ID)!, text);
+    return this.chatId !== before;
+  }
+
   // ---- views -------------------------------------------------------------------------------
 
   private slotViews(): SlotView[] {
@@ -447,6 +483,7 @@ export class HostSession {
     const host = this.members.get(HOST_ID)!;
     this.snapshot = {
       status: this.status, error: this.error, online: this.online, code: this.code, room: this.roomFor(host),
+      chat: this.chat,
       members: [...this.members.values()].map(m => ({
         id: m.id, name: m.name, seat: this.seatOf(m.id), connected: m.host || !!m.chan?.open, check: m.check, host: m.host,
       })),

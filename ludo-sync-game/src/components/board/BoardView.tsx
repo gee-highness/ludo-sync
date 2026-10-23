@@ -45,7 +45,7 @@ export default function BoardView(props: BoardProps & { renderer: "2d" | "3d" })
   const showing3d = use3d && ready;
   return (
     <Box position="relative" w="100%" h="100%">
-      <Box position="absolute" inset={0} visibility={showing3d ? "hidden" : "visible"}><Board2D {...board} /></Box>
+      <Box position="absolute" inset={0} display={showing3d ? "none" : "block"}>{!showing3d && <Board2D {...board} />}</Box>
       {use3d && (
         <Box position="absolute" inset={0} visibility={showing3d ? "visible" : "hidden"}>
           <Board3D {...board} camera={settings.camera} quality={quality} onReady={onReady} onFail={onFail} onSlow={onSlow} />

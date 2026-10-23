@@ -2,7 +2,7 @@ import type { PieceDesign } from "../client/pieces";
 import type { Seat } from "../ludo/board";
 import type { Action, GameState } from "../ludo/types";
 import { FrameBus } from "../client/frames";
-import { ROOM_ID_PREFIX, PROTOCOL, parseHostMsg, type ClientMsg, type RoomView } from "./protocol";
+import { CHAT_HISTORY, ROOM_ID_PREFIX, PROTOCOL, cleanChat, parseHostMsg, type ChatItem, type ClientMsg, type RoomView } from "./protocol";
 import { SecureChannel } from "./secure";
 import { TransportError, type Endpoint, type Network } from "./transport";
 import type { Reaction } from "./host";
@@ -26,6 +26,8 @@ export interface GuestSnapshot {
   state: GameState | null;
   /** Why the host last refused a move, if it did. */
   rejected?: string;
+  /** The last messages in the room's chat, oldest first. */
+  chat: ChatItem[];
 }
 
 export interface GuestOptions {
@@ -61,7 +63,7 @@ export class GuestClient {
   private chan?: SecureChannel;
   private gameId = -1;
   private n: number | null = null;
-  private snap: GuestSnapshot = { status: "connecting", room: null, check: "", state: null };
+  private snap: GuestSnapshot = { status: "connecting", room: null, check: "", state: null, chat: [] };
   private listeners = new Set<(s: GuestSnapshot) => void>();
   private reactionListeners = new Set<(r: Reaction) => void>();
   private stopped = false;
@@ -140,6 +142,10 @@ export class GuestClient {
         this.reactionListeners.forEach(cb => cb(r));
         break;
       }
+      case "chat":
+        if (!this.snap.chat.some(c => c.id === msg.item.id)) this.set({ chat: [...this.snap.chat, msg.item].slice(-CHAT_HISTORY) });
+        break;
+      case "chatlog": this.set({ chat: msg.items }); break;
       case "reject": this.set({ rejected: msg.reason }); break;
       case "kicked": this.finish({ status: "kicked" }); break;
       case "bye": this.finish({ status: "host-left" }); break;
@@ -185,6 +191,13 @@ export class GuestClient {
     return true;
   };
   react(emoji: string) { this.send({ t: "react", emoji }); }
+  /** Says something in the room's chat. The host cleans it and sends it to everyone, this device included. */
+  sendChat(text: string): boolean {
+    const clean = cleanChat(text);
+    if (!clean || this.snap.status !== "connected") return false;
+    this.send({ t: "chat", text: clean });
+    return true;
+  }
   rename(name: string) { this.send({ t: "name", name }); }
   /** Tells the room how this player's pieces look. */
   setPieces(designs: PieceDesign[]) { this.send({ t: "pieces", designs }); }

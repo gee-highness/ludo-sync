@@ -313,3 +313,73 @@ describe("piece designs", () => {
     expect(slot.kind === "human" && slot.pieces).toBeFalsy();
   });
 });
+
+describe("chat", () => {
+  const chatOf = (g: GuestClient) => g.getSnapshot().chat;
+
+  it("delivers a message to everyone, sender included, with the seat and name", async () => {
+    const { host, guests } = await setup({ guests: 2 });
+    expect(guests[0].sendChat("hello there")).toBe(true);
+    await until(() => chatOf(guests[0]).length === 1 && chatOf(guests[1]).length === 1 && host.getSnapshot().chat.length === 1, "everyone has it");
+    expect(chatOf(guests[1])[0]).toMatchObject({ text: "hello there", name: "Guest1", seat: 1 });
+    expect(host.getSnapshot().chat[0].text).toBe("hello there");
+    expect(host.sendChat("hi from the host")).toBe(true);
+    await until(() => chatOf(guests[1]).length === 2, "host message arrives");
+    expect(chatOf(guests[1])[1]).toMatchObject({ text: "hi from the host", seat: 0 });
+  });
+
+  it("sends the history to someone who joins late", async () => {
+    const { net, host } = await setup({ guests: 1 });
+    host.sendChat("one");
+    host.sendChat("two");
+    const late = new GuestClient({ network: net, code: "ABC234", name: "Late", clientId: newClientId(), retryDelays: [5, 5, 5] });
+    cleanup.push(() => late.leave());
+    void late.start();
+    await until(() => chatOf(late).length === 2, "history arrives");
+    expect(chatOf(late).map(c => c.text)).toEqual(["one", "two"]);
+  });
+
+  it("cleans messages: control characters, whitespace, empty and oversize", async () => {
+    const { host, guests } = await setup();
+    expect(guests[0].sendChat("   ")).toBe(false);
+    expect(guests[0].sendChat("a\u0000b\u0007\n\n  c\t d")).toBe(true);
+    await until(() => host.getSnapshot().chat.length === 1, "cleaned message");
+    expect(host.getSnapshot().chat[0].text).toBe("a b c d");
+    expect(host.sendChat("\u0001\u0002")).toBe(false);
+    expect(host.sendChat("x".repeat(500))).toBe(true);
+    expect(host.getSnapshot().chat[1].text).toHaveLength(200);
+  });
+
+  it("silently drops messages sent too fast", async () => {
+    let t = 1_000_000;
+    const { host, guests } = await setup({ now: () => t });
+    for (let i = 0; i < 8; i++) guests[0].sendChat(`m${i}`);
+    await until(() => host.getSnapshot().chat.length >= 5, "burst arrives");
+    await new Promise(r => setTimeout(r, 80));
+    expect(host.getSnapshot().chat).toHaveLength(5);
+    t += 6000;
+    guests[0].sendChat("later");
+    await until(() => host.getSnapshot().chat.length === 6, "allowed again");
+  });
+
+  it("lets a spectator chat, and keeps only the last 50", async () => {
+    let t = 2_000_000;
+    const { host, guests } = await setup({ guests: 4, now: () => t });
+    // seats 1-3 are taken by the first three guests, so the fourth only watches
+    expect(host.getSnapshot().members.find(m => m.name === "Guest4")?.seat).toBeNull();
+    guests[3].sendChat("watching from here");
+    await until(() => host.getSnapshot().chat.length === 1, "spectator message");
+    expect(host.getSnapshot().chat[0]).toMatchObject({ seat: null, name: "Guest4" });
+    for (let i = 0; i < 60; i++) { t += 1100; host.sendChat(`n${i}`); }
+    expect(host.getSnapshot().chat).toHaveLength(50);
+    expect(host.getSnapshot().chat[49].text).toBe("n59");
+  });
+
+  it("does not let a removed guest chat", async () => {
+    const { host, guests } = await setup();
+    host.kick(1);
+    await until(() => guests[0].getSnapshot().status === "kicked", "kicked");
+    expect(guests[0].sendChat("let me back")).toBe(false);
+    expect(host.getSnapshot().chat).toHaveLength(0);
+  });
+});

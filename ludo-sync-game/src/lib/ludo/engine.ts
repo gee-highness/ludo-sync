@@ -44,6 +44,8 @@ export const createGame = (setups: PlayerSetup[], rules: Rules = DEFAULT_RULES, 
 
 export const currentPlayer = (s: GameState): Player => s.players[s.turn];
 export const playerOf = (s: GameState, seat: Seat): Player | undefined => s.players.find(p => p.seat === seat);
+/** Score for display: one point per square each token has travelled, with a token's last step into the centre counting too. */
+export const pointsOf = (p: Player): number => p.tokens.reduce((sum, t) => sum + (t === YARD ? 0 : t + 1), 0);
 export const tokensHome = (p: Player) => p.tokens.filter(t => t === FINISH).length;
 
 /** Values the current player may spend: each die left, plus their sum when two different dice remain. */

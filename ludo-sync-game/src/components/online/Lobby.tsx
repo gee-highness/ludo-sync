@@ -9,6 +9,7 @@ import { formatRoomCode } from "@/lib/net/crypto";
 import { shareLink } from "@/lib/net/identity";
 import type { MemberView } from "@/lib/net/host";
 import type { RoomView } from "@/lib/net/protocol";
+import { ChatPanel, type ChatSource } from "./ChatPanel";
 
 const RULE_LABELS: Record<string, string> = {
   tycoon: "Tycoon mode",
@@ -45,6 +46,7 @@ interface Props {
   onClaim?: (seat: Seat) => void;
   /** Six digits the guest should match with the host's screen. */
   check?: string;
+  chat?: ChatSource;
 }
 
 export const ShareCard = ({ code }: { code: string }) => {
@@ -67,7 +69,7 @@ export const ShareCard = ({ code }: { code: string }) => {
   );
 };
 
-export const Lobby = ({ room, host, onClaim, check }: Props) => {
+export const Lobby = ({ room, host, onClaim, check, chat }: Props) => {
   const rules = room.rules;
   return (
     <VStack align="stretch" spacing={4} w="100%">
@@ -138,6 +140,13 @@ export const Lobby = ({ room, host, onClaim, check }: Props) => {
           ) : <Text fontSize="sm" color="gray.300">{TURN_CHOICES.find(c => c.ms === room.turnMs)?.label ?? `${room.turnMs / 1000}s`}</Text>}
         </HStack>
       </VStack>
+
+      {chat && (
+        <VStack align="stretch" spacing={2} as="section" aria-label="Chat">
+          <Text fontSize="xs" textTransform="uppercase" color="gray.400">Chat</Text>
+          <ChatPanel items={chat.items} onSend={chat.onSend} mySeat={room.you.seat} height="280px" />
+        </VStack>
+      )}
 
       {host ? (
         <Button colorScheme="teal" size="lg" isDisabled={!host.canStart} onClick={host.start}>

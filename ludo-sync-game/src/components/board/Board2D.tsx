@@ -14,6 +14,7 @@ import type { BoardProps } from "./types";
 import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
+const MAX_BURSTS = 16;
 const INACTIVE = "#4A5568";
 const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: number; rise: boolean; ring?: boolean }> = {
   dust: { color: "#CBD5E0", n: 5, d: 0.55, r: 0.07, rise: false },
@@ -102,6 +103,7 @@ export default function Board2D({
   const [bursts, setBursts] = useState<Burst[]>([]);
   const prev = useRef<Map<string, number>>(new Map());
   const burstId = useRef(0);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   const tokens = useMemo(() => seatTokens(state), [state]);
   const turnSeat = state.phase === "over" ? null : state.players[state.turn].seat;
@@ -128,11 +130,16 @@ export default function Board2D({
     }
     prev.current = next;
     if (!fresh.length) return;
-    setBursts(b => [...b, ...fresh]);
+    // keep a small cap so a fast game can never pile up particles, and let every burst expire on its own
+    setBursts(b => [...b, ...fresh].slice(-MAX_BURSTS));
     const ids = new Set(fresh.map(f => f.id));
-    const timer = setTimeout(() => setBursts(b => b.filter(x => !ids.has(x.id))), 1000);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => { timers.current.delete(timer); setBursts(b => b.filter(x => !ids.has(x.id))); }, 1000);
+    timers.current.add(timer);
   }, [tokens, designs]);
+  useEffect(() => {
+    const live = timers.current;
+    return () => { live.forEach(clearTimeout); live.clear(); };
+  }, []);
 
   const placed = useMemo(() => {
     const movableLast = (t: TokenView) => (t.seat === interactiveSeat && byToken.has(t.token) ? 1 : 0);

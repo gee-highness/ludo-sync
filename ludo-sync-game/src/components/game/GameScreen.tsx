@@ -20,6 +20,7 @@ import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/devi
 import { recordGame } from "@/lib/client/stats";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
+import { useSlowFrames } from "@/hooks/useSlowFrames";
 import BoardView from "../board/BoardView";
 import { Dice } from "../board/Dice";
 import { PlayerCard } from "./PlayerCard";
@@ -77,6 +78,7 @@ export default function GameScreen(props: GameScreenProps) {
   const renderer = state.rules.tycoon ? "2d" : resolveRenderer(settings.renderer, caps);
 
   useWakeLock(settings.keepAwake && state.phase !== "over");
+  const slowFrames = useSlowFrames(settings.scenery === "city" && !reduceMotion && renderer === "2d");
 
   useEffect(() => {
     const unlock = () => sound.unlock();
@@ -207,7 +209,7 @@ export default function GameScreen(props: GameScreenProps) {
       direction="column" h="100dvh" w="100%" bg="#10172E" color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
-      {settings.scenery === "city" && <CityBackdrop timeOfDay={settings.timeOfDay} calm={reduceMotion} />}
+      {settings.scenery === "city" && <CityBackdrop timeOfDay={settings.timeOfDay} calm={reduceMotion || !!caps?.lowPower || slowFrames} />}
       <HStack px={2} py={1.5} spacing={1} flexShrink={0}>
         <IconButton aria-label="Leave game" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={exit.onOpen} />
         <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>

@@ -57,3 +57,13 @@ describe("tuning", () => {
     expect(sameRules(DEFAULT_RULES, { ...DEFAULT_RULES, tuning: { entry: "six" } })).toBe(true);
   });
 });
+
+import { pointsOf } from "./engine";
+describe("points", () => {
+  it("counts one point per square travelled and zero in the yard", () => {
+    const g = createGame([{ seat: 0, name: "A", kind: "human" }, { seat: 1, name: "B", kind: "human" }], DEFAULT_RULES, 1);
+    const p = { ...g.players[0], tokens: [-1, 0, 10, 57] };
+    expect(pointsOf(p)).toBe(0 + 1 + 11 + 58);
+    expect(pointsOf(g.players[1])).toBe(0);
+  });
+});

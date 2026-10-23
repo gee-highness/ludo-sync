@@ -3,7 +3,7 @@
 import { Badge, Box, HStack, Text } from "@chakra-ui/react";
 import { FINISH, SEAT_INFO, YARD } from "@/lib/ludo/board";
 import type { Player } from "@/lib/ludo/types";
-import { tokensHome } from "@/lib/ludo/engine";
+import { pointsOf, tokensHome } from "@/lib/ludo/engine";
 
 interface Props {
   player: Player;
@@ -24,6 +24,7 @@ const LEVEL_LABEL = { easy: "Easy", normal: "Normal", hard: "Hard" } as const;
 export const PlayerCard = ({ player, current, isMe, symbols, compact, away, tag, cash }: Props) => {
   const info = SEAT_INFO[player.seat];
   const home = tokensHome(player);
+  const points = pointsOf(player);
   return (
     <HStack
       as="li" listStyleType="none" spacing={2} px={compact ? 2 : 3} py={compact ? 1.5 : 2} borderRadius="xl" minW={0}
@@ -41,7 +42,9 @@ export const PlayerCard = ({ player, current, isMe, symbols, compact, away, tag,
         <Text fontSize={compact ? "xs" : "sm"} fontWeight={700} noOfLines={1} color="white">
           {player.name}{isMe ? " (you)" : ""}
         </Text>
-        {cash !== undefined && <Text fontSize={compact ? "2xs" : "xs"} color="green.200" fontWeight={700}>${cash}</Text>}
+        <Text fontSize={compact ? "2xs" : "xs"} color="yellow.200" fontWeight={700} aria-label={`${points} points, ${home} of 4 tokens home`}>
+          {points} pts{cash !== undefined ? ` · $${cash}` : ""}
+        </Text>
         {!compact && (
           <HStack spacing={1} mt={0.5}>
             {player.kind === "bot" && <Badge colorScheme="gray" fontSize="2xs">Bot · {LEVEL_LABEL[player.level ?? "normal"]}</Badge>}

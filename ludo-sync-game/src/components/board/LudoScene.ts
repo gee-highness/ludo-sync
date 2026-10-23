@@ -157,7 +157,7 @@ export class LudoScene {
     const high = opts.quality === "high";
     this.high = high;
     this.renderer = new THREE.WebGLRenderer({ antialias: high, alpha: true, powerPreference: high ? "high-performance" : "low-power" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 2 : 1.5));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 1.5 : 1.25));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = high;
@@ -179,7 +179,7 @@ export class LudoScene {
     sun.position.set(5, 12, 7);
     if (high) {
       sun.castShadow = true;
-      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.mapSize.set(1024, 1024);
       sun.shadow.camera.left = -10; sun.shadow.camera.right = 10; sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
       sun.shadow.camera.near = 1; sun.shadow.camera.far = 40;
       sun.shadow.bias = -0.0005;
@@ -844,7 +844,7 @@ export class LudoScene {
     }
     for (const g of this.ghosts) if (g.visible && !calm) { g.position.y = 0.06 + Math.abs(Math.sin(t * 4)) * 0.12; ambient = true; }
 
-    const gap = this.high ? 33 : 50;
+    const gap = this.high ? (this.city ? 45 : 33) : 66;
     if (animating || now - this.lastAmbient >= gap || !ambient) {
       this.renderer.render(this.scene, this.camera);
       if (!animating) this.lastAmbient = now;

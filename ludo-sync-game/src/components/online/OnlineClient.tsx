@@ -51,6 +51,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
       <OnlineGame
         room={room} state={state} bus={session.bus} act={session.act} isHost onExit={onExit}
         onReaction={cb => session.onReaction(cb)} sendReaction={e => session.sendReaction(e)}
+        chat={{ items: snap.chat, onSend: t => session.sendChat(t) }}
         onRematch={state.phase === "over" ? session.rematch : undefined}
         note={snap.online ? undefined : "Pairing service offline"}
       />
@@ -64,6 +65,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
           setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r),
           setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members,
         }}
+        chat={{ items: snap.chat, onSend: t => session.sendChat(t) }}
       />
     </Shell>
   );
@@ -85,6 +87,7 @@ function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit:
       <OnlineGame
         room={room} state={snap.state} bus={client.bus} act={client.act} isHost={false} onExit={onExit}
         onReaction={cb => client.onReaction(cb)} sendReaction={e => client.react(e)}
+        chat={{ items: snap.chat, onSend: t => client.sendChat(t) }}
         note={snap.status === "reconnecting" ? "Reconnecting…" : undefined}
       />
     );
@@ -92,7 +95,7 @@ function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit:
   return (
     <Shell title={`${room.hostName}'s room`} onBack={onExit}>
       {snap.status === "reconnecting" && <Text color="orange.300">Reconnecting…</Text>}
-      <Lobby room={room} check={snap.check} onClaim={s => client.claimSeat(s)} />
+      <Lobby room={room} check={snap.check} onClaim={s => client.claimSeat(s)} chat={{ items: snap.chat, onSend: t => client.sendChat(t) }} />
     </Shell>
   );
 }

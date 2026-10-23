@@ -131,17 +131,18 @@ export function CityBackdrop({ timeOfDay, calm = false }: Props) {
   const lit = tod.lit;
   const night = timeOfDay === "night";
   const sunY = timeOfDay === "dusk" ? 455 : 120;
+  const layer = (children: React.ReactNode, animated = false) => (
+    <svg viewBox={`0 0 ${w} ${H}`} preserveAspectRatio="xMidYMax slice" width="100%" height="100%" className={animated && reduce ? "cb-calm" : undefined}
+      style={{ display: "block", position: "absolute", inset: 0, willChange: "transform", contain: "strict" }}>
+      {animated && <style>{CSS}</style>}
+      {children}
+    </svg>
+  );
+  // Four stacked layers, so that only the small moving ones repaint: sky, clouds, the static city, and traffic with signs.
   return (
     <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: -1, overflow: "hidden", pointerEvents: "none", background: tod.sky }}>
-      <svg viewBox={`0 0 ${w} ${H}`} preserveAspectRatio="xMidYMax slice" width="100%" height="100%" className={reduce ? "cb-calm" : undefined} style={{ display: "block" }}>
-        <style>{CSS}</style>
-        {tod.stars > 0 && (
-          <g fill="#fff" opacity={tod.stars}>
-            {[0, 1, 2].map(g => (
-              <g key={g} className={`cb-twinkle${g + 1}`}>{scene.stars.filter(s => s.g === g).map((s, i) => <circle key={i} cx={s.x} cy={s.y} r={s.r} />)}</g>
-            ))}
-          </g>
-        )}
+      {layer(<>
+        {tod.stars > 0 && <g fill="#fff" opacity={tod.stars}>{scene.stars.map((s, i) => <circle key={i} cx={s.x} cy={s.y} r={s.r} />)}</g>}
         {timeOfDay === "night" ? (
           <g>
             <circle cx={w * 0.78} cy={110} r={64} fill="#9DB4FF" opacity={0.12} />
@@ -154,22 +155,22 @@ export function CityBackdrop({ timeOfDay, calm = false }: Props) {
             <circle cx={w * (timeOfDay === "dusk" ? 0.28 : 0.8)} cy={sunY} r={timeOfDay === "dusk" ? 38 : 32} fill={timeOfDay === "dusk" ? "#FFD08A" : "#FFE98A"} />
           </g>
         )}
+      </>)}
+      {layer(
         <g fill={tod.clouds} opacity={tod.cloudOp}>
           {scene.clouds.map((c, i) => (
             <g key={i} className="cb-cloud" style={{ "--d": `${c.d}s`, "--delay": `${c.delay}s`, "--w": `${w + 300}px` } as React.CSSProperties}>
               <g transform={`translate(0 ${c.y}) scale(${c.scale})`}><ellipse cx={0} cy={0} rx={46} ry={13} /><ellipse cx={-22} cy={-8} rx={24} ry={12} /><ellipse cx={18} cy={-11} rx={28} ry={14} /></g>
             </g>
           ))}
-        </g>
-
+        </g>, true)}
+      {layer(<>
         <g fill={tod.far}>{scene.far.map((b, i) => <rect key={i} x={b.x} y={BASE - b.h} width={b.w} height={b.h} />)}</g>
         <g>
           {scene.mid.map((b, i) => (
             <g key={i}>
               <rect x={b.x} y={BASE - b.h} width={b.w} height={b.h} fill={tod.mid} />
-              <g className={b.g === 1 ? "cb-win1" : "cb-win2"}>
-                {b.wins.filter(x => x.on < lit).map((x, j) => <rect key={j} x={b.x + 7 + x.cx * 14} y={BASE - b.h + 12 + x.cy * 20} width={7} height={9} fill={x.c} />)}
-              </g>
+              {b.wins.filter(x => x.on < lit).map((x, j) => <rect key={j} x={b.x + 7 + x.cx * 14} y={BASE - b.h + 12 + x.cy * 20} width={7} height={9} fill={x.c} />)}
             </g>
           ))}
         </g>
@@ -180,28 +181,22 @@ export function CityBackdrop({ timeOfDay, calm = false }: Props) {
               <g key={i}>
                 <rect x={b.x} y={top} width={b.w} height={b.h} fill={tod.near} />
                 <rect x={b.x} y={top} width={b.w} height={4} fill="#000" opacity={0.25} />
-                <g className={b.g === 1 ? "cb-win1" : "cb-win2"}>
-                  {b.wins.filter(x => x.on < lit + 0.1).map((x, j) => <rect key={j} x={b.x + 9 + x.cx * 22} y={top + 14 + x.cy * 28} width={12} height={16} fill={x.c} />)}
-                </g>
+                {b.wins.filter(x => x.on < lit + 0.1).map((x, j) => <rect key={j} x={b.x + 9 + x.cx * 22} y={top + 14 + x.cy * 28} width={12} height={16} fill={x.c} />)}
                 {b.shop && (
                   <g>
                     <rect x={b.x + 8} y={BASE - 52} width={b.w - 16} height={52} fill="#FFC15E" opacity={0.15 + 0.7 * lit} />
                     <rect x={b.x + 14} y={BASE - 44} width={b.w - 28} height={44} fill="#FFE6A3" opacity={0.12 + 0.55 * lit} />
                     <path d={`M${b.x + 6} ${BASE - 52} h${b.w - 12} l-6 -12 h${-(b.w - 24)} z`} fill={b.awning} opacity={0.9} />
-                    <text x={b.x + b.w / 2} y={BASE - 74} textAnchor="middle" fontSize={14} fontWeight={800} fill={b.sign.color} opacity={tod.neon}
-                      className={i % 2 ? "cb-blink" : "cb-blink2"} style={{ filter: `drop-shadow(0 0 5px ${b.sign.color})`, letterSpacing: 1 }}>{b.sign.text}</text>
                   </g>
                 )}
               </g>
             );
           })}
         </g>
-
         <rect x={0} y={BASE} width={w} height={H - BASE} fill={tod.road} />
         <rect x={0} y={BASE} width={w} height={16} fill={tod.walk} />
         <rect x={0} y={BASE + 16} width={w} height={3} fill="#000" opacity={0.3} />
         <line x1={0} x2={w} y1={650} y2={650} stroke="#F2D96B" strokeOpacity={0.55} strokeWidth={2} strokeDasharray="26 22" />
-
         {scene.trees.map((x, i) => (
           <g key={i}>
             <rect x={x - 2.5} y={BASE - 26} width={5} height={30} fill="#3A2A22" />
@@ -216,18 +211,20 @@ export function CityBackdrop({ timeOfDay, calm = false }: Props) {
             <circle cx={x} cy={BASE - 64} r={5} fill={tod.lamp > 0 ? "#FFE9A8" : "#9AA3B8"} />
           </g>
         ))}
-
+      </>)}
+      {layer(<>
+        {scene.near.map((b, i) => b.shop && (
+          <text key={`sign${i}`} x={b.x + b.w / 2} y={BASE - 74} textAnchor="middle" fontSize={14} fontWeight={800} fill={b.sign.color} opacity={tod.neon}
+            className={i % 2 ? "cb-blink" : "cb-blink2"} style={{ letterSpacing: 1 }}>{b.sign.text}</text>
+        ))}
         {scene.people.map((p, i) => (
           <g key={i} className={p.dir ? "cb-walkL" : "cb-walkR"} style={{ "--d": `${p.d}s`, "--delay": `${p.delay}s`, "--w": `${w + 40}px` } as React.CSSProperties}>
-            <g className="cb-bob" style={{ animationDelay: `${-i * 0.2}s` }}>
-              <rect x={-4} y={BASE - 20} width={8} height={15} rx={3} fill={p.color} />
-              <circle cx={0} cy={BASE - 25} r={4.2} fill="#E8C7A0" />
-              {p.case_ && <rect x={p.dir ? -9 : 5} y={BASE - 10} width={6} height={5} fill="#7A4B2A" />}
-              {p.party && <circle cx={0} cy={BASE - 30} r={2} fill="#FFC145" />}
-            </g>
+            <rect x={-4} y={BASE - 20} width={8} height={15} rx={3} fill={p.color} />
+            <circle cx={0} cy={BASE - 25} r={4.2} fill="#E8C7A0" />
+            {p.case_ && <rect x={p.dir ? -9 : 5} y={BASE - 10} width={6} height={5} fill="#7A4B2A" />}
+            {p.party && <circle cx={0} cy={BASE - 30} r={2} fill="#FFC145" />}
           </g>
         ))}
-
         {scene.cars.map((c, i) => (
           <g key={i} className={c.lane ? "cb-carL" : "cb-carR"} style={{ "--d": `${c.d}s`, "--delay": `${c.delay}s`, "--w": `${w + 160}px` } as React.CSSProperties}>
             <g transform={`translate(0 ${c.lane ? 668 : 626})`}>
@@ -241,7 +238,7 @@ export function CityBackdrop({ timeOfDay, calm = false }: Props) {
             </g>
           </g>
         ))}
-      </svg>
+      </>, true)}
       {/* keeps white interface text readable over any time of day */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, rgba(8,12,28,.62) 0%, rgba(8,12,28,.12) 22%, rgba(8,12,28,0) 55%, rgba(8,12,28,.5) 100%)" }} />
     </div>

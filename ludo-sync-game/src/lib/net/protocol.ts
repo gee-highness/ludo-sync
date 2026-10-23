@@ -8,6 +8,17 @@ export const PROTOCOL = 1;
 export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏"] as const;
 export const ROOM_ID_PREFIX = "ludosync-";
 export const MAX_NAME = 20;
+export const MAX_CHAT = 200;
+export const CHAT_HISTORY = 50;
+
+export interface ChatItem { id: number; seat: Seat | null; name: string; text: string; at: number }
+
+/** Strips control characters, collapses whitespace and trims. Longer text is cut to MAX_CHAT characters; nothing left means null. */
+export const cleanChat = (v: unknown): string | null => {
+  if (typeof v !== "string") return null;
+  const text = [...v.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim()].slice(0, MAX_CHAT).join("").trim();
+  return text || null;
+};
 
 export type SlotView =
   | { seat: Seat; kind: "empty" }
@@ -40,6 +51,7 @@ export type ClientMsg =
   | { t: "react"; emoji: string }
   /** The sender's four piece designs, so everyone sees their pieces the way they made them. */
   | { t: "pieces"; designs: PieceDesign[] }
+  | { t: "chat"; text: string }
   | { t: "sync" }
   | { t: "bye" };
 
@@ -48,6 +60,8 @@ export type HostMsg =
   | { t: "room"; room: RoomView }
   | { t: "frame"; gameId: number; n: number; state: GameState; events: GameEvent[] }
   | { t: "reaction"; seat: Seat | null; name: string; emoji: string }
+  | { t: "chat"; item: ChatItem }
+  | { t: "chatlog"; items: ChatItem[] }
   | { t: "reject"; reason: string }
   | { t: "kicked" }
   | { t: "bye" }
@@ -82,6 +96,10 @@ export const parseClientMsg = (raw: unknown): ClientMsg | null => {
     case "pieces": {
       const designs = parsePieces(raw.designs);
       return designs ? { t: "pieces", designs } : null;
+    }
+    case "chat": {
+      const text = cleanChat(raw.text);
+      return text ? { t: "chat", text } : null;
     }
     case "sync": return { t: "sync" };
     case "bye": return { t: "bye" };
@@ -132,6 +150,14 @@ export const parseRoom = (raw: unknown): RoomView | null => {
   };
 };
 
+const parseChatItem = (v: unknown): ChatItem | null => {
+  if (!isObj(v)) return null;
+  const text = cleanChat(v.text);
+  const seat = v.seat === null ? null : typeof v.seat === "number" && Number.isInteger(v.seat) && v.seat >= 0 && v.seat <= 3 ? (v.seat as Seat) : undefined;
+  if (!text || seat === undefined || typeof v.id !== "number" || !Number.isInteger(v.id) || v.id < 0 || typeof v.at !== "number" || !Number.isFinite(v.at)) return null;
+  return { id: v.id, seat, name: cleanText(v.name, "?"), text, at: v.at };
+};
+
 export const parseHostMsg = (raw: unknown): HostMsg | null => {
   if (!isObj(raw) || typeof raw.t !== "string") return null;
   switch (raw.t) {
@@ -149,6 +175,15 @@ export const parseHostMsg = (raw: unknown): HostMsg | null => {
       const seat = raw.seat === null ? null : typeof raw.seat === "number" && raw.seat >= 0 && raw.seat <= 3 ? (raw.seat as Seat) : undefined;
       if (seat === undefined || typeof raw.emoji !== "string" || !(REACTIONS as readonly string[]).includes(raw.emoji)) return null;
       return { t: "reaction", seat, name: cleanText(raw.name, "?"), emoji: raw.emoji };
+    }
+    case "chat": {
+      const item = parseChatItem(raw.item);
+      return item ? { t: "chat", item } : null;
+    }
+    case "chatlog": {
+      if (!Array.isArray(raw.items) || raw.items.length > CHAT_HISTORY) return null;
+      const items = raw.items.map(parseChatItem);
+      return items.every((i): i is ChatItem => i !== null) ? { t: "chatlog", items } : null;
     }
     case "reject": return { t: "reject", reason: cleanText(raw.reason, "rejected") };
     case "kicked": return { t: "kicked" };
