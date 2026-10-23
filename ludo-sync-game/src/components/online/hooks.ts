@@ -78,10 +78,12 @@ export const usePieceSync = (room: RoomView | null, send: ((designs: PieceDesign
   const mySlot = room && mySeat !== null ? room.slots[mySeat] : null;
   const roomHasMine = mySlot?.kind === "human" && !!mySlot.pieces;
 
+  const canSend = send !== undefined;
+
   // send on every change, and again if the room does not have them yet (a new connection, a reconnect)
   useEffect(() => {
     if (mine && sendRef.current) sendRef.current(JSON.parse(mine) as PieceDesign[]);
-  }, [mine, roomHasMine, mySeat, send !== undefined]);
+  }, [mine, roomHasMine, mySeat, canSend]);
 
   const others = room
     ? JSON.stringify(room.slots.map(s => (s.seat !== mySeat && s.kind === "human" && s.pieces ? s.pieces : null)))
