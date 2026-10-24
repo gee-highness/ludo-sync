@@ -9,16 +9,19 @@ import type { GameState, PlayerSetup, Rules } from "@/lib/ludo/types";
 import type { Seat } from "@/lib/ludo/board";
 import { clearSavedGame, loadGame } from "@/lib/client/save";
 import { getSettings } from "@/lib/client/settings";
+import { applyPalette, type PaletteMap } from "@/lib/client/palette";
 import { useLocalGame } from "@/hooks/useLocalGame";
 import GameScreen from "@/components/game/GameScreen";
 import SetupScreen, { initialSlots, slotsToSetups, type Preset } from "@/components/setup/SetupScreen";
 
-interface Started { state: GameState; humans: Seat[] }
+interface Started { state: GameState; humans: Seat[]; palette: PaletteMap }
 
 const humansOf = (setups: PlayerSetup[]) => setups.filter(s => s.kind === "human").map(s => s.seat);
 
 function LocalGame({ initial, onExit }: { initial: Started; onExit: () => void }) {
-  const { state, bus, act, reset } = useLocalGame(initial.state, initial.humans);
+  const { state, bus, act, reset } = useLocalGame(initial.state, initial.humans, initial.palette);
+  // the colours chosen for this game, applied for as long as it is on screen
+  useEffect(() => { applyPalette(initial.palette); return () => applyPalette(getSettings().palette); }, [initial.palette]);
   const rematch = useCallback(() => {
     reset(createGame(
       state.players.map(p => ({ seat: p.seat, name: p.name, kind: p.kind, level: p.level })),
@@ -47,20 +50,20 @@ export default function PlayClient() {
   useEffect(() => {
     if (wantsResume) {
       const saved = loadGame();
-      if (saved) setStarted({ state: saved.state, humans: saved.humanSeats });
+      if (saved) setStarted({ state: saved.state, humans: saved.humanSeats, palette: saved.palette });
       else router.replace("/play?preset=bot");
     } else if (wantsQuick) {
       const s = getSettings();
       const setups = slotsToSetups(initialSlots(preset, s.playerName, s.botLevel));
       clearSavedGame();
-      setStarted({ state: createGame(setups, s.rules, freshSeed()), humans: humansOf(setups) });
+      setStarted({ state: createGame(setups, s.rules, freshSeed()), humans: humansOf(setups), palette: s.palette });
     }
     setReady(true);
   }, [wantsResume, wantsQuick, preset, router]);
 
   const onStart = useCallback((setups: PlayerSetup[], rules: Rules) => {
     clearSavedGame();
-    setStarted({ state: createGame(setups, rules, freshSeed()), humans: humansOf(setups) });
+    setStarted({ state: createGame(setups, rules, freshSeed()), humans: humansOf(setups), palette: getSettings().palette });
   }, []);
 
   const exit = useCallback(() => router.push("/"), [router]);

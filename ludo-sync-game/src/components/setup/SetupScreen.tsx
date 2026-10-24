@@ -4,11 +4,13 @@ import {
   Box, Button, Divider, Flex, Heading, HStack, IconButton, Input, Select, Text, VStack,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SEATS, SEAT_INFO, type Seat } from "@/lib/ludo/board";
 import { cleanName } from "@/lib/ludo/engine";
 import type { BotLevel, PlayerSetup, Rules } from "@/lib/ludo/types";
-import { updateSettings, useSettings } from "@/lib/client/settings";
+import { getSettings, updateSettings, useSettings } from "@/lib/client/settings";
+import { applyPalette, resolveSeatColors, usePalette, type PaletteMap, type SeatColors } from "@/lib/client/palette";
+import ColorEditor from "./ColorEditor";
 import { sound } from "@/lib/client/audio";
 import RulesEditor from "./RulesEditor";
 
@@ -43,6 +45,13 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
   const [settings] = useSettings();
   const [slots, setSlots] = useState<Slot[]>(() => initialSlots(preset, settings.playerName, settings.botLevel));
   const [rules, setRules] = useState<Rules>(settings.rules);
+  const [palette, setPalette] = useState<PaletteMap>(settings.palette);
+  const [editing, setEditing] = useState<Seat | null>(null);
+  usePalette();
+  // colour choices show on the board and in these rows straight away, and are undone if the setup is abandoned
+  useEffect(() => { applyPalette(palette); }, [palette]);
+  useEffect(() => () => applyPalette(getSettings().palette), []);
+  const setColors = (seat: Seat, c: SeatColors | null) => setPalette(p => ({ ...p, [seat]: c }));
   const active = slots.filter(s => s.kind !== "off").length;
   const humans = slots.filter(s => s.kind === "human").length;
   const error = useMemo(
@@ -58,7 +67,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
     sound.play("click");
     const first = slots.find(s => s.kind === "human");
     const firstBot = slots.find(s => s.kind === "bot");
-    updateSettings({ rules, playerName: first?.name ?? "", ...(firstBot ? { botLevel: firstBot.level } : {}) });
+    updateSettings({ rules, palette, playerName: first?.name ?? "", ...(firstBot ? { botLevel: firstBot.level } : {}) });
     onStart(slotsToSetups(slots), rules);
   };
 
@@ -75,17 +84,18 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
             const s = slots[seat];
             const info = SEAT_INFO[seat];
             return (
-              <HStack key={seat} bg="whiteAlpha.100" p={3} borderRadius="xl" spacing={3} border="2px solid" borderColor={s.kind === "off" ? "transparent" : info.main}>
+              <VStack key={seat} align="stretch" spacing={2}>
+              <HStack bg="whiteAlpha.100" p={3} borderRadius="xl" spacing={3} border="2px solid" borderColor={s.kind === "off" ? "transparent" : info.main}>
                 <Box w="30px" h="30px" borderRadius="full" flexShrink={0} bg={s.kind === "off" ? "gray.600" : info.main} border="2px solid #fff" aria-hidden />
                 <Select
-                  w="112px" size="sm" bg="gray.700" aria-label={`${info.name} player type`} value={s.kind}
+                  w="112px" minW="104px" flexShrink={0} size="sm" bg="gray.700" aria-label={`${info.name} player type`} value={s.kind}
                   onChange={e => patch(seat, { kind: e.target.value as SlotKind })}
                 >
                   <option value="human">Person</option><option value="bot">Bot</option><option value="off">Empty</option>
                 </Select>
                 {s.kind === "human" && (
                   <Input
-                    size="sm" bg="gray.700" placeholder={`Player ${seat + 1}`} value={s.name} maxLength={20} aria-label={`${info.name} player name`}
+                    size="sm" minW={0} bg="gray.700" placeholder={`Player ${seat + 1}`} value={s.name} maxLength={20} aria-label={`${info.name} player name`}
                     onChange={e => patch(seat, { name: e.target.value })}
                   />
                 )}
@@ -95,7 +105,20 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
                   </Select>
                 )}
                 {s.kind === "off" && <Text color="gray.400" fontSize="sm">{info.name} sits this one out</Text>}
+                {s.kind !== "off" && (
+                  <Button
+                    size="sm" variant={editing === seat ? "solid" : "outline"} colorScheme="teal" flexShrink={0} aria-expanded={editing === seat}
+                    aria-label={`Choose ${info.name} player colours`} onClick={() => setEditing(editing === seat ? null : seat)}
+                  >Colours</Button>
+                )}
               </HStack>
+              {editing === seat && s.kind !== "off" && (
+                <ColorEditor
+                  seat={seat} value={palette[seat] ?? null} onChange={c => setColors(seat, c)}
+                  others={SEATS.filter(o => o !== seat && slots[o].kind !== "off").map(o => resolveSeatColors(o, palette[o]).main)}
+                />
+              )}
+              </VStack>
             );
           })}
         </VStack>

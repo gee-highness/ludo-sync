@@ -1,4 +1,5 @@
 import type { PieceDesign } from "../client/pieces";
+import type { SeatColors } from "../client/palette";
 import { SEAT_INFO, SEATS, type Seat } from "../ludo/board";
 import { autoAction } from "../ludo/bot";
 import { applyAction, createGame, currentPlayer } from "../ludo/engine";
@@ -30,6 +31,7 @@ interface Member {
   check: string;
   lastReact: number;
   pieces: PieceDesign[] | null;
+  colors: SeatColors | null;
   chatAt: number[];
 }
 
@@ -99,7 +101,7 @@ export class HostSession {
     this.turnMs = opts.turnMs ?? DEFAULT_TURN_MS;
     this.now = opts.now ?? Date.now;
     this.code = opts.code ?? newRoomCode();
-    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null, chatAt: [] });
+    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null, colors: null, chatAt: [] });
     this.slots[0] = { kind: "human", id: HOST_ID };
     const resume = opts.resume ? parseHostResume(opts.resume) : null;
     if (resume) this.restore(resume);
@@ -122,7 +124,7 @@ export class HostSession {
     this.banned = new Set(r.banned);
     this.members = new Map();
     for (const m of r.members) {
-      this.members.set(m.id, { id: m.id, name: m.name, host: m.host, chan: null, check: "", lastReact: 0, pieces: m.pieces, chatAt: [] });
+      this.members.set(m.id, { id: m.id, name: m.name, host: m.host, chan: null, check: "", lastReact: 0, pieces: m.pieces, colors: m.colors ?? null, chatAt: [] });
     }
     this.slots = r.slots.map((s): Slot => (s.kind === "human" ? { kind: "human", id: s.id } : s.kind === "bot" ? { ...s } : { kind: "empty" }));
     this.lastActionAt = this.now();
@@ -143,7 +145,7 @@ export class HostSession {
       n: this.n,
       state: this.state,
       slots: this.slots.map((s): ResumeSlot => (s.kind === "human" ? { kind: "human", id: s.id } : s.kind === "bot" ? { kind: "bot", level: s.level, name: s.name } : { kind: "empty" })),
-      members: [...this.members.values()].map(m => ({ id: m.id, name: m.name, host: m.host, pieces: m.pieces })),
+      members: [...this.members.values()].map(m => ({ id: m.id, name: m.name, host: m.host, pieces: m.pieces, ...(m.colors ? { colors: m.colors } : {}) })),
       banned: [...this.banned],
       chat: this.chat.slice(-CHAT_HISTORY),
       chatId: this.chatId,
@@ -253,7 +255,7 @@ export class HostSession {
       old?.close();
     } else {
       if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
-      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null, chatAt: [] };
+      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null, colors: null, chatAt: [] };
       this.members.set(msg.id, m);
       if (this.seatsOpen()) {
         const free = this.slots.findIndex(s => s.kind === "empty");
@@ -276,6 +278,11 @@ export class HostSession {
       }
       case "name":
         m.name = msg.name;
+        this.refresh();
+        this.broadcastRooms();
+        break;
+      case "colors":
+        m.colors = msg.colors;
         this.refresh();
         this.broadcastRooms();
         break;
@@ -343,6 +350,13 @@ export class HostSession {
   /** Sets the host's own piece designs, which everyone then sees. */
   setPieces(designs: PieceDesign[]) {
     this.members.get(HOST_ID)!.pieces = designs;
+    this.refresh();
+    this.broadcastRooms();
+  }
+
+  /** Sets the host's own colours, which everyone then sees. */
+  setColors(colors: SeatColors | null) {
+    this.members.get(HOST_ID)!.colors = colors;
     this.refresh();
     this.broadcastRooms();
   }
@@ -532,7 +546,7 @@ export class HostSession {
       if (s.kind === "empty") return { seat, kind: "empty" };
       if (s.kind === "bot") return { seat, kind: "bot", name: s.name, level: s.level };
       const m = this.members.get(s.id);
-      return { seat, kind: "human", name: m?.name ?? "Player", connected: !!m && (m.host || !!m.chan?.open), host: !!m?.host, ...(m?.pieces ? { pieces: m.pieces } : {}) };
+      return { seat, kind: "human", name: m?.name ?? "Player", connected: !!m && (m.host || !!m.chan?.open), host: !!m?.host, ...(m?.pieces ? { pieces: m.pieces } : {}), ...(m?.colors ? { colors: m.colors } : {}) };
     });
   }
 

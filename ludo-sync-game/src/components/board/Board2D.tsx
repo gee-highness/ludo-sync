@@ -7,6 +7,7 @@ import {
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
+import { usePalette } from "@/lib/client/palette";
 import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
 import { PieceShape } from "./PieceShape";
 import type { BoardProps } from "./types";
@@ -87,6 +88,7 @@ const CSS = `
 export default function Board2D({
   state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving,
 }: BoardProps) {
+  usePalette(); // seat colours are changed in place; this redraws when they are
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
   const designs = useDesigns();
@@ -149,7 +151,7 @@ export default function Board2D({
       const seatInfo = info.seat !== undefined ? SEAT_INFO[info.seat] : null;
       const active = info.seat === undefined || playing.has(info.seat);
       let fill = pal.cell;
-      if (info.kind === "column") fill = active ? seatInfo!.light : pal.inactiveCol;
+      if (info.kind === "column") fill = active ? seatInfo!.path : pal.inactiveCol;
       if (info.kind === "start") fill = active ? seatInfo!.main : INACTIVE;
       const tycoonRing = state.tycoon && info.kind !== "column" ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       cells.push(
@@ -198,7 +200,7 @@ export default function Board2D({
     const player = state.players.find(p => p.seat === seat);
     return (
       <g key={seat}>
-        <rect x={x0} y={y0} width={6} height={6} fill={active ? info.main : INACTIVE} />
+        <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
         <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={active ? 0.88 : 0.35} />
         {[0, 1, 2, 3].map(i => {

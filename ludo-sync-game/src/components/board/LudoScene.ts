@@ -5,6 +5,7 @@ import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
+import { shade } from "@/lib/client/pieces";
 
 export interface SceneInput {
   tokens: PlacedToken[];
@@ -322,11 +323,11 @@ export class LudoScene {
     SEATS.forEach(seat => {
       const on = playing.has(seat);
       const info = SEAT_INFO[seat];
-      this.seatMats.column[seat].forEach(m => m.color.setHex(on ? hex(info.light) : 0xa0aec0));
+      this.seatMats.column[seat].forEach(m => m.color.setHex(on ? hex(info.path) : 0xa0aec0));
       this.seatMats.start[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
       this.seatMats.centre[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
       const plate = this.yardPlates[seat];
-      if (plate) (plate.material as THREE.MeshStandardMaterial).color.setHex(on ? hex(info.main) : INACTIVE);
+      if (plate) (plate.material as THREE.MeshStandardMaterial).color.setHex(on ? hex(info.home) : INACTIVE);
       const base = this.bases[seat];
       if (!base) return;
       base.traverse(c => {
@@ -335,7 +336,7 @@ export class LudoScene {
         (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
           const std = mat as THREE.MeshStandardMaterial;
           // the tile becomes a pale inner square, the model's frame a darker shade of the yard
-          if (std.name === "Material.007") std.color.setHex(on ? hex(info.dark) : 0x2d3748);
+          if (std.name === "Material.007") std.color.setHex(on ? hex(shade(info.home, -0.38)) : 0x2d3748);
           else std.color.setHex(on ? 0xf4e9e9 : 0x8d99a8);
         });
       });
@@ -784,7 +785,7 @@ export class LudoScene {
         const plate = this.yardPlates[seat]?.material as THREE.MeshStandardMaterial | undefined;
         if (!plate) return;
         const on = input?.activeSeat === seat && input.playing.has(seat);
-        plate.emissive.setHex(on ? hex(SEAT_INFO[seat].main) : 0x000000);
+        plate.emissive.setHex(on ? hex(SEAT_INFO[seat].home) : 0x000000);
         plate.emissiveIntensity = on ? 0.28 + 0.22 * Math.sin(t * 3.2) : 0;
       });
     }

@@ -1,4 +1,5 @@
 import type { PieceDesign } from "../client/pieces";
+import { sanitizeColors, type SeatColors } from "../client/palette";
 import { parseGameState } from "../ludo/validate";
 import { parseTuning } from "../ludo/tuning";
 import type { BotLevel, GameState, Rules } from "../ludo/types";
@@ -9,7 +10,7 @@ export const HOST_ID = "host";
 export const RESUME_VERSION = 1;
 
 export type ResumeSlot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
-export interface ResumeMember { id: string; name: string; host: boolean; pieces: PieceDesign[] | null }
+export interface ResumeMember { id: string; name: string; host: boolean; pieces: PieceDesign[] | null; colors?: SeatColors }
 
 /** Everything a host needs to open the same room again after its screen was left or the page was closed. JSON-serialisable. */
 export interface HostResume {
@@ -68,7 +69,8 @@ export const parseHostResume = (raw: unknown): HostResume | null => {
     if ((m.id === HOST_ID) !== m.host) return null;
     const pieces = m.pieces === null || m.pieces === undefined ? null : parsePieces(m.pieces);
     if (m.pieces !== null && m.pieces !== undefined && !pieces) return null;
-    members.push({ id: m.id, name: cleanText(m.name, m.host ? "Host" : "Guest"), host: m.host, pieces });
+    const colors = sanitizeColors(m.colors) ?? undefined;
+    members.push({ id: m.id, name: cleanText(m.name, m.host ? "Host" : "Guest"), host: m.host, pieces, ...(colors ? { colors } : {}) });
   }
   if (members.filter(m => m.host).length !== 1) return null;
 

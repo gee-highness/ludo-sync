@@ -1,4 +1,5 @@
 import type { PieceDesign } from "../client/pieces";
+import type { SeatColors } from "../client/palette";
 import type { Seat } from "../ludo/board";
 import type { Action, GameState } from "../ludo/types";
 import { FrameBus } from "../client/frames";
@@ -217,6 +218,8 @@ export class GuestClient {
   rename(name: string) { this.send({ t: "name", name }); }
   /** Tells the room how this player's pieces look. */
   setPieces(designs: PieceDesign[]) { this.send({ t: "pieces", designs }); }
+  /** Tells the room which colours this player chose (null for the standard ones). */
+  setColors(colors: SeatColors | null) { this.send({ t: "colors", colors }); }
   claimSeat(seat: Seat) { this.send({ t: "seat", seat }); }
 
   /**

@@ -80,3 +80,11 @@ or close a room. Code: `hooks/useLeaveGuard.ts`, `lib/client/rooms.ts`, `lib/net
 
 Rematches keep everyone: leaving a finished game is as soft as leaving a running one (the seat is kept until "Quit for good"), the host
 rematches with whoever holds a seat, and anyone who arrives while a finished game waits for its rematch is given a free seat.
+
+## Colours
+Every player can choose the colour of their pieces and start square, of their home (the yard) and of their path (the lane to the centre):
+twelve swatches or any colour, with a live preview and warnings for look-alike or very pale colours (`components/setup/ColorEditor.tsx`).
+In pass-and-play and bot games it is the "Colours" button on each seat in setup; the choice is saved with the game. Online, a seated player
+opens "Choose my colours" in the room lobby, and the host relays every player's colours so each device draws everyone's seat as they chose it.
+The four standard colours are the default and can always be restored. Code: `lib/client/palette.ts` (seat colours are updated in place and
+`usePalette()` redraws), `hooks.ts` `usePaletteSync`.

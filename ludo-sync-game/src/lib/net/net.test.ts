@@ -663,3 +663,69 @@ describe("rematch keeps the invited players", () => {
     await until(() => host.getSnapshot().room.slots[1].kind === "empty", "seat freed");
   }, 60_000);
 });
+
+describe("player colours", () => {
+  const slotColors = (snapRoom: { slots: { seat: number; kind: string; colors?: unknown }[] } | null | undefined, seat: number) =>
+    snapRoom?.slots[seat]?.kind === "human" ? snapRoom.slots[seat].colors : undefined;
+
+  it("reach everyone, cleaned, and null clears them", async () => {
+    const { host, guests } = await setup();
+    const g = guests[0];
+    g.setColors({ main: "#AABBCC", home: "#112233", path: "nope" } as never);
+    host.setColors({ main: "#010203", home: null, path: null });
+    await until(() => !!slotColors(host.getSnapshot().room, 1), "host sees the guest's colours");
+    expect(slotColors(host.getSnapshot().room, 1)).toEqual({ main: "#aabbcc", home: "#112233", path: null });
+    await until(() => !!slotColors(g.getSnapshot().room, 0), "guest sees the host's colours");
+    expect(slotColors(g.getSnapshot().room, 0)).toEqual({ main: "#010203", home: null, path: null });
+
+    // junk has no usable main colour, so it clears rather than sticking
+    g.setColors({ main: "red" } as never);
+    await until(() => !slotColors(host.getSnapshot().room, 1), "junk clears");
+    g.setColors({ main: "#445566", home: null, path: null });
+    await until(() => !!slotColors(host.getSnapshot().room, 1), "set again");
+    g.setColors(null);
+    await until(() => !slotColors(host.getSnapshot().room, 1), "null clears");
+  });
+
+  it("survive a guest leaving and rejoining mid-game", async () => {
+    const { net, host, guests, ids } = await setup();
+    const g = guests[0];
+    g.setColors({ main: "#778899", home: null, path: "#ddeeff" });
+    await until(() => !!slotColors(host.getSnapshot().room, 1), "colours arrive");
+    host.start();
+    await until(() => !!g.getSnapshot().state, "state");
+    g.leave();
+    await until(() => host.getSnapshot().members.some(m => !m.host && !m.connected), "away");
+    expect(slotColors(host.getSnapshot().room, 1)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
+    const back = new GuestClient({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5, 5], rejoin: true });
+    cleanup.push(() => back.leave());
+    void back.start();
+    await until(() => back.getSnapshot().status === "connected" && !!back.getSnapshot().state, "back");
+    expect(slotColors(back.getSnapshot().room, 1)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
+  });
+
+  it("are kept by a resumed room, and old saves without colours still load", async () => {
+    const net = new MemoryNetwork();
+    const host = new HostSession({ network: net, name: "H", code: "ABC234" });
+    await host.open();
+    host.setColors({ main: "#123456", home: "#654321", path: null });
+    host.setSlot(1, "bot");
+    host.start();
+    const resume = JSON.parse(JSON.stringify(host.exportResume()));
+    host.close();
+    expect(resume.members[0].colors).toEqual({ main: "#123456", home: "#654321", path: null });
+    const again = new HostSession({ network: net, name: "H", code: "ABC234", resume: parseHostResume(resume)! });
+    cleanup.push(() => again.close());
+    await again.open();
+    expect(slotColors(again.getSnapshot().room, 0)).toEqual({ main: "#123456", home: "#654321", path: null });
+
+    // a save from before colours existed
+    delete resume.members[0].colors;
+    const old = parseHostResume(resume);
+    expect(old).not.toBeNull();
+    expect(old!.members[0].colors).toBeUndefined();
+    // junk colours are dropped, not fatal
+    resume.members[0].colors = { main: 42 };
+    expect(parseHostResume(resume)!.members[0].colors).toBeUndefined();
+  });
+});

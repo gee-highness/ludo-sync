@@ -3,6 +3,7 @@
 import { Box } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef } from "react";
 import { SEAT_INFO, SEATS, type Seat } from "@/lib/ludo/board";
+import { usePalette } from "@/lib/client/palette";
 import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
 import { LudoScene, type SceneInput } from "./LudoScene";
 import { placeTokens, seatTokens } from "./layout";
@@ -24,10 +25,12 @@ export default function Board3D(props: Board3DProps) {
   const cb = useRef(props);
   cb.current = props;
 
+  const palette = usePalette();
   const designs = useDesigns();
   const resolved = useMemo(
     () => Object.fromEntries(SEATS.map(s => [s, designs[s].map(d => resolveDesign(d, s))])) as Record<Seat, ResolvedDesign[]>,
-    [designs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [designs, palette],
   );
   const interactiveSeat = options.length ? state.players[state.turn].seat : null;
   const input: SceneInput = useMemo(() => ({

@@ -10,6 +10,9 @@ import { shareLink } from "@/lib/net/identity";
 import type { MemberView } from "@/lib/net/host";
 import type { RoomView } from "@/lib/net/protocol";
 import { ChatPanel, type ChatSource } from "./ChatPanel";
+import ColorEditor from "../setup/ColorEditor";
+import { updateSettings, useSettings } from "@/lib/client/settings";
+import { usePalette } from "@/lib/client/palette";
 
 const RULE_LABELS: Record<string, string> = {
   tycoon: "Tycoon mode",
@@ -71,6 +74,9 @@ export const ShareCard = ({ code }: { code: string }) => {
 
 export const Lobby = ({ room, host, onClaim, check, chat }: Props) => {
   const rules = room.rules;
+  const [settings] = useSettings();
+  usePalette(); // seat colours change as players choose theirs
+  const [pickColours, setPickColours] = useState(false);
   return (
     <VStack align="stretch" spacing={4} w="100%">
       {host && <ShareCard code={room.code} />}
@@ -89,6 +95,7 @@ export const Lobby = ({ room, host, onClaim, check, chat }: Props) => {
           const member = host?.members.find(m => m.seat === s.seat);
           return (
             <HStack key={s.seat} bg="whiteAlpha.100" borderRadius="lg" p={2} pl={3} borderLeft="6px solid" borderColor={info.main} minH="52px">
+              <Box w="14px" h="14px" flexShrink={0} borderRadius="full" bg={info.main} border="2px solid #fff" aria-hidden />
               <Box flex={1} minW={0}>
                 <Text fontWeight={700} noOfLines={1}>
                   {s.kind === "empty" ? `${info.name}: open seat` : s.name}
@@ -115,6 +122,21 @@ export const Lobby = ({ room, host, onClaim, check, chat }: Props) => {
         })}
         {room.spectators > 0 && <Text fontSize="sm" color="gray.400">{room.spectators} watching</Text>}
       </VStack>
+
+      {room.you.seat !== null && (
+        <VStack align="stretch" spacing={2} as="section" aria-label="My colours">
+          <Button size="sm" variant="outline" color="white" alignSelf="flex-start" aria-expanded={pickColours} onClick={() => setPickColours(v => !v)}>
+            <Box as="span" w="14px" h="14px" borderRadius="full" bg={SEAT_INFO[room.you.seat].main} border="2px solid #fff" mr={2} aria-hidden />
+            {pickColours ? "Done" : "Choose my colours"}
+          </Button>
+          {pickColours && (
+            <ColorEditor
+              seat={room.you.seat} value={settings.myColors} onChange={c => updateSettings({ myColors: c })}
+              others={room.slots.filter(x => x.seat !== room.you.seat && x.kind !== "empty").map(x => SEAT_INFO[x.seat].main)}
+            />
+          )}
+        </VStack>
+      )}
 
       <Divider borderColor="whiteAlpha.300" />
       <VStack align="stretch" spacing={2} as="section" aria-label="Rules">

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_DESIGN, setRemoteDesigns, useDesigns, type PieceDesign } from "@/lib/client/pieces";
 import type { RoomView } from "@/lib/net/protocol";
+import { applyPalette, sanitizeColors, type PaletteMap, type SeatColors } from "@/lib/client/palette";
+import { getSettings, useSettings } from "@/lib/client/settings";
 import type { Seat } from "@/lib/ludo/board";
 import { getClientId } from "@/lib/net/identity";
 import { GuestClient, type GuestSnapshot } from "@/lib/net/guest";
@@ -158,4 +160,39 @@ export const useReactionLog = (subscribe: ((cb: (r: Reaction) => void) => () => 
     return subscribe(r => setItems(l => [...l.slice(-(max - 1)), { ...r, at: Date.now() }]));
   }, [subscribe, max]);
   return items;
+};
+
+/**
+ * Colours in an online room: sends this player's own colours to the room, and draws every seat with the colours its
+ * player chose (your own seat with yours). Seats with no human choice, such as bots, keep the standard colours.
+ * Leaving the room puts this device's own palette back.
+ */
+export const usePaletteSync = (room: RoomView | null, send: ((colors: SeatColors | null) => void) | undefined) => {
+  const [settings] = useSettings();
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  const mySeat = room?.you.seat ?? null;
+  const mine = JSON.stringify(settings.myColors ?? null);
+  const mySlot = room && mySeat !== null ? room.slots[mySeat] : null;
+  const roomHas = mySlot?.kind === "human" ? JSON.stringify(mySlot.colors ?? null) : null;
+  const canSend = send !== undefined;
+  const roomMatches = roomHas !== null && roomHas === mine;
+
+  // send on every change, and again if the room does not hold the same colours yet (a new connection, a reconnect)
+  useEffect(() => {
+    if (mySeat !== null && sendRef.current) sendRef.current(JSON.parse(mine) as SeatColors | null);
+  }, [mine, mySeat, canSend, roomMatches]);
+
+  const others = room
+    ? JSON.stringify(room.slots.map(s => (s.seat !== mySeat && s.kind === "human" && s.colors ? s.colors : null)))
+    : null;
+  useEffect(() => {
+    if (!others) return;
+    const list = JSON.parse(others) as (SeatColors | null)[];
+    const map: PaletteMap = {};
+    list.forEach((c, i) => { if (i !== mySeat && c) map[i as Seat] = sanitizeColors(c); });
+    if (mySeat !== null) { const own = sanitizeColors(JSON.parse(mine)); if (own) map[mySeat] = own; }
+    applyPalette(map);
+  }, [others, mine, mySeat]);
+  useEffect(() => () => applyPalette(getSettings().palette), []);
 };

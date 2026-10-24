@@ -6,6 +6,7 @@ import { applyAction, currentPlayer } from "@/lib/ludo/engine";
 import type { Action, GameState } from "@/lib/ludo/types";
 import { FrameBus } from "@/lib/client/frames";
 import { saveGame } from "@/lib/client/save";
+import type { PaletteMap } from "@/lib/client/palette";
 import type { Seat } from "@/lib/ludo/board";
 import type { SpeedPref } from "@/lib/client/settings";
 
@@ -18,7 +19,7 @@ export interface LocalGame {
 }
 
 /** A game that lives entirely on this device: the engine runs here and bots play themselves. */
-export const useLocalGame = (initial: GameState, humanSeats: Seat[]): LocalGame => {
+export const useLocalGame = (initial: GameState, humanSeats: Seat[], palette: PaletteMap = {}): LocalGame => {
   const [state, setState] = useState(initial);
   const stateRef = useRef(initial);
   const bus = useMemo(() => new FrameBus(), []);
@@ -39,7 +40,7 @@ export const useLocalGame = (initial: GameState, humanSeats: Seat[]): LocalGame 
   }, [bus]);
 
   // every step is saved, so closing the tab (or losing power) never loses a game
-  useEffect(() => { saveGame(state, humanSeats); }, [state, humanSeats]);
+  useEffect(() => { saveGame(state, humanSeats, palette); }, [state, humanSeats, palette]);
 
   return { state, bus, act, reset };
 };

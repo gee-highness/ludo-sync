@@ -85,3 +85,18 @@ test("an online game that was left can be rejoined from the menu, and forgotten"
   await page.goto("/online?rejoin=1");
   await expect(page.getByText("There is no game to rejoin")).toBeVisible();
 });
+
+test("colours chosen in setup reach the game and are remembered", async ({ page }) => {
+  await page.goto("/play?preset=bot");
+  await page.getByRole("button", { name: /Choose Red player colours/ }).click();
+  await page.getByRole("tab", { name: "Home" }).click();
+  await page.getByRole("button", { name: "Use #319795" }).click();
+  await page.getByRole("tab", { name: "Pieces" }).click();
+  await page.getByRole("button", { name: "Use #d53f8c" }).click();
+  await page.getByRole("button", { name: "Start game" }).click();
+  await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible({ timeout: 20_000 });
+  const palette = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:settings")!).palette);
+  expect(palette["0"]).toEqual({ main: "#d53f8c", home: "#319795", path: null });
+  const save = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:save")!).palette);
+  expect(save["0"].main).toBe("#d53f8c");
+});

@@ -112,6 +112,9 @@ export interface SeatInfo {
   main: string;
   light: string;
   dark: string;
+  /** The yard (home) and the coloured home column (path); they follow main and light unless the player chose their own. */
+  home: string;
+  path: string;
   /** Chakra colour scheme name. */
   scheme: string;
   /** Glyph used by colour-blind mode. */
@@ -120,11 +123,12 @@ export interface SeatInfo {
   facing: number;
 }
 
-export const SEAT_INFO: Readonly<Record<Seat, SeatInfo>> = {
-  0: { name: "Red", main: "#E53E3E", light: "#FC8181", dark: "#9B2C2C", scheme: "red", glyph: "●", facing: 0 },
-  1: { name: "Green", main: "#38A169", light: "#68D391", dark: "#22603F", scheme: "green", glyph: "▲", facing: 90 },
-  2: { name: "Blue", main: "#3182CE", light: "#63B3ED", dark: "#2A4E8F", scheme: "blue", glyph: "■", facing: 180 },
-  3: { name: "Purple", main: "#805AD5", light: "#B794F4", dark: "#4F3490", scheme: "purple", glyph: "◆", facing: 270 },
+/** Seat colours as the game draws them. Player choices are written into these entries in place (see client/palette.ts). */
+export const SEAT_INFO: Record<Seat, SeatInfo> = {
+  0: { name: "Red", main: "#E53E3E", light: "#FC8181", dark: "#9B2C2C", home: "#E53E3E", path: "#FC8181", scheme: "red", glyph: "●", facing: 0 },
+  1: { name: "Green", main: "#38A169", light: "#68D391", dark: "#22603F", home: "#38A169", path: "#68D391", scheme: "green", glyph: "▲", facing: 90 },
+  2: { name: "Blue", main: "#3182CE", light: "#63B3ED", dark: "#2A4E8F", home: "#3182CE", path: "#63B3ED", scheme: "blue", glyph: "■", facing: 180 },
+  3: { name: "Purple", main: "#805AD5", light: "#B794F4", dark: "#4F3490", home: "#805AD5", path: "#B794F4", scheme: "purple", glyph: "◆", facing: 270 },
 };
 
 /** Which grid cells are the seat's home column, start square, star, or yard, for painting the board. */
@@ -149,3 +153,8 @@ export const cellInfo = (row: number, col: number): CellInfo => {
   if (row >= 9 && col >= 9) return { kind: "yard", seat: 3 };
   return { kind: "void" };
 };
+
+/** The original four colours, kept so a player's choice can always be undone. */
+export const BASE_SEAT_INFO: Readonly<Record<Seat, Readonly<SeatInfo>>> = Object.freeze(
+  Object.fromEntries(SEATS.map(seat => [seat, Object.freeze({ ...SEAT_INFO[seat] })])) as Record<Seat, SeatInfo>,
+);

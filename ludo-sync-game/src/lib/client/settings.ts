@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from "react";
 import { parseTuning } from "../ludo/tuning";
+import { sanitizeColors, sanitizePalette, type PaletteMap, type SeatColors } from "./palette";
 import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
 import { readJSON, writeJSON } from "./storage";
 
@@ -34,6 +35,10 @@ export interface Settings {
   botLevel: BotLevel;
   /** Colours of the flat board. */
   boardTheme: BoardTheme;
+  /** Colours chosen for each seat in games on this device (pass and play, bots). */
+  palette: PaletteMap;
+  /** Colours chosen for yourself in online rooms, whichever seat you sit in. */
+  myColors: SeatColors | null;
   rules: Rules;
 }
 
@@ -54,6 +59,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   playerName: "",
   botLevel: "normal",
   boardTheme: "classic",
+  palette: {},
+  myColors: null,
   rules: DEFAULT_RULES,
 };
 
@@ -83,6 +90,8 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     playerName: typeof r.playerName === "string" ? r.playerName.slice(0, 20) : d.playerName,
     botLevel: oneOf(r.botLevel, ["easy", "normal", "hard"], d.botLevel),
     boardTheme: oneOf(r.boardTheme, BOARD_THEMES, d.boardTheme),
+    palette: sanitizePalette(r.palette),
+    myColors: sanitizeColors(r.myColors),
     rules: {
       threeSixes: bool(rr.threeSixes, d.rules.threeSixes),
       captureBonus: bool(rr.captureBonus, d.rules.captureBonus),

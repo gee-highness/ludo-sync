@@ -3,6 +3,7 @@ import { parseGameState, parsePlayerAction } from "../ludo/validate";
 import type { Action, BotLevel, GameEvent, GameState, Rules } from "../ludo/types";
 import { isClientId } from "./crypto";
 import { sanitizeDesign, type PieceDesign } from "../client/pieces";
+import { sanitizeColors, type SeatColors } from "../client/palette";
 
 export const PROTOCOL = 1;
 export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏", "❤️", "👏", "🔥", "😢", "🤔", "😎", "🙌", "💀", "😴", "🍀", "🤝", "👀"] as const;
@@ -23,7 +24,7 @@ export const cleanChat = (v: unknown): string | null => {
 export type SlotView =
   | { seat: Seat; kind: "empty" }
   | { seat: Seat; kind: "bot"; name: string; level: BotLevel }
-  | { seat: Seat; kind: "human"; name: string; connected: boolean; host: boolean; pieces?: PieceDesign[] };
+  | { seat: Seat; kind: "human"; name: string; connected: boolean; host: boolean; pieces?: PieceDesign[]; colors?: SeatColors };
 
 export interface RoomView {
   code: string;
@@ -51,6 +52,8 @@ export type ClientMsg =
   | { t: "react"; emoji: string }
   /** The sender's four piece designs, so everyone sees their pieces the way they made them. */
   | { t: "pieces"; designs: PieceDesign[] }
+  /** The sender's chosen colours (pieces, home, path), or null to go back to the standard ones. */
+  | { t: "colors"; colors: SeatColors | null }
   | { t: "chat"; text: string }
   | { t: "sync" }
   | { t: "bye" };
@@ -93,6 +96,8 @@ export const parseClientMsg = (raw: unknown): ClientMsg | null => {
         ? { t: "seat", seat: raw.seat as Seat } : null;
     case "react":
       return typeof raw.emoji === "string" && (REACTIONS as readonly string[]).includes(raw.emoji) ? { t: "react", emoji: raw.emoji } : null;
+    case "colors":
+      return raw.colors === null ? { t: "colors", colors: null } : { t: "colors", colors: sanitizeColors(raw.colors) };
     case "pieces": {
       const designs = parsePieces(raw.designs);
       return designs ? { t: "pieces", designs } : null;
@@ -118,7 +123,8 @@ const parseSlots = (v: unknown): SlotView[] | null => {
       out.push({ seat: i as Seat, kind: "bot", name: cleanText(s.name, "Bot"), level: s.level });
     } else if (s.kind === "human" && typeof s.name === "string") {
       const pieces = parsePieces(s.pieces) ?? undefined;
-      out.push({ seat: i as Seat, kind: "human", name: cleanText(s.name, "Guest"), connected: s.connected === true, host: s.host === true, ...(pieces ? { pieces } : {}) });
+      const colors = sanitizeColors(s.colors) ?? undefined;
+      out.push({ seat: i as Seat, kind: "human", name: cleanText(s.name, "Guest"), connected: s.connected === true, host: s.host === true, ...(pieces ? { pieces } : {}), ...(colors ? { colors } : {}) });
     } else return null;
   }
   return out;

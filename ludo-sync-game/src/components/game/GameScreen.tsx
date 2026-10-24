@@ -21,6 +21,7 @@ import { recordGame } from "@/lib/client/stats";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
 import { useLeaveGuard } from "@/hooks/useLeaveGuard";
+import { usePalette } from "@/lib/client/palette";
 import BoardView from "../board/BoardView";
 import { Dice } from "../board/Dice";
 import { PlayerCard } from "./PlayerCard";
@@ -62,6 +63,7 @@ const MAX_LOG = 120;
 
 export default function GameScreen(props: GameScreenProps) {
   const { state, bus, mySeats, act, onExit, exitWarning, runBots = false, recordStats = false } = props;
+  usePalette(); // redraw everything that uses seat colours when a player's choice changes
   const [settings] = useSettings();
   const caps = useCapabilities();
   const help = useDisclosure();
