@@ -13,7 +13,7 @@ const theme = extendTheme({
     },
   },
   colors: {
-    // neutral greys instead of Chakra's blue-tinted ones: #333 page, #151515 for surfaces such as dialogs, drawers and the 3D frame
+    // neutral greys instead of Chakra's blue-tinted ones: #303030 page, #151515 for surfaces such as dialogs, drawers and the 3D frame
     gray: {
       50: "#f5f5f5", 100: "#e6e6e6", 200: "#d4d4d4", 300: "#bdbdbd", 400: "#a8a8a8",
       500: "#7a7a7a", 600: "#444444", 700: "#2b2b2b", 800: "#151515", 900: "#0d0d0d",
