@@ -8,7 +8,7 @@ export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type QualityPref = "auto" | "high" | "low";
-export type CameraPref = "tilt" | "top";
+export type CameraPref = "tilt" | "top" | "follow";
 /** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
 export type MovePreview = "dots" | "end" | "off";
 export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
@@ -52,7 +52,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   haptics: true,
   renderer: "auto",
   quality: "auto",
-  camera: "tilt",
+  camera: "follow",
   speed: "normal",
   motion: "auto",
   symbols: false,

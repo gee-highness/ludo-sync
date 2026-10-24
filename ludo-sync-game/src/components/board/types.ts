@@ -17,4 +17,6 @@ export interface BoardProps {
   hopMs: number;
   /** The token currently hopping across the board, if any. */
   moving?: { seat: Seat; token: number } | null;
+  /** Bumps on every roll, so the 3D board can throw its dice. */
+  rollKey?: number;
 }

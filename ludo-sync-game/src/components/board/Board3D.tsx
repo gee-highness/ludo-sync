@@ -4,6 +4,8 @@ import { Box } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef } from "react";
 import { SEAT_INFO, SEATS, type Seat } from "@/lib/ludo/board";
 import { usePalette } from "@/lib/client/palette";
+import { useIslands } from "@/lib/client/islands";
+import { tuningOf } from "@/lib/ludo/types";
 import { useSettings } from "@/lib/client/settings";
 import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
 import { LudoScene, type SceneInput } from "./LudoScene";
@@ -11,7 +13,7 @@ import { placeTokens, seatTokens } from "./layout";
 import type { BoardProps } from "./types";
 
 export interface Board3DProps extends BoardProps {
-  camera: "tilt" | "top";
+  camera: "tilt" | "top" | "follow";
   quality: "high" | "low";
   onReady: () => void;
   onFail: () => void;
@@ -20,13 +22,14 @@ export interface Board3DProps extends BoardProps {
 
 /** The 3D board: a canvas for pointers, plus hidden buttons so keyboards and screen readers can play too. */
 export default function Board3D(props: Board3DProps) {
-  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving } = props;
+  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving, rollKey = 0 } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<LudoScene | null>(null);
   const cb = useRef(props);
   cb.current = props;
 
   const [settings] = useSettings();
+  const islands = useIslands();
   const palette = usePalette();
   const designs = useDesigns();
   const resolved = useMemo(
@@ -39,8 +42,9 @@ export default function Board3D(props: Board3DProps) {
     tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: settings.boardTheme === "neon",
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme]);
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: settings.boardTheme === "neon", look: settings.boardTheme === "neon", tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
+    rollKey, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide",
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

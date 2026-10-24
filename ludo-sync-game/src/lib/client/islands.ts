@@ -77,4 +77,6 @@ export const setIsland = (seat: Seat, style: IslandStyle | null) => {
   if (style) next[seat] = style; else delete next[seat];
   setIslands(next);
 };
+/** A seat's island, or a neon one in the seat's own colour when none was chosen. */
+export const islandFor = (seat: Seat, map: IslandMap, seatColour: string): IslandStyle => map[seat] ?? { ...DEFAULT_ISLAND, accent: seatColour };
 export const useIslands = (): IslandMap => useSyncExternalStore(subscribe, getIslands, () => EMPTY);

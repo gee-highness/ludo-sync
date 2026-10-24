@@ -20,6 +20,8 @@ export interface AnimatedGame {
 
 interface Options {
   speed: SpeedPref;
+  /** The 3D board is showing, so give the thrown dice their longer time. */
+  longRoll?: boolean;
   onFrameStart?: (frame: Frame) => void;
   onStep?: (step: AnimStep) => void;
   onFrameEnd?: (frame: Frame) => void;
@@ -61,7 +63,7 @@ export const useAnimatedGame = (bus: FrameBus, initial: GameState, options: Opti
       show({ ...frame.state, players: prev.players });
       if (frame.events.some(e => e.type === "roll")) {
         setRollKey(k => k + 1);
-        await sleep(rollMs(speed));
+        await sleep(rollMs(speed, opts.current.longRoll));
         if (!alive.current) return;
       }
       for (const step of planSteps(prev, frame.state)) {

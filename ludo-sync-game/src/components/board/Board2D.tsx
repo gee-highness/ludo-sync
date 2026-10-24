@@ -11,6 +11,8 @@ import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import { usePalette } from "@/lib/client/palette";
 import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
 import { PieceShape } from "./PieceShape";
+import { BuildingShape } from "./BuildingGlyph";
+import { islandFor, useIslands } from "@/lib/client/islands";
 import type { BoardProps } from "./types";
 import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
@@ -91,6 +93,7 @@ const CSS = `
 export default function Board2D({
   state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving,
 }: BoardProps) {
+  const islands = useIslands();
   usePalette(); // seat colours are changed in place; this redraws when they are
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
@@ -183,9 +186,11 @@ export default function Board2D({
                   <text x={col} y={row + 0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.55} transform={`rotate(${-rotation} ${col} ${row})`}>{icon}</text>
                 )}
                 {owner >= 0 && <circle cx={col + 0.3} cy={row + 0.3} r={0.14} fill={SEAT_INFO[owner as Seat].main} stroke="#fff" strokeWidth={0.04} />}
-                {Array.from({ length: level }, (_, i) => (
-                  <rect key={i} x={col - 0.42 + i * 0.2} y={row + 0.28} width={0.15} height={0.15} fill="#FACC15" stroke="#7B341E" strokeWidth={0.025} />
-                ))}
+                {owner >= 0 && sq.kind === "property" && level > 0 && (
+                  <g transform={`translate(${col} ${row + 0.16}) rotate(${-rotation}) scale(0.0088) translate(-50 -56)`}>
+                    <BuildingShape style={islandFor(owner as Seat, islands, SEAT_INFO[owner as Seat].main)} level={level as 1 | 2 | 3} />
+                  </g>
+                )}
               </g>
             );
           })()}

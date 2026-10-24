@@ -7,7 +7,7 @@ import {
 import { ChevronLeftIcon, QuestionIcon, SettingsIcon, InfoIcon } from "@chakra-ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SEAT_INFO, type Seat } from "@/lib/ludo/board";
-import { currentPlayer, legalMoves } from "@/lib/ludo/engine";
+import { currentPlayer, legalMoves, pointsOf } from "@/lib/ludo/engine";
 import type { Action, GameEvent, GameState, MoveOption } from "@/lib/ludo/types";
 import type { FrameBus, Frame } from "@/lib/client/frames";
 import type { AnimStep } from "@/lib/client/anim";
@@ -24,12 +24,15 @@ import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { usePalette } from "@/lib/client/palette";
 import BoardView from "../board/BoardView";
 import { Dice } from "../board/Dice";
-import { PlayerCard } from "./PlayerCard";
 import { HowToPlay } from "./HowToPlay";
 import { SettingsDrawer } from "./SettingsDrawer";
 import { WinnerOverlay } from "./WinnerOverlay";
 import { LogDrawer, LogList } from "./LogPanel";
-import { DecisionCard } from "./DecisionCard";
+import { PlayerPanels, type Floater } from "../hud/PlayerPanels";
+import { TurnBanner, type BannerInfo } from "../hud/TurnBanner";
+import { RollButton } from "../hud/RollButton";
+import { StatusBar } from "../hud/StatusBar";
+import { PropertyCard } from "../tycoon/PropertyCard";
 
 export interface GameScreenProps {
   state: GameState;
@@ -76,6 +79,13 @@ export default function GameScreen(props: GameScreenProps) {
   const [lines, setLines] = useState<LogLine[]>([]);
   const [choice, setChoice] = useState<number | null>(null);
   const [bonus, setBonus] = useState<string | null>(null);
+  const [banner, setBanner] = useState<BannerInfo | null>(null);
+  const [floaters, setFloaters] = useState<Floater[]>([]);
+  const [short] = useMediaQuery("(max-height: 560px)");
+  const bannerKey = useRef(0);
+  const floatId = useRef(0);
+  const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  const points = useRef<Record<number, number>>(Object.fromEntries(state.players.map(p => [p.seat, pointsOf(p)])));
   const [fullscreen, setFullscreen] = useState(false);
   const [canFullscreen, setCanFullscreen] = useState(false);
   const captures = useRef(0);
@@ -122,6 +132,22 @@ export default function GameScreen(props: GameScreenProps) {
   const mine = useRef(mySeats);
   mine.current = mySeats;
 
+  const later = useCallback((fn: () => void, ms: number) => {
+    const t = setTimeout(() => { timers.current.delete(t); fn(); }, ms);
+    timers.current.add(t);
+  }, []);
+  useEffect(() => { const live = timers.current; return () => { live.forEach(clearTimeout); live.clear(); }; }, []);
+  const addFloater = useCallback((seat: Seat, text: string, tone: Floater["tone"]) => {
+    const id = ++floatId.current;
+    setFloaters(f => [...f.slice(-11), { id, seat, text, tone }]);
+    later(() => setFloaters(f => f.filter(x => x.id !== id)), 1600);
+  }, [later]);
+  const showBanner = useCallback((text: string, tone: BannerInfo["tone"], sub?: string) => {
+    const key = ++bannerKey.current;
+    setBanner({ key, text, tone, sub });
+    later(() => setBanner(b => (b && b.key === key ? null : b)), 1750);
+  }, [later]);
+
   const onFrameStart = useCallback((frame: Frame) => {
     setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
     frame.events.forEach((e: GameEvent) => {
@@ -131,13 +157,33 @@ export default function GameScreen(props: GameScreenProps) {
         case "bonus":
           sound.play("bonus"); buzz("bonus");
           setBonus(e.reason === "finish" ? "A token is home! Roll again" : e.reason === "capture" ? "Capture! Roll again" : "A six! Roll again");
+          showBanner("Roll again!", "bonus", e.reason === "finish" ? "a token is home" : e.reason === "capture" ? "capture" : "a six");
           break;
-        case "turn": if (mine.current.includes(e.seat)) sound.play("turn"); break;
+        case "turn":
+          if (mine.current.includes(e.seat)) sound.play("turn");
+          showBanner(`${frame.state.players.find(p => p.seat === e.seat)?.name ?? "Next player"}'s turn`, "turn");
+          break;
+        case "money": {
+          addFloater(e.seat, `${e.amount < 0 ? "-" : "+"}$${Math.abs(e.amount)}`, e.amount < 0 ? "loss" : "gain");
+          if (e.other !== undefined) addFloater(e.other, `${e.amount < 0 ? "+" : "-"}$${Math.abs(e.amount)}`, e.amount < 0 ? "gain" : "loss");
+          break;
+        }
         case "capture": if (mine.current.includes(e.seat)) captures.current += 1; break;
       }
     });
-    if (frame.state.seq === 0) sound.play("start");
-  }, []);
+    if (frame.state.seq === 0) {
+      sound.play("start");
+      points.current = Object.fromEntries(frame.state.players.map(p => [p.seat, pointsOf(p)]));
+      showBanner(`${frame.state.players[frame.state.turn].name}'s turn`, "turn");
+    } else if (!frame.state.tycoon) {
+      // classic: points that moved since the last frame float up beside the player
+      for (const p of frame.state.players) {
+        const now = pointsOf(p), before = points.current[p.seat];
+        if (before !== undefined && now !== before) addFloater(p.seat, `${now > before ? "+" : ""}${now - before}`, now > before ? "gain" : "loss");
+        points.current[p.seat] = now;
+      }
+    }
+  }, [addFloater, showBanner]);
   const onStep = useCallback((step: AnimStep) => {
     if (step.kind === "hop") sound.play("hop");
     else if (step.kind === "enter") sound.play("enter");
@@ -157,7 +203,7 @@ export default function GameScreen(props: GameScreenProps) {
     }
   }, [recordStats]);
 
-  const anim = useAnimatedGame(bus, state, { speed, onFrameStart, onStep, onFrameEnd });
+  const anim = useAnimatedGame(bus, state, { speed, longRoll: renderer === "3d", onFrameStart, onStep, onFrameEnd });
   const { shown, busy } = anim;
   useBotDriver(state, busy, act, speed, !runBots);
 
@@ -198,15 +244,19 @@ export default function GameScreen(props: GameScreenProps) {
   const accent = SEAT_INFO[me.seat].main;
   const choiceOptions = choice === null ? [] : moves.filter(o => o.token === choice);
 
+  const pending = shown.tycoon?.pending ?? null;
   const status = (() => {
     if (shown.phase === "over") return "Game over";
-    if (busy) return `${me.name}…`;
-    if (shown.phase === "decide") return iAct ? "Your call: buy, build or pass" : `${me.name} is deciding…`;
+    const others = `${me.name}`;
+    if (shown.phase === "decide") {
+      if (iAct) return pending?.kind === "build" ? "Your call: build here or pass" : "Your call: buy this property or pass";
+      return pending?.kind === "build" ? `${others} is thinking about building here` : `${others} is thinking about buying this property`;
+    }
+    if (busy) return shown.phase === "roll" ? `${others} is rolling…` : `${others} is moving…`;
     if (canRoll && bonus) return mySeats.length > 1 ? `${me.name}: ${bonus}` : bonus;
     if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: roll the dice";
     if (iAct) return choice !== null ? "Choose which number to use" : mySeats.length > 1 ? `${me.name}, pick a glowing token` : "Pick a glowing token";
-    if (me.kind === "bot") return `${me.name} is thinking…`;
-    return mySeats.length === 0 ? `${me.name}'s turn` : `Waiting for ${me.name}…`;
+    return shown.phase === "roll" ? `${others} is rolling…` : `${others} is choosing a move`;
   })();
   const announce = lines.length ? lines[lines.length - 1].text : "";
 
@@ -215,12 +265,59 @@ export default function GameScreen(props: GameScreenProps) {
     else void document.documentElement.requestFullscreen?.().catch(() => undefined);
   };
 
-  const players = (
-    <Box as="ul" display="grid" gridTemplateColumns={wide ? "1fr" : "repeat(2, minmax(0, 1fr))"} gap={2} m={0} p={0} role="list" aria-label="Players">
-      {shown.players.map(p => (
-        <PlayerCard key={p.seat} player={p} current={p.seat === me.seat && shown.phase !== "over"} isMe={mySeats.length === 1 && mySeats[0] === p.seat}
-          symbols={settings.symbols} compact={!wide} away={props.away?.has(p.seat)} tag={props.tags?.[p.seat]} cash={shown.tycoon?.cash[p.seat]} />
-      ))}
+  const compact = !wide || short;
+  const round = (label: string, icon: React.ReactNode, onClick: () => void, extra: Record<string, unknown> = {}) => (
+    <IconButton
+      key={label} aria-label={label} icon={<>{icon}</>} onClick={onClick} isRound w="44px" h="44px" minW="44px" bg="#fff" color="#1c1c1c" fontSize="lg"
+      boxShadow="0 3px 10px rgba(0,0,0,.5)" _hover={{ bg: "gray.100" }} _active={{ bg: "gray.200" }} {...extra}
+    />
+  );
+  const leaveBtn = round("Leave game", <ChevronLeftIcon boxSize={6} />, exit.onOpen);
+  const iconButtons = [
+    !wide && round("Game log", <InfoIcon />, log.onOpen),
+    round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
+    canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
+    round("How to play", <QuestionIcon />, help.onOpen),
+    round("Settings", <SettingsIcon />, prefs.onOpen),
+  ];
+
+  const panels = (
+    <PlayerPanels
+      players={shown.players} currentSeat={shown.phase !== "over" ? me.seat : null} mySeats={mySeats} cash={shown.tycoon?.cash} away={props.away} tags={props.tags}
+      compact={compact} twoColumns={!wide} floaters={floaters}
+    />
+  );
+  const tycoonCard = iAct && shown.phase === "decide" ? <PropertyCard state={shown} act={act} wide={wide} /> : null;
+  const controls = (
+    <VStack align="stretch" spacing={2}>
+      <HStack spacing={3} align="center">
+        <Dice
+          values={shown.rolled} rollKey={anim.rollKey} canRoll={canRoll} onRoll={roll} accent={accent} tumble={!reduceMotion && speed !== "instant"}
+          size={wide && !short ? 64 : 50} label={canRoll ? "Roll the dice" : `Dice showing ${shown.rolled.join(" and ") || "nothing yet"}`}
+        />
+        <RollButton enabled={canRoll} label={canRoll && bonus ? "Roll again" : "Roll dice"} onClick={roll} />
+      </HStack>
+      {choiceOptions.length > 0 && (
+        <HStack spacing={2} flexWrap="wrap">
+          {choiceOptions.map(o => (
+            <Button key={o.die} size="md" minH="44px" colorScheme="teal" onClick={() => move(o)}>
+              Use {o.die}{shown.dice.length === 2 && o.die === shown.dice[0] + shown.dice[1] ? " (both)" : ""}
+            </Button>
+          ))}
+          <Button size="md" minH="44px" variant="ghost" onClick={() => setChoice(null)}>Cancel</Button>
+        </HStack>
+      )}
+      <StatusBar
+        text={status} tone={canRoll && bonus ? "bonus" : undefined}
+        extra={shown.sixes > 0 && shown.phase !== "over" ? <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text> : undefined}
+      />
+    </VStack>
+  );
+  const logBox = (
+    <Box bg="whiteAlpha.100" borderRadius="xl" p={3} maxH="200px" overflowY="auto" flexShrink={0}
+      display="none" sx={wide ? { "@media (min-height: 561px)": { display: "block" } } : { "@media (min-height: 780px)": { display: "block" } }}>
+      <Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text>
+      <LogList lines={lines} limit={8} />
     </Box>
   );
 
@@ -229,71 +326,47 @@ export default function GameScreen(props: GameScreenProps) {
       direction="column" h="100dvh" w="100%" bg="#303030" color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
-      <HStack px={2} py={1.5} spacing={1} flexShrink={0} bg="#151515">
-        <IconButton aria-label="Leave game" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={exit.onOpen} />
-        <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
-        {props.headerExtra}
-        {!wide && <IconButton aria-label="Game log" icon={<InfoIcon />} variant="ghost" color="white" onClick={log.onOpen} />}
-        <IconButton aria-label={settings.sound ? "Mute sound" : "Unmute sound"} variant="ghost" color="white" fontSize="lg"
-          icon={<span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>} onClick={() => { sound.unlock(); updateSettings({ sound: !settings.sound }); }} />
-        {canFullscreen && (
-          <IconButton aria-label={fullscreen ? "Exit full screen" : "Full screen"} variant="ghost" color="white" fontSize="lg"
-            icon={<span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>} onClick={toggleFullscreen} display={{ base: "none", md: "inline-flex" }} />
-        )}
-        <IconButton aria-label="How to play" icon={<QuestionIcon />} variant="ghost" color="white" onClick={help.onOpen} />
-        <IconButton aria-label="Settings" icon={<SettingsIcon />} variant="ghost" color="white" onClick={prefs.onOpen} />
-      </HStack>
+      {!wide && (
+        <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515">
+          {leaveBtn}
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
+          {props.headerExtra}
+          {iconButtons}
+        </HStack>
+      )}
 
-      <Flex flex={1} minH={0} direction={wide ? "row" : "column"} gap={wide ? 4 : 2} px={2} pb={2} w="100%" maxW="1320px" mx="auto">
+      <Flex flex={1} minH={0} direction={wide ? "row" : "column"} gap={wide ? 3 : 2} px={2} pt={wide ? 2 : 0} pb={2} w="100%" maxW="1400px" mx="auto">
+        {wide && (
+          <VStack flex="0 0 auto" spacing={3} align="center" pt={1} aria-label="Game controls" role="group">
+            {leaveBtn}{iconButtons}{props.headerExtra}
+          </VStack>
+        )}
         <Box
-          flex={wide ? 1 : "0 0 auto"} minH={0} minW={0} display="grid" placeItems="center"
+          flex={wide ? 1 : "0 0 auto"} minH={0} minW={0} display="grid" placeItems="center" position="relative"
           w={wide ? undefined : "min(100%, calc(100dvh - 330px))"} alignSelf={wide ? undefined : "center"}
           sx={wide ? { containerType: "size" } : { aspectRatio: "1 / 1" }}
         >
-          <Box sx={wide ? { width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" } : { width: "100%", height: "100%" }}>
+          <Box position="relative" sx={wide ? { width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" } : { width: "100%", height: "100%" }}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick}
-              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving}
+              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey}
             />
+            <TurnBanner banner={banner} reduceMotion={reduceMotion} />
           </Box>
         </Box>
 
         <VStack
-          flex={wide ? "0 0 auto" : 1} minH={0} align="stretch" spacing={3} w={wide ? "clamp(280px, 30vw, 380px)" : "100%"} overflowY="auto"
-          pb={2}
+          flex={wide ? "0 0 auto" : 1} minH={0} align="stretch" spacing={3} w={wide ? "clamp(280px, 30vw, 380px)" : "100%"} overflowY="auto" overflowX="hidden"
+          pb={2} pr={wide ? 1 : 0}
         >
-          {players}
-          {iAct && shown.phase === "decide" && <DecisionCard state={shown} act={act} />}
-          <HStack spacing={3} justify="center" align="center">
-            <Dice
-              values={shown.rolled} rollKey={anim.rollKey} canRoll={canRoll} onRoll={roll} accent={accent} tumble={!reduceMotion && speed !== "instant"}
-              size={wide ? 64 : 50} label={canRoll ? "Roll the dice" : `Dice showing ${shown.rolled.join(" and ") || "nothing yet"}`}
-            />
-            <VStack align="start" spacing={1} flex={1} minW={0}>
-              <Text fontSize={wide ? "md" : "sm"} fontWeight={700} role="status" color={canRoll && bonus ? "yellow.300" : undefined}>{status}</Text>
-              {shown.sixes > 0 && shown.phase !== "over" && <Text fontSize="xs" color="yellow.300">Sixes in a row: {shown.sixes}</Text>}
-              {choiceOptions.length > 0 && (
-                <HStack spacing={2} flexWrap="wrap">
-                  {choiceOptions.map(o => (
-                    <Button key={o.die} size="sm" colorScheme="teal" onClick={() => move(o)}>
-                      Use {o.die}{shown.dice.length === 2 && o.die === shown.dice[0] + shown.dice[1] ? " (both)" : ""}
-                    </Button>
-                  ))}
-                  <Button size="sm" variant="ghost" onClick={() => setChoice(null)}>Cancel</Button>
-                </HStack>
-              )}
-            </VStack>
-          </HStack>
+          {wide && <Text fontWeight={700} fontSize="sm" noOfLines={1} color="gray.300">{props.title ?? "Ludo Sync"}</Text>}
+          {panels}
+          {controls}
           {props.panelExtra}
-          {(
-            <Box bg="whiteAlpha.100" borderRadius="xl" p={3} maxH="200px" overflowY="auto"
-              display={wide ? "block" : "none"} sx={wide ? undefined : { "@media (min-height: 780px)": { display: "block" } }}>
-              <Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text>
-              <LogList lines={lines} limit={8} />
-            </Box>
-          )}
+          {logBox}
         </VStack>
       </Flex>
+      {tycoonCard}
 
       <Box position="absolute" w="1px" h="1px" overflow="hidden" clipPath="inset(50%)" aria-live="polite" role="log">{announce}</Box>
 

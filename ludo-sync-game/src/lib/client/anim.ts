@@ -16,7 +16,8 @@ const BASE_MS: Record<StepKind, number> = { hop: 170, enter: 280, finish: 320, r
 const FACTOR: Record<SpeedPref, number> = { normal: 1, fast: 0.5, instant: 0 };
 
 export const stepMs = (kind: StepKind, speed: SpeedPref) => Math.round(BASE_MS[kind] * FACTOR[speed]);
-export const rollMs = (speed: SpeedPref) => Math.round(650 * FACTOR[speed]);
+/** How long the dice take. The 3D board throws them across the table, which takes longer than the flat board's tumble. */
+export const rollMs = (speed: SpeedPref, long = false) => Math.round((long ? 1100 : 650) * FACTOR[speed]);
 
 /**
  * Works out how tokens travel to get from one state to the next: movers hop square by square,

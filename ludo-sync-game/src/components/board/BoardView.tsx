@@ -53,10 +53,10 @@ export default function BoardView(props: BoardProps & { renderer: "2d" | "3d" })
       )}
       {showing3d && (
         <IconButton
-          aria-label={settings.camera === "tilt" ? "Switch to top-down view" : "Switch to tilted view"} size="sm" variant="solid"
+          aria-label={settings.camera !== "top" ? "Switch to top-down view" : "Switch to the moving camera"} size="sm" variant="solid"
           colorScheme="whiteAlpha" bg="whiteAlpha.300" color="white" position="absolute" top={2} right={2} fontSize="md"
-          icon={<span aria-hidden>{settings.camera === "tilt" ? "⬒" : "◩"}</span>}
-          onClick={() => updateSettings({ camera: settings.camera === "tilt" ? "top" : "tilt" })}
+          icon={<span aria-hidden>{settings.camera !== "top" ? "⬒" : "◩"}</span>}
+          onClick={() => updateSettings({ camera: settings.camera !== "top" ? "top" : "follow" })}
         />
       )}
     </Box>

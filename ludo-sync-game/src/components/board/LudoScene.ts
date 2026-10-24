@@ -8,6 +8,11 @@ import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
 import { previewPath } from "@/lib/client/preview";
 import { buildNeonBoard, type NeonBoard } from "./neon3d";
+import { NIGHT, buildCityscape, skyTexture, type CityHandle } from "./cityscape3d";
+import { buildBoardDressing, type BoardDressing } from "./boarddress3d";
+import { DiceRig } from "./dice3d";
+import type { IslandMap } from "@/lib/client/islands";
+import type { TycoonState } from "@/lib/ludo/types";
 import type { MovePreview } from "@/lib/client/settings";
 
 export interface SceneInput {
@@ -24,10 +29,21 @@ export interface SceneInput {
   hints: boolean;
   reduceMotion: boolean;
   hopMs: number;
-  camera: "tilt" | "top";
+  camera: "tilt" | "top" | "follow";
   movePreview: MovePreview;
   /** Dark tiles with glowing outlines instead of the pale classic look. */
   neon: boolean;
+  /** The neon-city look: night skyline, dark slab with girders, dressed squares and lots, island buildings. */
+  look: boolean;
+  tycoon: TycoonState | null;
+  islands: IslandMap;
+  enterBonus: number;
+  /** Bumps on every roll; with `rolled` and `rollMs` it drives the thrown dice. */
+  rollKey: number;
+  rolled: number[];
+  rollMs: number;
+  /** Keep the camera on the current token (a purchase or build decision is waiting). */
+  hold: boolean;
   /** What each piece looks like, by seat then token. */
   designs: Record<Seat, ResolvedDesign[]>;
 }
@@ -126,6 +142,21 @@ export class LudoScene {
   };
   private ghosts: THREE.Mesh[] = [];
   private pathDots: THREE.Mesh[] = [];
+  private hemi!: THREE.HemisphereLight;
+  private sunLight!: THREE.DirectionalLight;
+  private city: CityHandle | null = null;
+  private skyTex: THREE.Texture | null = null;
+  private dressing: BoardDressing | null = null;
+  private dressingTycoon = false;
+  private dice!: DiceRig;
+  private lastRollKey = -1;
+  private diceFadeAt = 0;
+  private camMoved = false;
+  private followK = 0;
+  private followObj: TokenObj | null = null;
+  private followHoldUntil = 0;
+  private followDir = new THREE.Vector3(0, 0, -1);
+  private camLook = new THREE.Vector3();
   private neonBoard: NeonBoard | null = null;
   private neonOn = false;
   private tileMats: THREE.MeshStandardMaterial[] = [];
@@ -174,8 +205,10 @@ export class LudoScene {
     host.appendChild(canvas);
 
     this.scene.add(this.world);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7));
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7);
+    this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    this.sunLight = sun;
     sun.position.set(5, 12, 7);
     if (high) {
       sun.castShadow = true;
@@ -208,6 +241,7 @@ export class LudoScene {
       this.pathDots.push(d);
       this.world.add(d);
     }
+    this.dice = new DiceRig(this.world);
     this.initParticles();
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -530,16 +564,55 @@ export class LudoScene {
     if (this.neonBoard) this.neonBoard.group.visible = on;
   }
 
+  /** Builds or removes the neon city, the dressed board, and the night lighting to match the look setting. */
+  private applyLook(input: SceneInput) {
+    if (input.look && !this.city) {
+      this.city = buildCityscape(this.high);
+      this.scene.add(this.city.group);
+      this.skyTex = skyTexture();
+      this.scene.background = this.skyTex;
+      this.scene.fog = new THREE.Fog(NIGHT.fog, 28, 90);
+      this.hemi.color.setHex(NIGHT.hemiSky); this.hemi.groundColor.setHex(NIGHT.hemiGround); this.hemi.intensity = NIGHT.hemiK;
+      this.sunLight.color.setHex(NIGHT.sun); this.sunLight.intensity = NIGHT.sunK;
+    } else if (!input.look && this.city) {
+      this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
+      this.skyTex?.dispose(); this.skyTex = null;
+      this.scene.background = null; this.scene.fog = null;
+      this.hemi.color.setHex(0xffffff); this.hemi.groundColor.setHex(0x8899bb); this.hemi.intensity = 1.7;
+      this.sunLight.color.setHex(0xffffff); this.sunLight.intensity = 1.5;
+    }
+    const tycoonGame = !!input.tycoon;
+    if (this.dressing && (!input.look || this.dressingTycoon !== tycoonGame)) {
+      this.world.remove(this.dressing.group); this.dressing.dispose(); this.dressing = null;
+    }
+    if (input.look && !this.dressing) {
+      this.dressing = buildBoardDressing(this.high, tycoonGame);
+      this.dressingTycoon = tycoonGame;
+      this.world.add(this.dressing.group);
+    }
+    this.dressing?.update({ tycoon: input.tycoon, islands: input.islands, enterBonus: input.enterBonus });
+  }
+
   update(input: SceneInput) {
     this.input = input;
+    this.applyLook(input);
+    if (this.lastRollKey < 0) this.lastRollKey = input.rollKey;
+    if (input.rollKey !== this.lastRollKey) {
+      this.lastRollKey = input.rollKey;
+      if (input.rolled.length) {
+        this.dice.throw(input.rolled, SEAT_INFO[input.activeSeat ?? 0].main, input.rollMs, input.reduceMotion);
+        this.diceFadeAt = 0;
+      }
+    }
     const now = performance.now();
     const f = input.hopMs / 170;
     const calm = input.reduceMotion;
     this.rotationTarget = (Math.PI / 2) * input.viewSeat;
     this.updateCamera(input.camera);
-    this.setNeon(input.neon);
+    this.setNeon(input.neon || input.look);
     this.applyColours(input.playing);
     if (input.activeSeat !== this.lastActive) {
+      if (this.lastActive !== null) this.diceFadeAt = now + 1100;
       if (this.lastActive !== null && !calm) this.kick = 1;
       this.lastActive = input.activeSeat;
     }
@@ -657,19 +730,20 @@ export class LudoScene {
     }
   }
 
-  private updateCamera(mode: "tilt" | "top") {
+  private updateCamera(mode: "tilt" | "top" | "follow") {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     const aspect = w / h;
     this.camera.aspect = aspect;
     this.camera.fov = FOV;
     const elev = THREE.MathUtils.degToRad(mode === "top" ? 89 : 60);
     const tan = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const halfW = 8.0;
-    const halfH = 7.7 * Math.sin(elev) + 1.3;
+    const wide = !!this.input?.look;
+    const halfW = wide ? 8.8 : 8.0;
+    const halfH = 7.7 * Math.sin(elev) + (wide ? 2.2 : 1.3);
     const dist = Math.max(halfW / (tan * aspect), halfH / tan);
     this.camBase.set(0, dist * Math.sin(elev), dist * Math.cos(elev));
-    this.camera.position.copy(this.camBase);
-    this.camera.lookAt(0, 0, 0);
+    // while the camera is swooping, the frame loop owns its position
+    if (!this.camMoved) { this.camera.position.copy(this.camBase); this.camera.lookAt(0, 0, 0); }
     this.camera.updateProjectionMatrix();
   }
 
@@ -818,18 +892,53 @@ export class LudoScene {
       animating = true;
     }
 
-    // camera: shake on impacts, a small fov kick when the turn changes
-    if (this.shake > 0.003 || this.kick > 0.003) {
+    // the thrown dice, the dressed board's rising buildings, and the city's traffic and signs
+    if (this.diceFadeAt && now >= this.diceFadeAt) { this.diceFadeAt = 0; this.dice.fadeOut(now); }
+    if (this.dice.update(now)) animating = true;
+    if (this.dressing?.tick(now)) animating = true;
+    if (this.city && lively) this.city.update(t);
+
+    // camera: swoop in behind the moving token, hold on the landing, then pull back to the overview
+    let target = 0;
+    const picking = !!input && input.interactiveSeat !== null && input.options.length > 0;
+    if (input && input.camera === "follow" && input.look && !calm && !picking) {
+      let mover: TokenObj | null = null;
+      for (const o of this.tokens.values()) if (o.tween && o.tween.kind !== "slide") { mover = o; break; }
+      if (mover) { this.followObj = mover; this.followHoldUntil = now + 1100; }
+      if (mover || (this.followObj && (now < this.followHoldUntil || input.hold))) target = 1;
+    }
+    this.followK += (target - this.followK) * Math.min(1, dt * (target > this.followK ? 2.6 : 1.8));
+    if (Math.abs(target - this.followK) < 0.002) this.followK = target;
+    if (target === 0 && this.followK === 0) this.followObj = null;
+    const following = this.followK > 0.001 && !!this.followObj;
+    if (following || this.shake > 0.003 || this.kick > 0.003) {
       this.shake *= Math.exp(-dt * 7);
       this.kick *= Math.exp(-dt * 5);
       const a = this.shake * 0.22;
-      this.camera.position.set(this.camBase.x + (Math.random() - 0.5) * a, this.camBase.y + (Math.random() - 0.5) * a, this.camBase.z + (Math.random() - 0.5) * a);
-      this.camera.lookAt(0, 0, 0);
-      this.camera.fov = FOV - 2.4 * this.kick;
+      const base = this.camBase.clone();
+      this.camLook.set(0, 0, 0);
+      let zoom = 0;
+      if (following) {
+        const o = this.followObj!;
+        const wp = o.root.getWorldPosition(new THREE.Vector3());
+        if (o.tween) {
+          const d = new THREE.Vector3(o.tween.to.x - o.tween.from.x, 0, o.tween.to.z - o.tween.from.z);
+          if (d.lengthSq() > 1e-4) { d.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.world.rotation.y); this.followDir.lerp(d, Math.min(1, dt * 6)).normalize(); }
+        }
+        const e = this.followK * this.followK * (3 - 2 * this.followK);
+        base.lerp(wp.clone().addScaledVector(this.followDir, -3.6).add(new THREE.Vector3(0, 2.4, 0)), e);
+        this.camLook.lerp(wp.clone().addScaledVector(this.followDir, 1.3).add(new THREE.Vector3(0, 0.35, 0)), e);
+        zoom = 6 * e;
+      }
+      this.camera.position.set(base.x + (Math.random() - 0.5) * a, base.y + (Math.random() - 0.5) * a, base.z + (Math.random() - 0.5) * a);
+      this.camera.lookAt(this.camLook);
+      this.camera.fov = FOV - 2.4 * this.kick - zoom;
       this.camera.updateProjectionMatrix();
+      this.camMoved = true;
       animating = true;
-    } else if (this.shake > 0 || this.kick > 0) {
+    } else if (this.camMoved || this.shake > 0 || this.kick > 0) {
       this.shake = this.kick = 0;
+      this.camMoved = false;
       this.camera.position.copy(this.camBase);
       this.camera.lookAt(0, 0, 0);
       this.camera.fov = FOV;
@@ -932,6 +1041,10 @@ export class LudoScene {
       if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose();
     });
     this.neonBoard?.dispose();
+    this.dice.dispose();
+    this.dressing?.dispose();
+    this.city?.dispose();
+    this.skyTex?.dispose();
     this.glyphTextures.forEach(t => t.dispose());
     this.dotTexture.dispose();
     this.renderer.dispose();

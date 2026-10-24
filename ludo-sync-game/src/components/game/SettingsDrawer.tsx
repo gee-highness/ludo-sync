@@ -48,6 +48,11 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 <option value="auto">Auto</option><option value="3d">3D</option><option value="2d">Flat</option>
               </Select>
             </Row>
+            <Row label="3D camera" hint="Moving follows the piece from behind">
+              <Select w="140px" size="sm" value={s.camera} onChange={e => update({ camera: e.target.value as Settings["camera"] })} bg="gray.700">
+                <option value="follow">Moving</option><option value="tilt">Tilted</option><option value="top">Top-down</option>
+              </Select>
+            </Row>
             <Row label="3D quality" hint="Lower saves battery">
               <Select w="120px" size="sm" value={s.quality} onChange={e => update({ quality: e.target.value as Settings["quality"] })} bg="gray.700">
                 <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>

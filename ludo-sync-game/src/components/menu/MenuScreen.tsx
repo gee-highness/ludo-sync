@@ -57,7 +57,10 @@ export default function MenuScreen() {
           <Button colorScheme="teal" size="lg" w="100%" onClick={go("/play?preset=bot")}>Play vs bots</Button>
           <Button colorScheme="purple" size="lg" w="100%" onClick={go("/play?preset=local")}>Pass and play</Button>
           <Button colorScheme="blue" size="lg" w="100%" onClick={go("/online")}>Play with friends online</Button>
-          <Button variant="outline" color="white" w="100%" onClick={go("/pieces")}>Piece maker</Button>
+          <HStack w="100%" spacing={2}>
+            <Button variant="outline" color="white" flex={1} onClick={go("/pieces")}>Piece maker</Button>
+            <Button variant="outline" color="white" flex={1} onClick={go("/island")}>Island maker</Button>
+          </HStack>
           <InstallButton />
           <HStack w="100%" spacing={3}>
             <Button variant="outline" color="white" flex={1} onClick={help.onOpen}>How to play</Button>
