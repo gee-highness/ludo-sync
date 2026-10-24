@@ -54,12 +54,22 @@ test("pressing Back asks before leaving a game, and the game stays saved", async
   await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible({ timeout: 20_000 });
   // the Back guard is set up just after the screen appears; give it a moment, as a person would
   await page.waitForTimeout(800);
+  // watch the dialog from the instant it appears: the leave button must start locked, so a second tap cannot confirm by accident
+  const firstSight = page.evaluate(() => new Promise<{ disabled: boolean; text: string }>(resolve => {
+    const look = () => {
+      const d = document.querySelector("[role=alertdialog]");
+      const b = d && [...d.querySelectorAll("button")].find(x => /Leave for now/.test(x.textContent ?? ""));
+      if (b) resolve({ disabled: (b as HTMLButtonElement).disabled, text: b.textContent ?? "" }); else requestAnimationFrame(look);
+    };
+    look();
+  }));
   await page.goBack();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Leave this game?");
   await expect(page).toHaveURL(/\/play/);
-  // the leave button is locked for a moment, so a second tap cannot confirm by accident
-  await expect(dialog.getByRole("button", { name: /^Leave for now \(\d\)$/ })).toBeDisabled();
+  const seen = await firstSight;
+  expect(seen.disabled).toBe(true);
+  expect(seen.text).toMatch(/\(\d\)/);
   await dialog.getByRole("button", { name: "Keep playing" }).click();
   await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible();
   // leaving on purpose lands on the menu with the game waiting to be resumed
