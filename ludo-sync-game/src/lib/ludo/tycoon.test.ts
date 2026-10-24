@@ -4,7 +4,7 @@ import { applyAction, createGame } from "./engine";
 import { RING_LENGTH } from "./board";
 import { SQUARES, START_CASH, ownsFullSet, rentOf, createTycoon } from "./tycoon";
 import { parseGameState } from "./validate";
-import { DEFAULT_RULES, type GameState } from "./types";
+import { DEFAULT_RULES, DEFAULT_TUNING, type GameState } from "./types";
 
 const rules = { ...DEFAULT_RULES, tycoon: true };
 const two = (seed = 1) => createGame(
@@ -135,4 +135,29 @@ describe("tycoon whole games", () => {
     }
     expect(finished).toBe(20);
   }, 60000);
+});
+
+import { rentTable } from "./tycoon";
+describe("property cards", () => {
+  it("has original, unique names for every square", () => {
+    const names = SQUARES.map(s => s.name);
+    const props = SQUARES.filter(s => s.kind === "property").map(s => s.name);
+    expect(new Set(props).size).toBe(32);
+    expect(names.join(" ")).not.toMatch(/Chance|Community Chest|Boardwalk|Park Place|Mayfair|Baltic|Mediterranean|Marvin|Ventnor|Atlantic/);
+    expect(SQUARES.filter(s => s.kind === "chance")[0].name).toBe("Lucky Draw");
+    expect(SQUARES.filter(s => s.kind === "chest")[0].name).toBe("City Fund");
+  });
+  it("prints the rent in every situation, matching what is actually charged", () => {
+    const ring = SQUARES.find(s => s.kind === "property")!.ring;
+    const table = rentTable(ring);
+    const t = createTycoon();
+    t.owner[ring] = 0;
+    expect(table.rows[0].amount).toBe(rentOf(t, ring));
+    t.level[ring] = 2;
+    expect(table.rows[3].amount).toBe(rentOf(t, ring));
+    expect(table.mortgage).toBe(Math.floor(SQUARES[ring].price / 2));
+    expect(rentTable(ring, { ...DEFAULT_TUNING, maxBuild: 1 }).rows).toHaveLength(3);
+    expect(rentTable(SQUARES.find(s => s.kind === "station")!.ring).rows.map(r => r.amount)).toEqual([25, 50, 75, 100]);
+    expect(rentTable(SQUARES.find(s => s.kind === "tax")!.ring).rows).toHaveLength(0);
+  });
 });

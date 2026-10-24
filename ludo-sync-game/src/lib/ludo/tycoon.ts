@@ -24,9 +24,22 @@ export interface Square {
 export const GROUP_COLORS = [
   "#8B5E3C", "#7DD3FC", "#F472B6", "#FB923C", "#EF4444", "#FACC15", "#22C55E", "#2563EB", "#A78BFA", "#14B8A6", "#F97316", "#6366F1",
 ] as const;
-const GROUP_NAMES = [
-  "Harbor", "Lakeside", "Orchid", "Amber", "Crimson", "Sunrise", "Meadow", "Sapphire", "Violet", "Lagoon", "Canyon", "Summit",
-];
+/** Original city-themed names for the 32 properties, in ring order and colour group (2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2). */
+const PROPERTY_NAMES = [
+  "Dockside Alley", "Cargo Lane",
+  "Aqua Row", "Pier Street", "Tidal Court",
+  "Orchid Way", "Bloom Street", "Petal Plaza",
+  "Ember Road", "Foundry Row", "Kiln Court",
+  "Crimson Mile", "Vermilion Avenue", "Scarlet Square",
+  "Sunrise Boulevard", "Dawn Terrace", "Gold Coast Drive",
+  "Park Meadow", "Fern Boulevard", "Canopy Walk",
+  "Sapphire Heights", "Azure Tower Road", "Cobalt Plaza",
+  "Violet Quarter", "Amethyst Way", "Indigo Lane",
+  "Lagoon Gardens", "Reef Promenade",
+  "Canyon Rise", "Mesa Circle",
+  "Summit Tower", "Zenith Plaza",
+] as const;
+const METRO_NAMES = ["Harbor Metro", "Central Metro", "Uptown Metro", "Eastside Metro"] as const;
 /** Eight groups of three squares and four of two: 32 properties. */
 const GROUP_SIZES = [2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2];
 
@@ -42,18 +55,18 @@ const buildSquares = (): Square[] => {
     const arm = Math.floor(ring / ARM);
     const o = ring % ARM;
     if (o === 0) out.push({ ring, kind: "start", name: "Start", price: 0, group: -1 });
-    else if (o === 3) out.push({ ring, kind: "chest", name: "Community Chest", price: 0, group: -1 });
-    else if (o === 5) out.push({ ring, kind: "station", name: `Station ${arm + 1}`, price: 200, group: -1 });
-    else if (o === 8) out.push({ ring, kind: "chance", name: "Chance", price: 0, group: -1 });
+    else if (o === 3) out.push({ ring, kind: "chest", name: "City Fund", price: 0, group: -1 });
+    else if (o === 5) out.push({ ring, kind: "station", name: METRO_NAMES[arm], price: 200, group: -1 });
+    else if (o === 8) out.push({ ring, kind: "chance", name: "Lucky Draw", price: 0, group: -1 });
     else if (o === 10) {
       out.push(arm % 2 === 0
-        ? { ring, kind: "tax", name: "Tax", price: 0, group: -1 }
-        : { ring, kind: "utility", name: arm === 1 ? "Power Co." : "Water Works", price: 150, group: -1 });
+        ? { ring, kind: "tax", name: "City Tax", price: 0, group: -1 }
+        : { ring, kind: "utility", name: arm === 1 ? "Power Grid" : "Hydro Plant", price: 150, group: -1 });
     } else {
       const g = groupOf[property];
       seenInGroup[g] += 1;
       const price = Math.round((60 + (property * 340) / 31) / 10) * 10;
-      out.push({ ring, kind: "property", name: `${GROUP_NAMES[g]} ${seenInGroup[g]}`, price, group: g });
+      out.push({ ring, kind: "property", name: PROPERTY_NAMES[property], price, group: g });
       property += 1;
     }
   }
@@ -98,6 +111,36 @@ const baseRent = (t: TycoonState, ring: number): number => {
     return ownsFullSet(t, owner, ring) ? base * 2 : base;
   }
   return 0;
+};
+
+export interface RentRow { label: string; amount: number }
+export interface RentTable {
+  kind: SquareKind;
+  /** What it costs to buy, and what the bank lends against it. */
+  price: number;
+  mortgage: number;
+  /** Cost of each building (properties only). */
+  buildCost: number;
+  rows: RentRow[];
+}
+
+/** Everything the property card prints: the rent in every situation, in the game's current tuning. */
+export const rentTable = (ring: number, tune: RuleTuning = DEFAULT_TUNING): RentTable => {
+  const sq = SQUARES[ring];
+  const f = tune.rentFactor;
+  const out: RentTable = { kind: sq.kind, price: sq.price, mortgage: Math.floor(sq.price / 2), buildCost: 0, rows: [] };
+  if (sq.kind === "property") {
+    const base = Math.max(10, Math.round(sq.price / 10));
+    out.buildCost = houseCost(ring);
+    out.rows.push({ label: "Rent", amount: Math.round(base * f) }, { label: "With the full colour set", amount: Math.round(base * 2 * f) });
+    const mult = [3, 6, 10];
+    for (let lvl = 1; lvl <= Math.min(3, tune.maxBuild); lvl++) out.rows.push({ label: lvl === 1 ? "With 1 building" : `With ${lvl} buildings`, amount: Math.round(base * mult[lvl - 1] * f) });
+  } else if (sq.kind === "station") {
+    for (let n = 1; n <= 4; n++) out.rows.push({ label: n === 1 ? "Rent" : `If ${n} metro lines are owned`, amount: Math.round(25 * n * f) });
+  } else if (sq.kind === "utility") {
+    for (let n = 1; n <= 2; n++) out.rows.push({ label: n === 1 ? "Rent" : "If both utilities are owned", amount: Math.round(30 * n * f) });
+  }
+  return out;
 };
 
 const CHANCE = [
@@ -159,7 +202,7 @@ export const landOn = (t: TycoonState, players: Player[], seat: Seat, ring: numb
       if (card.each) {
         for (const p of players) if (p.seat !== seat) transfer(t, seat, card.each, "birthday", events, p.seat);
       } else {
-        transfer(t, seat, card.delta, sq.kind === "chance" ? "chance" : "community chest", events);
+        transfer(t, seat, card.delta, sq.kind === "chance" ? "lucky draw" : "city fund", events);
       }
       return r.state;
     }
