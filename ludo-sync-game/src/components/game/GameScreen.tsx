@@ -83,7 +83,7 @@ export default function GameScreen(props: GameScreenProps) {
 
   const reduceMotion = settings.motion === "reduce" || (settings.motion === "auto" && !!caps?.reducedMotion);
   const speed = reduceMotion && settings.speed === "normal" ? "fast" : settings.speed;
-  const renderer = state.rules.tycoon ? "2d" : resolveRenderer(settings.renderer, caps);
+  const renderer = resolveRenderer(settings.renderer, caps);
 
   useWakeLock(settings.keepAwake && (state.phase !== "over" || !!props.guardUnload));
 

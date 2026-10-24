@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from "react";
 import { SEATS, type Seat } from "../ludo/board";
+import { readJSON, writeJSON } from "./storage";
 
 /** How a player's buildings look on the properties they own: their "island". */
 export const BUILDING_THEMES = ["neon", "brownstone", "tropical", "industrial", "glass"] as const;
@@ -53,3 +55,26 @@ export const sanitizeIslands = (raw: unknown): IslandMap => {
   }
   return out;
 };
+
+// ---- store: the islands chosen on this device, one style per seat ---------------------------------------
+
+let current: IslandMap = {};
+let loaded = false;
+const listeners = new Set<() => void>();
+const ensureLoaded = () => { if (loaded || typeof window === "undefined") return; loaded = true; current = sanitizeIslands(readJSON("islands", null)); };
+const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
+const EMPTY: IslandMap = {};
+
+export const getIslands = (): IslandMap => { ensureLoaded(); return current; };
+export const setIslands = (next: IslandMap) => {
+  ensureLoaded();
+  current = sanitizeIslands(next);
+  writeJSON("islands", current);
+  listeners.forEach(l => l());
+};
+export const setIsland = (seat: Seat, style: IslandStyle | null) => {
+  const next = { ...getIslands() };
+  if (style) next[seat] = style; else delete next[seat];
+  setIslands(next);
+};
+export const useIslands = (): IslandMap => useSyncExternalStore(subscribe, getIslands, () => EMPTY);
