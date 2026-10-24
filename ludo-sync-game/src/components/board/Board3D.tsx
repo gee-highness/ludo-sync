@@ -4,6 +4,7 @@ import { Box } from "@chakra-ui/react";
 import { useEffect, useMemo, useRef } from "react";
 import { SEAT_INFO, SEATS, type Seat } from "@/lib/ludo/board";
 import { usePalette } from "@/lib/client/palette";
+import { useSettings } from "@/lib/client/settings";
 import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
 import { LudoScene, type SceneInput } from "./LudoScene";
 import { placeTokens, seatTokens } from "./layout";
@@ -25,6 +26,7 @@ export default function Board3D(props: Board3DProps) {
   const cb = useRef(props);
   cb.current = props;
 
+  const [settings] = useSettings();
   const palette = usePalette();
   const designs = useDesigns();
   const resolved = useMemo(
@@ -37,8 +39,8 @@ export default function Board3D(props: Board3DProps) {
     tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved,
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving]);
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview,
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

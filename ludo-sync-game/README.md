@@ -88,3 +88,8 @@ In pass-and-play and bot games it is the "Colours" button on each seat in setup;
 opens "Choose my colours" in the room lobby, and the host relays every player's colours so each device draws everyone's seat as they chose it.
 The four standard colours are the default and can always be restored. Code: `lib/client/palette.ts` (seat colours are updated in place and
 `usePalette()` redraws), `hooks.ts` `usePaletteSync`.
+
+## Move preview
+When a token can move, the board shows where: a dot on every square it would cross and a ring (with the die number when a token has several moves)
+on the one it would land on, drawn on both the flat and the 3D board. Settings > Move preview switches between path and landing, landing only, or off.
+The track squares are drawn a little dimmer so the dots, pieces and highlights stand out. Code: `lib/client/preview.ts`.

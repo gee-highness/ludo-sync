@@ -6,6 +6,7 @@ import {
   FINISH, RING, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat,
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
+import { previewPath } from "@/lib/client/preview";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import { usePalette } from "@/lib/client/palette";
 import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
@@ -27,7 +28,7 @@ const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", s
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
 const PALETTES: Record<BoardTheme, Palette> = {
-  classic: { bg: "#151515", cell: "#F7F7F7", line: "#A0A0A0", panel: "#fff", inactiveCol: "#A0A0A0" },
+  classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
@@ -224,12 +225,33 @@ export default function Board2D({
     return <polygon key={seat} points={pts[seat]} fill={playing.has(seat) ? SEAT_INFO[seat].main : INACTIVE} stroke="#fff" strokeWidth={0.05} />;
   });
 
-  const ghosts = preview
-    ? (byToken.get(Number(preview)) ?? []).map(o => {
-        const p = pointOf(interactiveSeat!, o.token, o.to);
-        return <circle key={o.die} className="ghost" cx={p.x} cy={p.y} r={0.44} fill="none" stroke="#fff" strokeWidth={0.1} strokeDasharray="0.18 0.14" />;
-      })
-    : null;
+  // for every token that can move: a dot on each square it would cross and a ring on the one it would land on
+  const previews = (() => {
+    if (settings.movePreview === "off" || interactiveSeat === null) return null;
+    const info = SEAT_INFO[interactiveSeat];
+    const label = (o: MoveOption, x: number, y: number, strong: boolean) => (
+      byToken.get(o.token)!.length > 1 && (
+        <text x={x} y={y + 0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.36} fontWeight={800} fill="#fff" stroke={info.dark} strokeWidth={0.08}
+          paintOrder="stroke" opacity={strong ? 1 : 0.8} transform={`rotate(${-rotation} ${x} ${y})`}>{o.die}</text>
+      )
+    );
+    return [...byToken.entries()].flatMap(([token, opts]) =>
+      opts.map(o => {
+        const path = previewPath(interactiveSeat, o);
+        const strong = preview === null || Number(preview) === token;
+        return (
+          <g key={`${token}-${o.die}`} aria-hidden opacity={strong ? 1 : 0.4}>
+            {settings.movePreview === "dots" && path.dots.map((d, i) => (
+              <circle key={i} cx={d.x} cy={d.y} r={strong && preview !== null ? 0.17 : 0.13} fill={info.dark} stroke="#fff" strokeWidth={0.05} />
+            ))}
+            <circle className="ghost" cx={path.end.x} cy={path.end.y} r={0.42} fill={info.main} fillOpacity={0.28} stroke="#fff" strokeWidth={0.09} />
+            <circle cx={path.end.x} cy={path.end.y} r={0.42} fill="none" stroke={info.dark} strokeWidth={0.03} />
+            {label(o, path.end.x, path.end.y, strong)}
+          </g>
+        );
+      }),
+    );
+  })();
 
   return (
     <svg
@@ -252,7 +274,7 @@ export default function Board2D({
         {yards}
         {cells}
         {centre}
-        {ghosts}
+        {previews}
         {placed.map(t => {
           const isMine = t.seat === interactiveSeat;
           const opts = isMine ? byToken.get(t.token) : undefined;

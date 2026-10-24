@@ -75,6 +75,11 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <Heading size="xs" color="teal.200" textTransform="uppercase">Playing</Heading>
             <Row label="Token symbols" hint="A shape on each token, for colour-blind play">{toggle("symbols")}</Row>
             <Row label="Highlight movable tokens">{toggle("hints")}</Row>
+            <Row label="Move preview" hint="Dots along each move, with the landing square marked">
+              <Select w="140px" size="sm" value={s.movePreview} onChange={e => update({ movePreview: e.target.value as Settings["movePreview"] })} bg="gray.700">
+                <option value="dots">Path and landing</option><option value="end">Landing only</option><option value="off">Off</option>
+              </Select>
+            </Row>
             <Row label="Auto-move forced moves" hint="When only one move is possible">{toggle("autoMove")}</Row>
             <Row label="Face the current player" hint="Pass-and-play: turns the board each turn">{toggle("followTurn")}</Row>
             <Row label="Keep screen awake">{toggle("keepAwake")}</Row>

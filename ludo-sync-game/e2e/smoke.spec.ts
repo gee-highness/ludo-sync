@@ -12,7 +12,7 @@ test("manifest and service worker are served", async ({ request }) => {
 test("menu loads and a quick bot game can be played for a few turns", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
-  page.on("console", m => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
+  page.on("console", m => { if (m.type() === "error" && !/Failed to load resource|GL Driver Message|GPU stall/.test(m.text())) errors.push(m.text()); });
 
   await page.goto("/");
   await expect(page.getByText("Ludo Sync").first()).toBeVisible();

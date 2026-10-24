@@ -6,6 +6,8 @@ import { tokenKey, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
+import { previewPath } from "@/lib/client/preview";
+import type { MovePreview } from "@/lib/client/settings";
 
 export interface SceneInput {
   tokens: PlacedToken[];
@@ -22,6 +24,7 @@ export interface SceneInput {
   reduceMotion: boolean;
   hopMs: number;
   camera: "tilt" | "top";
+  movePreview: MovePreview;
   /** What each piece looks like, by seat then token. */
   designs: Record<Seat, ResolvedDesign[]>;
 }
@@ -119,6 +122,7 @@ export class LudoScene {
     column: [[], [], [], []], start: [[], [], [], []], centre: [[], [], [], []],
   };
   private ghosts: THREE.Mesh[] = [];
+  private pathDots: THREE.Mesh[] = [];
   private shocks: Shock[] = [];
   private particles!: {
     points: THREE.Points; pos: Float32Array; col: Float32Array; base: Float32Array; vel: Float32Array; life: Float32Array; max: Float32Array; grav: Float32Array;
@@ -176,7 +180,7 @@ export class LudoScene {
     this.scene.add(sun);
 
     this.dotTexture = softDot();
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 8; i++) {
       const g = new THREE.Mesh(
         new THREE.RingGeometry(0.46, 0.62, 40),
         new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }),
@@ -186,6 +190,15 @@ export class LudoScene {
       g.renderOrder = 2;
       this.ghosts.push(g);
       this.world.add(g);
+    }
+    const dotGeo = new THREE.CircleGeometry(0.15, 16);
+    for (let i = 0; i < 48; i++) {
+      const d = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.8, depthWrite: false }));
+      d.rotation.x = -Math.PI / 2;
+      d.visible = false;
+      d.renderOrder = 2;
+      this.pathDots.push(d);
+      this.world.add(d);
     }
     this.initParticles();
 
@@ -283,7 +296,7 @@ export class LudoScene {
       if (!m.isMesh) return;
       (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
         const std = mat as THREE.MeshStandardMaterial;
-        if (std.name === "Material.005") { std.color.setHex(0xf4f7fb); std.roughness = 0.85; }
+        if (std.name === "Material.005") { std.color.setHex(0xd6d6d6); std.roughness = 0.85; }
         else if (std.name === "Material.007") std.color.setHex(0x9a9a9a);
         else if (std.name in bySeat) this.seatMats.column[bySeat[std.name]].push(std);
         else if (std.name in startBySeat) this.seatMats.start[startBySeat[std.name]].push(std);
@@ -586,15 +599,36 @@ export class LudoScene {
     this.invalidate();
   }
 
+  /** For every token that can move: a dot on each square it would cross and a ring on its landing square. */
   private syncGhosts() {
     const input = this.input;
     this.ghosts.forEach(g => { g.visible = false; });
-    if (!input || input.interactiveSeat === null || this.hoverToken === null) return;
-    input.options.filter(o => o.token === this.hoverToken).slice(0, 4).forEach((o, i) => {
-      const g = this.ghosts[i];
-      g.position.copy(toWorld(pointOf(input.interactiveSeat!, o.token, o.to), 0.04));
+    this.pathDots.forEach(d => { d.visible = false; });
+    if (!input || input.interactiveSeat === null || input.movePreview === "off") return;
+    const seat = input.interactiveSeat;
+    const dark = hex(SEAT_INFO[seat].dark);
+    const hovering = this.hoverToken !== null;
+    let ring = 0, dot = 0;
+    for (const o of input.options) {
+      if (ring >= this.ghosts.length) break;
+      const strong = !hovering || o.token === this.hoverToken;
+      const path = previewPath(seat, o);
+      const g = this.ghosts[ring++];
+      g.position.copy(toWorld(path.end, 0.04));
+      (g.material as THREE.MeshBasicMaterial).opacity = strong ? 0.95 : 0.4;
       g.visible = true;
-    });
+      if (input.movePreview !== "dots") continue;
+      for (const p of path.dots) {
+        if (dot >= this.pathDots.length) break;
+        const d = this.pathDots[dot++];
+        d.position.copy(toWorld(p, 0.05));
+        d.scale.setScalar(strong && hovering ? 1.35 : 1);
+        const mat = d.material as THREE.MeshBasicMaterial;
+        mat.color.setHex(dark);
+        mat.opacity = strong ? 0.9 : 0.35;
+        d.visible = true;
+      }
+    }
   }
 
   private updateCamera(mode: "tilt" | "top") {

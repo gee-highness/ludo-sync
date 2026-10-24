@@ -9,6 +9,9 @@ export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type QualityPref = "auto" | "high" | "low";
 export type CameraPref = "tilt" | "top";
+/** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
+export type MovePreview = "dots" | "end" | "off";
+export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
 export type BoardTheme = "classic" | "midnight" | "forest" | "sunset" | "paper";
 export const BOARD_THEMES: readonly BoardTheme[] = ["classic", "midnight", "forest", "sunset", "paper"];
 
@@ -26,6 +29,7 @@ export interface Settings {
   symbols: boolean;
   /** Pulse the tokens that can move. */
   hints: boolean;
+  movePreview: MovePreview;
   /** Play the move automatically when only one is possible. */
   autoMove: boolean;
   /** Pass-and-play: turn the board towards whoever is up. */
@@ -53,6 +57,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   motion: "auto",
   symbols: false,
   hints: true,
+  movePreview: "dots",
   autoMove: false,
   followTurn: false,
   keepAwake: true,
@@ -84,6 +89,7 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     motion: oneOf(r.motion, ["auto", "reduce", "full"], d.motion),
     symbols: bool(r.symbols, d.symbols),
     hints: bool(r.hints, d.hints),
+    movePreview: oneOf(r.movePreview, MOVE_PREVIEWS, d.movePreview),
     autoMove: bool(r.autoMove, d.autoMove),
     followTurn: bool(r.followTurn, d.followTurn),
     keepAwake: bool(r.keepAwake, d.keepAwake),
