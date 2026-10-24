@@ -20,6 +20,7 @@ import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/devi
 import { recordGame } from "@/lib/client/stats";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
+import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import BoardView from "../board/BoardView";
 import { Dice } from "../board/Dice";
 import { PlayerCard } from "./PlayerCard";
@@ -37,6 +38,11 @@ export interface GameScreenProps {
   act: (action: Action) => boolean;
   onExit: () => void;
   exitWarning: string;
+  /** Online: quit for good (forfeit the seat). When given, the leave dialog offers it as a second, separate choice. */
+  onForfeit?: () => void;
+  forfeitWarning?: string;
+  /** Ask the browser to confirm before the tab is closed or reloaded mid-game. */
+  guardUnload?: boolean;
   /** Run bot players here (local games). Online, the host does it. */
   runBots?: boolean;
   recordStats?: boolean;
@@ -63,6 +69,7 @@ export default function GameScreen(props: GameScreenProps) {
   const log = useDisclosure();
   const exit = useDisclosure();
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const [lockLeft, setLockLeft] = useState(0);
   const [wide] = useMediaQuery("(orientation: landscape) and (min-width: 700px)");
   const [lines, setLines] = useState<LogLine[]>([]);
   const [choice, setChoice] = useState<number | null>(null);
@@ -77,6 +84,16 @@ export default function GameScreen(props: GameScreenProps) {
   const renderer = state.rules.tycoon ? "2d" : resolveRenderer(settings.renderer, caps);
 
   useWakeLock(settings.keepAwake && state.phase !== "over");
+
+  // Back, swipe-back and (online) closing the tab all ask first; the leave buttons then stay locked for a moment
+  useLeaveGuard(state.phase !== "over", exit.onOpen, props.guardUnload);
+  useEffect(() => {
+    if (!exit.isOpen) return;
+    setLockLeft(2);
+    const t1 = setTimeout(() => setLockLeft(1), 800);
+    const t2 = setTimeout(() => setLockLeft(0), 1600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [exit.isOpen]);
 
   useEffect(() => {
     const unlock = () => sound.unlock();
@@ -290,10 +307,20 @@ export default function GameScreen(props: GameScreenProps) {
         <AlertDialogOverlay>
           <AlertDialogContent bg="gray.800" color="white" mx={3}>
             <AlertDialogHeader>Leave this game?</AlertDialogHeader>
-            <AlertDialogBody>{exitWarning}</AlertDialogBody>
-            <AlertDialogFooter gap={2}>
-              <Button ref={cancelRef} onClick={exit.onClose}>Keep playing</Button>
-              <Button colorScheme="red" onClick={() => { exit.onClose(); onExit(); }}>Leave</Button>
+            <AlertDialogBody>
+              <Text>{exitWarning}</Text>
+              {props.onForfeit && <Text mt={3} color="orange.200" fontSize="sm">{props.forfeitWarning ?? "Quitting for good gives up your seat and cannot be undone."}</Text>}
+            </AlertDialogBody>
+            <AlertDialogFooter flexDirection="column" alignItems="stretch" gap={2}>
+              <Button ref={cancelRef} colorScheme="teal" size="lg" onClick={exit.onClose}>Keep playing</Button>
+              <Button variant="outline" color="white" isDisabled={lockLeft > 0} onClick={() => { exit.onClose(); onExit(); }}>
+                {lockLeft > 0 ? `Leave for now (${lockLeft})` : "Leave for now"}
+              </Button>
+              {props.onForfeit && (
+                <Button variant="ghost" colorScheme="red" size="sm" isDisabled={lockLeft > 0} onClick={() => { exit.onClose(); props.onForfeit?.(); }}>
+                  {lockLeft > 0 ? `Quit for good (${lockLeft})` : "Quit for good"}
+                </Button>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialogOverlay>

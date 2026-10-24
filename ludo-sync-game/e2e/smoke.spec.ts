@@ -48,3 +48,22 @@ test("piece maker edits a piece and saves it", async ({ page }) => {
   expect(saved).toContain("crown");
   expect(errors).toEqual([]);
 });
+
+test("pressing Back asks before leaving a game, and the game stays saved", async ({ page }) => {
+  await page.goto("/play?preset=bot&quick=1");
+  await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible({ timeout: 20_000 });
+  await page.goBack();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Leave this game?");
+  await expect(page).toHaveURL(/\/play/);
+  // the leave button is locked for a moment, so a second tap cannot confirm by accident
+  await expect(dialog.getByRole("button", { name: /^Leave for now \(\d\)$/ })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Keep playing" }).click();
+  await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible();
+  // leaving on purpose lands on the menu with the game waiting to be resumed
+  await page.getByRole("button", { name: "Leave game" }).click();
+  const leave = dialog.getByRole("button", { name: "Leave for now" });
+  await expect(leave).toBeEnabled({ timeout: 4000 });
+  await leave.click();
+  await expect(page.getByRole("button", { name: /Resume game/ })).toBeVisible({ timeout: 10_000 });
+});
