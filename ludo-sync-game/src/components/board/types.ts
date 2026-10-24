@@ -21,4 +21,7 @@ export interface BoardProps {
   rollKey?: number;
   /** CSS px of the canvas covered by the interface on each side; the 3D scene frames the board in what is left. */
   insets?: { top: number; right: number; bottom: number; left: number };
+  /** True while the person may roll: dragging across the board and letting go throws the dice. */
+  rollable?: boolean;
+  onThrow?: (t: import("@/lib/client/throw").ThrowInput) => void;
 }

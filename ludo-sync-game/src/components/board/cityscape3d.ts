@@ -93,6 +93,15 @@ const glow = (colour: string) => {
   return tex(c);
 };
 
+/** A box without its underside (never seen): 10 triangles instead of 12. */
+const boxNoBottom = (w: number, h: number, d: number): THREE.BufferGeometry => {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const idx = g.getIndex()!.array, out: number[] = [];
+  for (let f = 0; f < 6; f++) if (f !== 3) for (let k = 0; k < 6; k++) out.push(idx[f * 6 + k]);
+  g.setIndex(out);
+  return g;
+};
+
 const ACCENTS = ["#ffcf5a", "#ff4fb8", "#22d3ee", "#4ade80", "#ff8a3d", "#a78bfa"];
 
 /** One roof atlas: six roof designs side by side (glass skylights, lit panels, vents, a glowing rim), bright enough to read from above. */
@@ -175,7 +184,7 @@ export const buildCityscape = (high: boolean): CityHandle => {
   const r = rng(11);
   const FLOOR = -3.4;
   const BLOCK = 4.2;
-  const HALF = high ? 17 : 12; // blocks each way from the centre
+  const HALF = high ? 17 : 10; // blocks each way from the centre
 
   // ground: one big plane with the repeating street tile
   const gt = track(groundTile());
@@ -254,18 +263,17 @@ export const buildCityscape = (high: boolean): CityHandle => {
       roofs.push(roofGeo);
       const top = FLOOR + h;
       // glowing roof edge on some, rooftop gear on most
-      if (r() < 0.55) {
-        // a glowing parapet: four thin bars round the roof edge, so the roof design still shows between them
-        const col = colourOf(ACCENTS[accent]), t = 0.07, y = top + 0.06;
-        trims.push(
-          paint(new THREE.BoxGeometry(w, 0.12, t).translate(x, y, z - d / 2 + t / 2), col), paint(new THREE.BoxGeometry(w, 0.12, t).translate(x, y, z + d / 2 - t / 2), col),
-          paint(new THREE.BoxGeometry(t, 0.12, d).translate(x - w / 2 + t / 2, y, z), col), paint(new THREE.BoxGeometry(t, 0.12, d).translate(x + w / 2 - t / 2, y, z), col),
-        );
+      if (high && e < 24 && r() < 0.55) {
+        // a glowing parapet: four thin flat strips round the roof edge, so the roof design still shows between them
+        const col = colourOf(ACCENTS[accent]), t = 0.07, y = top + 0.02;
+        const strip = (sw: number, sd: number, px: number, pz: number) => paint(new THREE.PlaneGeometry(sw, sd).rotateX(-Math.PI / 2).translate(px, y, pz), col);
+        trims.push(strip(w, t, x, z - d / 2 + t / 2), strip(w, t, x, z + d / 2 - t / 2), strip(t, d, x - w / 2 + t / 2, z), strip(t, d, x + w / 2 - t / 2, z));
       }
-      if (r() < 0.7) details.push(paint(new THREE.BoxGeometry(0.35 + r() * 0.3, 0.3 + r() * 0.3, 0.35 + r() * 0.3).translate(x + (r() - 0.5) * w * 0.5, top + 0.2, z + (r() - 0.5) * d * 0.5), colourOf(r() < 0.5 ? "#2b3358" : ACCENTS[accent])));
-      if (r() < 0.4) {
+      const gear = high && e < 26;
+      if (gear && r() < 0.7) details.push(paint(boxNoBottom(0.35 + r() * 0.3, 0.3 + r() * 0.3, 0.35 + r() * 0.3).translate(x + (r() - 0.5) * w * 0.5, top + 0.2, z + (r() - 0.5) * d * 0.5), colourOf(r() < 0.5 ? "#2b3358" : ACCENTS[accent])));
+      if (gear && r() < 0.4) {
         const ah = 0.8 + r() * 1.6;
-        details.push(paint(new THREE.CylinderGeometry(0.03, 0.04, ah, 5).translate(x + (r() - 0.5) * 0.3, top + ah / 2, z + (r() - 0.5) * 0.3), colourOf("#9aa6c8")));
+        details.push(paint(new THREE.CylinderGeometry(0.03, 0.04, ah, 3, 1, true).translate(x + (r() - 0.5) * 0.3, top + ah / 2, z + (r() - 0.5) * 0.3), colourOf("#9aa6c8")));
         lights.push(x, top + ah, z);
       }
       if (e > 11 && h > 5 && signSpots.length < 90) signSpots.push({ x, z, w, d, h });
@@ -303,35 +311,72 @@ export const buildCityscape = (high: boolean): CityHandle => {
     group.add(blink);
   }
 
-  // vertical neon signs and billboards on the tower sides that face the board
-  const signs: { m: THREE.MeshBasicMaterial; phase: number }[] = [];
-  const maxSigns = high ? 70 : 0;
-  for (let i = 0; i < Math.min(maxSigns, signSpots.length); i++) {
-    const s = signSpots[Math.floor(r() * signSpots.length)];
-    const colour = NEON[Math.floor(r() * NEON.length)];
-    const vertical = r() < 0.6;
-    const map = track(vertical ? vSign(WORDS[Math.floor(r() * WORDS.length)], colour) : hSign(WORDS[Math.floor(r() * WORDS.length)], colour));
-    const m = track(new THREE.MeshBasicMaterial({ map, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
-    const plane = new THREE.Mesh(track(new THREE.PlaneGeometry(vertical ? 0.9 : 2.2, vertical ? 3.4 : 0.9)), m);
-    const toCentre = new THREE.Vector2(-s.x, -s.z).normalize();
-    plane.position.set(s.x + toCentre.x * (Math.abs(toCentre.x) * s.w / 2 + 0.06), FLOOR + Math.min(s.h - 1.8, 2.5 + r() * 9), s.z + toCentre.y * (Math.abs(toCentre.y) * s.d / 2 + 0.06));
-    plane.lookAt(plane.position.x + toCentre.x, plane.position.y, plane.position.z + toCentre.y);
-    group.add(plane);
-    signs.push({ m, phase: r() * 9 });
+  // vertical neon signs and billboards on the tower sides that face the board: two instanced meshes sharing one atlas each;
+  // a sign "flickers" by dimming its instance colour
+  const SIGN_KINDS = 8;
+  const signRefs: { mesh: THREE.InstancedMesh; i: number; phase: number }[] = [];
+  const signMeshes: THREE.InstancedMesh[] = [];
+  if (high) {
+    const wanted = Math.min(70, signSpots.length);
+    const picks = Array.from({ length: wanted }, () => ({ s: signSpots[Math.floor(r() * signSpots.length)], colour: NEON[Math.floor(r() * NEON.length)], vertical: r() < 0.6, word: Math.floor(r() * WORDS.length), kind: Math.floor(r() * SIGN_KINDS), h: r(), phase: r() * 9 }));
+    for (const vertical of [true, false]) {
+      const list = picks.filter(p => p.vertical === vertical);
+      if (!list.length) continue;
+      const tw = vertical ? 64 : 256, th = vertical ? 256 : 96;
+      const cols = vertical ? SIGN_KINDS : 4, rows = vertical ? 1 : 2;
+      const cv = document.createElement("canvas"); cv.width = cols * tw; cv.height = rows * th;
+      const g = cv.getContext("2d")!;
+      for (let k = 0; k < SIGN_KINDS; k++) {
+        const word = WORDS[(k * 3 + (vertical ? 0 : 1)) % WORDS.length], colour = NEON[(k * 2 + (vertical ? 1 : 0)) % NEON.length];
+        const t = vertical ? vSign(word, colour) : hSign(word, colour);
+        g.drawImage(t.image as HTMLCanvasElement, (k % cols) * tw, Math.floor(k / cols) * th);
+        t.dispose();
+      }
+      const map = track(tex(cv));
+      const geo = track(new THREE.PlaneGeometry(vertical ? 0.9 : 2.2, vertical ? 3.4 : 0.9));
+      const tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 2), 2);
+      const mat = track(new THREE.MeshBasicMaterial({ map, transparent: true, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
+      mat.onBeforeCompile = sh => {
+        sh.vertexShader = "attribute vec2 aTile;\n" + sh.vertexShader.replace("#include <uv_vertex>", `#include <uv_vertex>\n#ifdef USE_MAP\n vMapUv = vMapUv * vec2(${(1 / cols).toFixed(6)}, ${(1 / rows).toFixed(6)}) + aTile;\n#endif`);
+      };
+      geo.setAttribute("aTile", tileAttr);
+      const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+      const o = new THREE.Object3D();
+      list.forEach((p, i) => {
+        const { s: sp } = p;
+        const toCentre = new THREE.Vector2(-sp.x, -sp.z).normalize();
+        o.position.set(sp.x + toCentre.x * (Math.abs(toCentre.x) * sp.w / 2 + 0.06), FLOOR + Math.min(sp.h - 1.8, 2.5 + p.h * 9), sp.z + toCentre.y * (Math.abs(toCentre.y) * sp.d / 2 + 0.06));
+        o.lookAt(o.position.x + toCentre.x, o.position.y, o.position.z + toCentre.y);
+        o.updateMatrix();
+        mesh.setMatrixAt(i, o.matrix);
+        tileAttr.setXY(i, (p.kind % cols) / cols, 1 - (Math.floor(p.kind / cols) + 1) / rows);
+        mesh.setColorAt(i, new THREE.Color(1, 1, 1));
+        signRefs.push({ mesh, i, phase: p.phase });
+      });
+      mesh.frustumCulled = false;
+      signMeshes.push(mesh);
+      group.add(mesh);
+    }
   }
 
-  // traffic: bright dots sliding along the streets
+  // traffic: bright dots sliding along the streets, one instanced mesh per colour
   const trafficGeo = track(new THREE.BoxGeometry(0.5, 0.1, 0.16));
-  const traffic: { mesh: THREE.Mesh; axis: 0 | 1; lane: number; speed: number; u: number }[] = [];
+  const traffic: { mesh: THREE.InstancedMesh; slot: number; axis: 0 | 1; lane: number; speed: number; u: number }[] = [];
   const count = high ? 90 : 0;
-  const trafficMats = ["#ff4d6d", "#fff2c2", "#7de3ff"].map(c => track(new THREE.MeshBasicMaterial({ color: c, toneMapped: false })));
+  const trafficMeshes = ["#ff4d6d", "#fff2c2", "#7de3ff"].map(c => {
+    const m = new THREE.InstancedMesh(trafficGeo, track(new THREE.MeshBasicMaterial({ color: c, toneMapped: false })), Math.ceil(count / 3) || 1);
+    m.count = 0; m.frustumCulled = false;
+    if (count) group.add(m);
+    return m;
+  });
   for (let i = 0; i < count; i++) {
-    const mesh = new THREE.Mesh(trafficGeo, trafficMats[i % 3]);
+    const mesh = trafficMeshes[i % 3];
     const lane = (Math.floor(r() * (2 * HALF)) - HALF) * BLOCK + BLOCK / 2 + (r() < 0.5 ? 0.3 : -0.3);
     const axis = (i % 2) as 0 | 1;
-    traffic.push({ mesh, axis, lane, speed: (6 + r() * 8) * (r() < 0.5 ? 1 : -1), u: r() * 160 });
-    group.add(mesh);
+    traffic.push({ mesh, slot: mesh.count++, axis, lane, speed: (6 + r() * 8) * (r() < 0.5 ? 1 : -1), u: r() * 160 });
   }
+  const tObj = new THREE.Object3D();
+  const dimColour = new THREE.Color();
 
   const halo = track(glow("rgba(120,200,255,0.9)"));
   const haloMat = track(new THREE.SpriteMaterial({ map: halo, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
@@ -339,15 +384,22 @@ export const buildCityscape = (high: boolean): CityHandle => {
   group.add(sprite);
 
   const update = (t: number) => {
-    for (const s of signs) s.m.opacity = 0.6 + 0.4 * (Math.sin(t * 2.4 + s.phase) > -0.9 ? 1 : 0.2);
+    for (const sr of signRefs) {
+      const k = 0.6 + 0.4 * (Math.sin(t * 2.4 + sr.phase) > -0.9 ? 1 : 0.2);
+      sr.mesh.setColorAt(sr.i, dimColour.setScalar(k));
+    }
+    for (const m of signMeshes) if (m.instanceColor) m.instanceColor.needsUpdate = true;
     if (blink) (blink.material as THREE.PointsMaterial).opacity = Math.sin(t * 3) > 0 ? 1 : 0.15;
     wt.offset.x = (t * 0.004) % 1;
+    const span = 2 * HALF * BLOCK;
     for (const c of traffic) {
-      const span = 2 * HALF * BLOCK;
       const p = ((c.u + t * c.speed) % span + span) % span - span / 2;
-      if (c.axis === 0) { c.mesh.position.set(p, FLOOR + 0.1, c.lane); c.mesh.rotation.y = 0; }
-      else { c.mesh.position.set(c.lane, FLOOR + 0.1, p); c.mesh.rotation.y = Math.PI / 2; }
+      if (c.axis === 0) { tObj.position.set(p, FLOOR + 0.1, c.lane); tObj.rotation.y = 0; }
+      else { tObj.position.set(c.lane, FLOOR + 0.1, p); tObj.rotation.y = Math.PI / 2; }
+      tObj.updateMatrix();
+      c.mesh.setMatrixAt(c.slot, tObj.matrix);
     }
+    for (const m of trafficMeshes) m.instanceMatrix.needsUpdate = true;
   };
   update(0);
   return { group, update, dispose: () => owned.forEach(o => o.dispose()) };

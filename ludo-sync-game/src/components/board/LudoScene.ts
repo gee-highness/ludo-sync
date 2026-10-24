@@ -207,6 +207,8 @@ export class LudoScene {
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     host.appendChild(canvas);
 
+    // TEMP-DEBUG-PERF
+    if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__ludoScene = this;
     this.scene.add(this.world);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7);
     this.scene.add(this.hemi);

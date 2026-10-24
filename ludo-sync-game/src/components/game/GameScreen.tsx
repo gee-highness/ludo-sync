@@ -22,6 +22,7 @@ import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
 import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { usePalette } from "@/lib/client/palette";
+import { setPendingThrow, type ThrowInput } from "@/lib/client/throw";
 import BoardView from "../board/BoardView";
 import { Dice } from "../board/Dice";
 import { HowToPlay } from "./HowToPlay";
@@ -242,6 +243,8 @@ export default function GameScreen(props: GameScreenProps) {
   const canRoll = iAct && shown.phase === "roll";
 
   const roll = useCallback(() => { if (canRoll) { sound.unlock(); act({ type: "roll" }); } }, [canRoll, act]);
+  // a swipe across the board throws the dice: the throw is remembered for the dice, and the roll goes through the engine as usual
+  const throwDice = useCallback((t: ThrowInput) => { if (canRoll) { setPendingThrow(t); roll(); } }, [canRoll, roll]);
   const move = useCallback((o: MoveOption) => { setChoice(null); act({ type: "move", token: o.token, die: o.die }); }, [act]);
 
   const pick = useCallback((token: number) => {
@@ -284,7 +287,7 @@ export default function GameScreen(props: GameScreenProps) {
     }
     if (busy) return shown.phase === "roll" ? `${others} is rolling…` : `${others} is moving…`;
     if (canRoll && bonus) return mySeats.length > 1 ? `${me.name}: ${bonus}` : bonus;
-    if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: roll the dice";
+    if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: swipe across the board to throw the dice";
     if (iAct) {
       const rolled = rolledText ? `${mySeats.length > 1 ? me.name : "You"} rolled ${rolledText} · ` : "";
       return rolled + (choice !== null ? "choose which number to use" : mySeats.length > 1 ? "pick a glowing token" : "pick a glowing token");
@@ -430,7 +433,7 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey}
+              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />

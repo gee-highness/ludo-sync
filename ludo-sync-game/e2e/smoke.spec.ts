@@ -112,3 +112,23 @@ test("colours chosen in setup reach the game and are remembered", async ({ page 
   const save = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:save")!).palette);
   expect(save["0"].main).toBe("#d53f8c");
 });
+
+test("dragging a finger across the flat board throws the dice", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("ludo-sync:v1:settings", JSON.stringify({ renderer: "2d", sound: false, speed: "instant" })));
+  await page.goto("/play?preset=bot&quick=1");
+  const board = page.getByRole("group", { name: "Ludo board" });
+  await expect(board).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible();
+  const box = (await board.boundingBox())!;
+  const x0 = box.x + box.width * 0.3, y = box.y + box.height * 0.8;
+  // a short tap does nothing
+  await page.mouse.click(x0, y);
+  await page.waitForTimeout(400);
+  await expect(page.getByText(/rolled/).first()).toHaveCount(0);
+  // a quick drag and release is a throw
+  await page.mouse.move(x0, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(x0 + i * 30, y - i * 25); await page.waitForTimeout(12); }
+  await page.mouse.up();
+  await expect(page.getByText(/rolled/).first()).toBeVisible({ timeout: 8000 });
+});

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { RING, SEATS, SEAT_INFO, cellInfo, type Seat } from "@/lib/ludo/board";
 import type { IslandMap, IslandStyle } from "@/lib/client/islands";
 import { DEFAULT_ISLAND } from "@/lib/client/islands";
@@ -140,94 +141,213 @@ export interface BoardDressing {
   dispose: () => void;
 }
 
+/** The atlas of printed square faces: tiles of ATLAS_T px in a grid, one draw call for all of them. */
+const ATLAS_T = 192, ATLAS_COLS = 8;
+
+/** Gives a MeshBasicMaterial an instanced `aTile` attribute: each instance samples its own tile of an atlas (u/v scale = 1 / cols, rows). */
+const atlasMaterial = (map: THREE.Texture, rows: number, transparent: boolean, offsetUnits: number): THREE.MeshBasicMaterial => {
+  const m = new THREE.MeshBasicMaterial({ map, toneMapped: false, transparent, depthWrite: !transparent, polygonOffset: true, polygonOffsetFactor: offsetUnits, polygonOffsetUnits: offsetUnits });
+  m.onBeforeCompile = shader => {
+    shader.vertexShader = "attribute vec2 aTile;\n" + shader.vertexShader.replace(
+      "#include <uv_vertex>", `#include <uv_vertex>\n#ifdef USE_MAP\n vMapUv = vMapUv * vec2(${(1 / ATLAS_COLS).toFixed(6)}, ${(1 / rows).toFixed(6)}) + aTile;\n#endif`,
+    );
+  };
+  return m;
+};
+
+type Bucket = Map<THREE.Material, THREE.BufferGeometry[]>;
+const addTo = (b: Bucket, mat: THREE.Material, geo: THREE.BufferGeometry, m: THREE.Matrix4) => {
+  const g = geo.clone();
+  g.applyMatrix4(m);
+  const list = b.get(mat);
+  if (list) list.push(g); else b.set(mat, [g]);
+};
+/** Merges every geometry that shares a material into one mesh. Source geometries are disposed. */
+const flush = (b: Bucket, into: THREE.Group, owned: THREE.BufferGeometry[]) => {
+  for (const [mat, list] of b) {
+    const merged = mergeGeometries(list, false);
+    list.forEach(g => g.dispose());
+    if (!merged) continue;
+    owned.push(merged);
+    into.add(new THREE.Mesh(merged, mat));
+  }
+};
+
+/** A faces-only copy of a unit box: the four sides, or just the roof. */
+const boxPart = (faces: number[]): THREE.BufferGeometry => {
+  const g = new THREE.BoxGeometry(1, 1, 1);
+  const idx = g.getIndex()!.array;
+  const out: number[] = [];
+  faces.forEach(f => { for (let k = 0; k < 6; k++) out.push(idx[f * 6 + k]); });
+  g.setIndex(out);
+  return g;
+};
+
 /**
  * Everything that makes the board look like a neon city: a thick dark slab with steel girders, dark navy squares (with a
  * coloured bar, name and price in Tycoon games, chevrons on safe squares and an arrow on each start square), a lot beside
  * each square with a building in its owner's island style, and low neon blocks filling the rest of each yard's border.
+ * Built for few draw calls: static parts are merged, squares share one texture atlas, and the buildings of all lots are
+ * merged per material (the ones still rising into place are drawn on their own until they land).
  */
 export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDressing => {
   const group = new THREE.Group();
   const owned: { dispose: () => void }[] = [];
   const track = <T extends { dispose: () => void }>(x: T): T => { owned.push(x); return x; };
+  const ownedGeo: THREE.BufferGeometry[] = [];
+  const yAxis = new THREE.Vector3(0, 1, 0);
 
-  // slab and girders
+  // slab, girders and pillars: three draws
   const steel = track(new THREE.MeshStandardMaterial({ color: "#2a3042", roughness: 0.55, metalness: 0.35 }));
   const slab = new THREE.Mesh(track(new THREE.BoxGeometry(15.8, 0.7, 15.8)), track(new THREE.MeshStandardMaterial({ color: "#10131f", roughness: 0.7 })));
   slab.position.y = -0.42;
   group.add(slab);
-  const girder = track(new THREE.BoxGeometry(15.8, 0.14, 0.22));
-  for (let i = -3; i <= 3; i++) {
-    const a = new THREE.Mesh(girder, steel); a.position.set(0, -0.95, i * 2.5);
-    const b = new THREE.Mesh(girder, steel); b.rotation.y = Math.PI / 2; b.position.set(i * 2.5, -1.15, 0);
-    group.add(a, b);
+  {
+    const parts: THREE.BufferGeometry[] = [];
+    for (let i = -3; i <= 3; i++) {
+      parts.push(new THREE.BoxGeometry(15.8, 0.14, 0.22).translate(0, -0.95, i * 2.5));
+      parts.push(new THREE.BoxGeometry(0.22, 0.14, 15.8).translate(i * 2.5, -1.15, 0));
+    }
+    for (const x of [-7, 0, 7]) for (const z of [-7, 0, 7]) parts.push(new THREE.BoxGeometry(0.4, 2.6, 0.4).translate(x, -2.1, z));
+    const merged = mergeGeometries(parts, false)!;
+    parts.forEach(g => g.dispose());
+    ownedGeo.push(merged);
+    group.add(new THREE.Mesh(merged, steel));
   }
-  const pillar = track(new THREE.BoxGeometry(0.4, 2.6, 0.4));
-  for (const x of [-7, 0, 7]) for (const z of [-7, 0, 7]) { const p = new THREE.Mesh(pillar, steel); p.position.set(x, -2.1, z); group.add(p); }
   const rim = new THREE.Mesh(track(new THREE.BoxGeometry(15.9, 0.06, 15.9)), track(new THREE.MeshBasicMaterial({ color: "#22d3ee", transparent: true, opacity: 0.55 })));
-  rim.position.y = -0.06; rim.scale.set(1, 1, 1);
+  rim.position.y = -0.06;
   group.add(rim);
 
-  // printed square faces
-  const faces: THREE.Mesh[] = [];
-  const upright: THREE.Mesh[] = [];
-  const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), yAxis = new THREE.Vector3(0, 1, 0);
-  const barGeo = track(new THREE.BoxGeometry(0.84, 0.06, 0.1));
-  const labelGeo = track(new THREE.PlaneGeometry(0.9, 0.3));
-  const planeGeo = track(new THREE.PlaneGeometry(0.94, 0.94));
-  const next = (i: number) => RING[(i + 1) % RING.length];
+  // ---- square faces: one atlas, one merged mesh for the flat ones, one instanced mesh for the upright (text) ones ----
   const startOf = new Map<number, Seat>(SEATS.map(s => [[0, 13, 26, 39][s], s]));
   const lotOf = new Map(LOTS.map(l => [l.ring, l]));
+  const next = (i: number) => RING[(i + 1) % RING.length];
+  const tiles: HTMLCanvasElement[] = [];
+  const tileOf = (c: HTMLCanvasElement) => { tiles.push(c); return tiles.length - 1; };
+  const flat: { ring: number; tile: number; angle: number }[] = [];
+  const upright: { ring: number; tile: number }[] = [];
+  const barSpots: { x: number; z: number; rot: boolean; colour: string }[] = [];
+  const labelTiles: { ring: number; tile: number }[] = [];
+  const sharedTiles = new Map<string, number>();
+  const shared = (key: string, make: () => HTMLCanvasElement) => { let t = sharedTiles.get(key); if (t === undefined) { t = tileOf(make()); sharedTiles.set(key, t); } return t; };
   RING.forEach(([row, col], ring) => {
     const sq = SQUARES[ring];
     const star = [8, 21, 34, 47].includes(ring);
     const seat = startOf.get(ring);
-    let map: THREE.CanvasTexture;
-    let angle = 0;
     if (tycoonGame && !star && seat === undefined) {
-      map = track(tex(squareFace(sq)));
+      upright.push({ ring, tile: tileOf(squareFace(sq)) });
       const lot = lotOf.get(ring);
-      if (lot && sq.kind === "property") {
-        const bar = new THREE.Mesh(barGeo, track(new THREE.MeshBasicMaterial({ color: GROUP_COLORS[sq.group] ?? "#ffffff", toneMapped: false })));
-        bar.position.set(col - 7 + lot.dx * 0.42, TOP + 0.04, row - 7 + lot.dz * 0.42);
-        if (lot.dx !== 0) bar.rotation.y = Math.PI / 2;
-        group.add(bar);
-      }
+      if (lot && sq.kind === "property") barSpots.push({ x: col - 7 + lot.dx * 0.42, z: row - 7 + lot.dz * 0.42, rot: lot.dx !== 0, colour: GROUP_COLORS[sq.group] ?? "#ffffff" });
     } else {
-      map = track(tex(plainFace(seat !== undefined ? "start" : star ? "star" : "ring", seat !== undefined && tycoonGame ? "" : "", seat !== undefined ? SEAT_INFO[seat].main : "#ffffff")));
+      const kind = seat !== undefined ? "start" : star ? "star" : "ring";
+      const tile = shared(`${kind}${seat ?? ""}`, () => plainFace(kind, "", seat !== undefined ? SEAT_INFO[seat].main : "#ffffff"));
       const [nr, nc] = next(ring);
-      const tx = nc - col, tz = nr - row;
-      angle = Math.atan2(-tx, -tz); // canvas top points the way pieces travel
+      flat.push({ ring, tile, angle: Math.atan2(-(nc - col), -(nr - row)) }); // canvas top points the way pieces travel
     }
-    const mat = track(new THREE.MeshBasicMaterial({ map, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    const m = new THREE.Mesh(planeGeo, mat);
-    m.rotation.set(-Math.PI / 2, 0, 0);
-    if (tycoonGame && !star && seat === undefined) upright.push(m);
-    else m.rotateOnWorldAxis(yAxis, angle);
-    m.position.set(col - 7, TOP, row - 7);
-    group.add(m);
-    faces.push(m);
-    if (tycoonGame && seat !== undefined) {
-      const lab = new THREE.Mesh(labelGeo, track(new THREE.MeshBasicMaterial({ map: track(tex(startLabel(SEAT_INFO[seat].main))), transparent: true, toneMapped: false, depthWrite: false })));
-      lab.rotation.x = -Math.PI / 2; lab.position.set(col - 7, TOP + 0.012, row - 7);
-      group.add(lab); upright.push(lab);
-    }
+    if (tycoonGame && seat !== undefined) labelTiles.push({ ring, tile: -1 });
   });
+  const rows = Math.ceil(tiles.length / ATLAS_COLS);
+  const atlasCanvas = document.createElement("canvas");
+  atlasCanvas.width = ATLAS_COLS * ATLAS_T; atlasCanvas.height = rows * ATLAS_T;
+  {
+    const g = atlasCanvas.getContext("2d")!;
+    tiles.forEach((c, i) => g.drawImage(c, (i % ATLAS_COLS) * ATLAS_T, Math.floor(i / ATLAS_COLS) * ATLAS_T, ATLAS_T, ATLAS_T));
+  }
+  const atlas = track(tex(atlasCanvas));
+  const tileUv = (i: number): [number, number] => [(i % ATLAS_COLS) / ATLAS_COLS, 1 - (Math.floor(i / ATLAS_COLS) + 1) / rows];
 
-  // owner bars, on the side of each square away from its lot
-  const markGeo = track(new THREE.BoxGeometry(0.8, 0.07, 0.09));
-  const markers = new Map<number, { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial }>();
-  if (tycoonGame) for (const lot of LOTS) {
-    const [row, col] = RING[lot.ring];
-    const mat = track(new THREE.MeshBasicMaterial({ color: "#ffffff", toneMapped: false }));
-    const m = new THREE.Mesh(markGeo, mat);
-    m.position.set(col - 7 - lot.dx * 0.43, TOP + 0.05, row - 7 - lot.dz * 0.43);
-    if (lot.dx !== 0) m.rotation.y = Math.PI / 2;
-    m.visible = false;
-    group.add(m);
-    markers.set(lot.ring, { mesh: m, mat });
+  // the flat faces: one merged mesh with the atlas baked into its UVs
+  {
+    const parts: THREE.BufferGeometry[] = [];
+    const qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+    for (const f of flat) {
+      const [row, col] = RING[f.ring];
+      const g = new THREE.PlaneGeometry(0.94, 0.94);
+      const uv = g.getAttribute("uv") as THREE.BufferAttribute;
+      const [u0, v0] = tileUv(f.tile);
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) / ATLAS_COLS, v0 + uv.getY(i) / rows);
+      g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(col - 7, TOP, row - 7), new THREE.Quaternion().setFromAxisAngle(yAxis, f.angle).multiply(qx), new THREE.Vector3(1, 1, 1)));
+      parts.push(g);
+    }
+    if (parts.length) {
+      const merged = mergeGeometries(parts, false)!;
+      parts.forEach(g => g.dispose());
+      ownedGeo.push(merged);
+      group.add(new THREE.Mesh(merged, track(new THREE.MeshBasicMaterial({ map: atlas, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }))));
+    }
   }
 
-  // lots: decorative generic blocks, replaced by island buildings
+  // the upright faces (names and prices, kept readable from the viewer's seat): one instanced mesh, matrices set in orient()
+  const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+  const dummy = new THREE.Object3D();
+  let uprightMesh: THREE.InstancedMesh | null = null;
+  let labelMesh: THREE.InstancedMesh | null = null;
+  const labelAtlas: HTMLCanvasElement[] = [];
+  if (upright.length) {
+    const geo = track(new THREE.PlaneGeometry(0.94, 0.94));
+    const tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(upright.length * 2), 2);
+    upright.forEach((u, i) => { const [u0, v0] = tileUv(u.tile); tileAttr.setXY(i, u0, v0); });
+    geo.setAttribute("aTile", tileAttr);
+    uprightMesh = new THREE.InstancedMesh(geo, track(atlasMaterial(atlas, rows, false, -2)), upright.length);
+    uprightMesh.frustumCulled = false;
+    group.add(uprightMesh);
+  }
+  if (labelTiles.length) {
+    // the START labels: a second, transparent atlas of four strips
+    const lc = document.createElement("canvas"); lc.width = ATLAS_COLS * ATLAS_T; lc.height = ATLAS_T;
+    const g = lc.getContext("2d")!;
+    labelTiles.forEach((l, i) => { const [r0] = RING[l.ring]; void r0; labelAtlas.push(startLabel(SEAT_INFO[startOf.get(l.ring)!].main)); g.drawImage(labelAtlas[i], i * ATLAS_T, 0, ATLAS_T, 64); });
+    const lmap = track(tex(lc));
+    const geo = track(new THREE.PlaneGeometry(0.9, 0.3));
+    const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), 1 - (1 - uv.getY(i)) * (64 / ATLAS_T)); // the strip is the top 64 px of its tile
+    const tileAttr = new THREE.InstancedBufferAttribute(new Float32Array(labelTiles.length * 2), 2);
+    labelTiles.forEach((_, i) => tileAttr.setXY(i, i / ATLAS_COLS, 0));
+    geo.setAttribute("aTile", tileAttr);
+    labelMesh = new THREE.InstancedMesh(geo, track(atlasMaterial(lmap, 1, true, -3)), labelTiles.length);
+    labelMesh.frustumCulled = false; labelMesh.renderOrder = 2;
+    group.add(labelMesh);
+  }
+  let lastYaw = NaN;
+  const orient = (yaw: number) => {
+    if (yaw === lastYaw) return;
+    lastYaw = yaw;
+    q1.setFromAxisAngle(yAxis, -yaw);
+    dummy.quaternion.copy(q1).multiply(q2);
+    dummy.scale.set(1, 1, 1);
+    if (uprightMesh) {
+      upright.forEach((u, i) => { const [row, col] = RING[u.ring]; dummy.position.set(col - 7, TOP, row - 7); dummy.updateMatrix(); uprightMesh!.setMatrixAt(i, dummy.matrix); });
+      uprightMesh.instanceMatrix.needsUpdate = true;
+    }
+    if (labelMesh) {
+      labelTiles.forEach((l, i) => { const [row, col] = RING[l.ring]; dummy.position.set(col - 7, TOP + 0.012, row - 7); dummy.updateMatrix(); labelMesh!.setMatrixAt(i, dummy.matrix); });
+      labelMesh.instanceMatrix.needsUpdate = true;
+    }
+  };
+  orient(0);
+
+  // group bars (Tycoon): one instanced mesh with a colour per bar
+  if (barSpots.length) {
+    const bars = new THREE.InstancedMesh(track(new THREE.BoxGeometry(0.84, 0.06, 0.1)), track(new THREE.MeshBasicMaterial({ toneMapped: false })), barSpots.length);
+    barSpots.forEach((b, i) => {
+      dummy.position.set(b.x, TOP + 0.04, b.z); dummy.rotation.set(0, b.rot ? Math.PI / 2 : 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      bars.setMatrixAt(i, dummy.matrix); bars.setColorAt(i, new THREE.Color(b.colour));
+    });
+    bars.frustumCulled = false;
+    group.add(bars);
+  }
+
+  // owner bars: one instanced mesh; hidden instances are scaled to nothing
+  let markers: THREE.InstancedMesh | null = null;
+  const markerRing: number[] = [];
+  if (tycoonGame) {
+    markers = new THREE.InstancedMesh(track(new THREE.BoxGeometry(0.8, 0.07, 0.09)), track(new THREE.MeshBasicMaterial({ toneMapped: false })), LOTS.length);
+    LOTS.forEach((l, i) => { markerRing[i] = l.ring; markers!.setColorAt(i, new THREE.Color("#ffffff")); markers!.setMatrixAt(i, new THREE.Matrix4().makeScale(0, 0, 0)); });
+    markers.frustumCulled = false;
+    group.add(markers);
+  }
+
+  // ---- lots: generic blocks, and the island buildings that replace them --------------------------------------------
   const fillerMats = Array.from({ length: 3 }, (_, i) => {
     const c = document.createElement("canvas"); c.width = 64; c.height = 128;
     const g = c.getContext("2d")!;
@@ -238,34 +358,49 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
   });
   const trims = ["#22d3ee", "#f472b6", "#a78bfa", "#facc15"].map(c => track(new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.9 })));
   const roofDark = track(new THREE.MeshStandardMaterial({ color: "#0b0e1c", roughness: 0.8 }));
-  const boxGeo = track(new THREE.BoxGeometry(1, 1, 1));
-  const edgeGeo = track(new THREE.EdgesGeometry(boxGeo));
-  const generic = (x: number, z: number, w: number, h: number, i: number): THREE.Group => {
-    const g = new THREE.Group();
-    const side = fillerMats[i % 3];
-    const b = new THREE.Mesh(boxGeo, [side, side, roofDark, roofDark, side, side]); b.scale.set(w, h, w); b.position.y = h / 2;
-    const t = new THREE.LineSegments(edgeGeo, trims[i % 4]); t.scale.set(w, h, w); t.position.y = h / 2;
-    g.add(b, t); g.position.set(x, TOP, z);
-    return g;
+  const sidesGeo = track(boxPart([0, 1, 4, 5])), topGeo = track(boxPart([2, 3]));
+  const edgeGeo = track(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)));
+  const mtx = new THREE.Matrix4(), pos = new THREE.Vector3(), scl = new THREE.Vector3(), idQ = new THREE.Quaternion();
+  /** One generic block (a box with a lit-window side texture and a neon outline) added to the buckets. */
+  const genericInto = (solid: Bucket, lines: Map<THREE.Material, THREE.BufferGeometry[]>, x: number, z: number, w: number, h: number, i: number) => {
+    mtx.compose(pos.set(x, TOP + h / 2, z), idQ, scl.set(w, h, w));
+    addTo(solid, fillerMats[i % 3], sidesGeo, mtx);
+    addTo(solid, roofDark, topGeo, mtx);
+    const l = edgeGeo.clone(); l.applyMatrix4(mtx);
+    const list = lines.get(trims[i % 4]);
+    if (list) list.push(l); else lines.set(trims[i % 4], [l]);
+  };
+  const flushLines = (lines: Map<THREE.Material, THREE.BufferGeometry[]>, into: THREE.Group, geos: THREE.BufferGeometry[]) => {
+    for (const [mat, list] of lines) {
+      const merged = mergeGeometries(list, false);
+      list.forEach(g => g.dispose());
+      if (!merged) continue;
+      geos.push(merged);
+      into.add(new THREE.LineSegments(merged, mat as THREE.LineBasicMaterial));
+    }
   };
 
-  // yard borders not used as lots: small blocks
-  const lotCells = new Set(LOTS.map(l => `${l.cz + 7},${l.cx + 7}`));
-  let fi = 0;
-  for (let row = 0; row < 15; row++) for (let col = 0; col < 15; col++) {
-    const info = cellInfo(row, col);
-    if (info.kind !== "yard") continue;
-    const base = { 0: [9, 0], 1: [0, 0], 2: [0, 9], 3: [9, 9] }[info.seat as 0 | 1 | 2 | 3];
-    const lr = row - base[0], lc = col - base[1];
-    const border = lr === 0 || lr === 5 || lc === 0 || lc === 5;
-    if (!border || lotCells.has(`${row},${col}`)) continue;
-    if (!high && fi % 2) { fi++; continue; }
-    group.add(generic(col - 7, row - 7, 0.78, 0.45 + ((fi * 7) % 5) * 0.16, fi++));
+  // yard borders not used as lots: small blocks, merged once
+  {
+    const lotCells = new Set(LOTS.map(l => `${l.cz + 7},${l.cx + 7}`));
+    const solid: Bucket = new Map(), lines = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    let fi = 0;
+    for (let row = 0; row < 15; row++) for (let col = 0; col < 15; col++) {
+      const info = cellInfo(row, col);
+      if (info.kind !== "yard") continue;
+      const base = { 0: [9, 0], 1: [0, 0], 2: [0, 9], 3: [9, 9] }[info.seat as 0 | 1 | 2 | 3];
+      const lr = row - base[0], lc = col - base[1];
+      const border = lr === 0 || lr === 5 || lc === 0 || lc === 5;
+      if (!border || lotCells.has(`${row},${col}`)) continue;
+      if (!high && fi % 2) { fi++; continue; }
+      genericInto(solid, lines, col - 7, row - 7, 0.78, 0.45 + ((fi * 7) % 5) * 0.16, fi++);
+    }
+    flush(solid, group, ownedGeo);
+    flushLines(lines, group, ownedGeo);
   }
 
-  const padMats: { seat: Seat; mat: THREE.MeshBasicMaterial }[] = [];
-  // yard floors: a glowing street grid seen from above, and a pad under each of the four token slots
-  for (const seat of SEATS) {
+  // yard floors: a glowing street grid seen from above (one texture, four planes merged), and a pad under each token slot (instanced)
+  {
     const c = document.createElement("canvas"); c.width = c.height = 256;
     const g = c.getContext("2d")!;
     g.fillStyle = "#0a0e1d"; g.fillRect(0, 0, 256, 256);
@@ -273,40 +408,89 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     for (let i = 0; i <= 6; i++) { g.beginPath(); g.moveTo(i * 42.6, 0); g.lineTo(i * 42.6, 256); g.moveTo(0, i * 42.6); g.lineTo(256, i * 42.6); g.stroke(); }
     g.fillStyle = "rgba(255,210,122,0.18)";
     for (let k = 0; k < 40; k++) g.fillRect(((k * 53) % 240) + 4, ((k * 97) % 240) + 4, 9, 6);
-    const [cx, cz] = YARD_C[seat];
-    const floor = new THREE.Mesh(track(new THREE.PlaneGeometry(5.9, 5.9)), track(new THREE.MeshBasicMaterial({ map: track(tex(c)), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
-    floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0.04, cz);
-    group.add(floor);
-    for (const [ox, oz] of [[-0.95, -0.95], [0.95, -0.95], [-0.95, 0.95], [0.95, 0.95]]) {
-      const padMat = track(new THREE.MeshBasicMaterial({ color: SEAT_INFO[seat].main, transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false, depthWrite: false }));
-      padMats.push({ seat, mat: padMat });
-      const pad = new THREE.Mesh(track(new THREE.RingGeometry(0.36, 0.5, 32)), padMat);
-      pad.rotation.x = -Math.PI / 2; pad.position.set(cx + ox, 0.07, cz + oz);
-      group.add(pad);
-    }
+    const parts = SEATS.map(seat => { const [cx, cz] = YARD_C[seat]; return new THREE.PlaneGeometry(5.9, 5.9).rotateX(-Math.PI / 2).translate(cx, 0.04, cz); });
+    const merged = mergeGeometries(parts, false)!;
+    parts.forEach(p => p.dispose());
+    ownedGeo.push(merged);
+    group.add(new THREE.Mesh(merged, track(new THREE.MeshBasicMaterial({ map: track(tex(c)), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }))));
   }
+  const pads = new THREE.InstancedMesh(track(new THREE.RingGeometry(0.36, 0.5, 32).rotateX(-Math.PI / 2)), track(new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false, depthWrite: false })), 16);
+  {
+    let i = 0;
+    for (const seat of SEATS) {
+      const [cx, cz] = YARD_C[seat];
+      for (const [ox, oz] of [[-0.95, -0.95], [0.95, -0.95], [-0.95, 0.95], [0.95, 0.95]]) {
+        pos.set(cx + ox, 0.07, cz + oz);
+        pads.setMatrixAt(i++, mtx.compose(pos, idQ, scl.set(1, 1, 1)));
+      }
+    }
+    pads.frustumCulled = false;
+    group.add(pads);
+  }
+  const setPadColours = () => {
+    const col = new THREE.Color();
+    SEATS.forEach((seat, si) => { col.set(SEAT_INFO[seat].main); for (let k = 0; k < 4; k++) pads.setColorAt(si * 4 + k, col); });
+    if (pads.instanceColor) pads.instanceColor.needsUpdate = true;
+  };
+  setPadColours();
 
-  // buildings per lot
-  interface Slot { lot: Lot; level: number; ownerKey: string; built: BuiltBuilding | null; holder: THREE.Group; born: number; deco: THREE.Group }
+  // ---- buildings per lot ----------------------------------------------------------------------------------------------
+  interface Slot { lot: Lot; level: number; ownerKey: string; built: BuiltBuilding | null; holder: THREE.Group; born: number; deco: boolean; inBatch: boolean }
   const slots = new Map<number, Slot>();
   let n = 0;
+  const decoIndex = new Map<number, number>();
   for (const lot of LOTS) {
     const holder = new THREE.Group();
     holder.position.set(lot.cx + lot.ox, TOP, lot.cz + lot.oz);
     holder.scale.setScalar(lot.shared ? 0.55 : 0.9);
     group.add(holder);
-    const deco = tycoonGame ? generic(lot.cx + lot.ox, lot.cz + lot.oz, lot.shared ? 0.4 : 0.62, 0.3 + (n % 3) * 0.14, n) : new THREE.Group();
-    if (tycoonGame) group.add(deco);
-    slots.set(lot.ring, { lot, level: -1, ownerKey: "", built: null, holder, born: 0, deco });
+    decoIndex.set(lot.ring, n);
+    slots.set(lot.ring, { lot, level: -1, ownerKey: "", built: null, holder, born: -1e9, deco: false, inBatch: false });
     n++;
   }
+  // the merged buildings, rebuilt whenever a lot changes or a rising building lands
+  const batch = new THREE.Group();
+  group.add(batch);
+  let batchGeos: THREE.BufferGeometry[] = [];
+  let batchDirty = true;
+  let firstUpdate = true;
+  const rebuildBatch = (now: number) => {
+    batch.clear();
+    batchGeos.forEach(g => g.dispose());
+    batchGeos = [];
+    group.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+    const solid: Bucket = new Map(), lines = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const rel = new THREE.Matrix4();
+    for (const s of slots.values()) {
+      s.inBatch = false;
+      if (s.built) {
+        if (now - s.born < 450) { s.built.group.visible = true; continue; } // still rising: drawn on its own
+        s.built.group.visible = false;
+        s.inBatch = true;
+        s.built.group.traverse(o => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          rel.multiplyMatrices(inv, m.matrixWorld);
+          addTo(solid, m.material as THREE.Material, m.geometry, rel);
+        });
+      } else if (s.deco) {
+        const i = decoIndex.get(s.lot.ring)!;
+        genericInto(solid, lines, s.lot.cx + s.lot.ox, s.lot.cz + s.lot.oz, s.lot.shared ? 0.4 : 0.62, 0.3 + (i % 3) * 0.14, i);
+      }
+    }
+    flush(solid, batch, batchGeos);
+    flushLines(lines, batch, batchGeos);
+    batchDirty = false;
+  };
 
   let animating = false;
   const styleFor = (seat: Seat, islands: IslandMap): IslandStyle => islands[seat] ?? { ...DEFAULT_ISLAND, accent: SEAT_INFO[seat].main };
+  const col = new THREE.Color();
 
   const update = (input: DressingInput) => {
     const now = performance.now();
-    for (const pm of padMats) pm.mat.color.set(SEAT_INFO[pm.seat].main);
+    setPadColours();
     for (const s of slots.values()) {
       const ownerSeat: number = input.tycoon ? input.tycoon.owner[s.lot.ring] : -1;
       const lotSeat = s.lot.seat;
@@ -316,49 +500,68 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
       const style = seat === null ? null : styleFor(seat, input.islands);
       const key = style ? `${seat}|${JSON.stringify(style)}|${level}` : "";
       if (key !== s.ownerKey) {
-        const grew = s.level >= 0 && level > s.level && seat !== null && s.ownerKey.startsWith(`${seat}|`);
         s.built?.dispose();
         if (s.built) s.holder.remove(s.built.group);
         s.built = null;
         if (style) {
           s.built = buildBuilding(style, Math.min(3, Math.max(0, level)) as 0 | 1 | 2 | 3);
           s.holder.add(s.built.group);
-          s.born = now; // everything that appears rises into place
-          void grew;
-          animating = true;
+          s.born = firstUpdate ? -1e9 : now; // everything that appears later rises into place; the first population just stands
+          if (!firstUpdate) animating = true;
         }
-        s.deco.visible = tycoonGame && !style;
+        s.deco = tycoonGame && !style;
         s.ownerKey = key; s.level = level;
+        batchDirty = true;
       }
-      const mk = markers.get(s.lot.ring);
-      if (mk) { mk.mesh.visible = ownerSeat >= 0; if (ownerSeat >= 0) mk.mat.color.set(SEAT_INFO[ownerSeat as Seat].main); }
+      if (markers) {
+        const mi = markerRing.indexOf(s.lot.ring);
+        const [row, c] = RING[s.lot.ring];
+        if (mi >= 0) {
+          if (ownerSeat >= 0) {
+            dummy.position.set(c - 7 - s.lot.dx * 0.43, TOP + 0.05, row - 7 - s.lot.dz * 0.43);
+            dummy.rotation.set(0, s.lot.dx !== 0 ? Math.PI / 2 : 0, 0); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+            markers.setMatrixAt(mi, dummy.matrix);
+            markers.setColorAt(mi, col.set(SEAT_INFO[ownerSeat as Seat].main));
+          } else markers.setMatrixAt(mi, new THREE.Matrix4().makeScale(0, 0, 0));
+        }
+      }
     }
+    if (markers) { markers.instanceMatrix.needsUpdate = true; if (markers.instanceColor) markers.instanceColor.needsUpdate = true; }
+    firstUpdate = false;
+    if (batchDirty) rebuildBatch(now);
     // START squares say what entering pays in this game
     void input.enterBonus;
   };
 
   const tick = (now: number): boolean => {
     let any = false;
+    let landed = false;
     for (const s of slots.values()) {
-      if (!s.built) continue;
+      if (!s.built || s.inBatch) continue;
       const k = Math.min(1, (now - s.born) / 450);
       if (k < 1) {
         const e = 1 - Math.pow(1 - k, 3);
         s.built.group.scale.set(1, Math.max(0.02, e * (1 + 0.12 * Math.sin(k * Math.PI))), 1);
         any = true;
-      } else if (s.built.group.scale.y !== 1) s.built.group.scale.set(1, 1, 1);
+      } else {
+        s.built.group.scale.set(1, 1, 1);
+        landed = true; // it joins the merged buildings
+      }
     }
+    if (landed) { rebuildBatch(now); }
     animating = any;
     return any;
   };
 
-  const orient = (yaw: number) => {
-    q1.setFromAxisAngle(yAxis, -yaw);
-    for (const m of upright) m.quaternion.copy(q1).multiply(q2);
-  };
-
   return {
     group, update, tick, orient,
-    dispose: () => { slots.forEach(s => s.built?.dispose()); owned.forEach(o => o.dispose()); void animating; void faces; },
+    dispose: () => {
+      slots.forEach(s => s.built?.dispose());
+      batchGeos.forEach(g => g.dispose());
+      ownedGeo.forEach(g => g.dispose());
+      uprightMesh?.dispose(); labelMesh?.dispose(); pads.dispose(); markers?.dispose();
+      owned.forEach(o => o.dispose());
+      void animating;
+    },
   };
 };

@@ -7,6 +7,7 @@ import {
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { previewPath } from "@/lib/client/preview";
+import { flickFrom, isThrow, toThrow, type PointerSample } from "@/lib/client/throw";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import { usePalette } from "@/lib/client/palette";
 import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
@@ -91,10 +92,47 @@ const CSS = `
 
 /** The flat board: an SVG that scales to any screen, rotated so `viewSeat` sits at the bottom. */
 export default function Board2D({
-  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving,
+  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow,
 }: BoardProps) {
   const islands = useIslands();
   usePalette(); // seat colours are changed in place; this redraws when they are
+  // dragging across the board and letting go throws the dice
+  const svgRef = useRef<SVGSVGElement>(null);
+  const drag = useRef<{ samples: PointerSample[]; id: number } | null>(null);
+  const [finger, setFinger] = useState<{ x: number; y: number } | null>(null);
+  const toBoard = (e: { clientX: number; clientY: number }) => {
+    const svg = svgRef.current;
+    const m = svg?.getScreenCTM();
+    if (!svg || !m) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(m.inverse());
+    return { x: p.x, y: p.y };
+  };
+  const onDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!rollable || !onThrow || (e.target as Element).closest("[role=button]")) return;
+    drag.current = { samples: [{ x: e.clientX, y: e.clientY, t: performance.now() }], id: e.pointerId };
+    svgRef.current?.setPointerCapture(e.pointerId);
+    setFinger(toBoard(e));
+  };
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    d.samples.push({ x: e.clientX, y: e.clientY, t: performance.now() });
+    if (d.samples.length > 40) d.samples.shift();
+    setFinger(toBoard(e));
+  };
+  const onUp = (e: React.PointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d || d.id !== e.pointerId) return;
+    drag.current = null;
+    setFinger(null);
+    const rect = svgRef.current?.getBoundingClientRect();
+    const f = flickFrom(d.samples);
+    if (!rect || !onThrow || !isThrow(f)) return;
+    const unit = rect.width / 15; // pixels per square
+    onThrow(toThrow((e.clientX - (rect.left + rect.width / 2)) / unit, (e.clientY - (rect.top + rect.height / 2)) / unit, f.vx / unit, f.vy / unit));
+  };
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
   const neon = settings.boardTheme === "neon";
@@ -284,8 +322,9 @@ export default function Board2D({
 
   return (
     <svg
-      viewBox="-0.5 -0.5 15 15" role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
-      style={{ width: "100%", height: "100%", display: "block", touchAction: "manipulation", "--hop": `${hopMs}ms` } as React.CSSProperties}
+      ref={svgRef} viewBox="-0.5 -0.5 15 15" role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
+      onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
+      style={{ width: "100%", height: "100%", display: "block", touchAction: rollable ? "none" : "manipulation", "--hop": `${hopMs}ms` } as React.CSSProperties}
     >
       <style>{CSS}</style>
       <defs>
@@ -374,6 +413,12 @@ export default function Board2D({
           <text x={7.5} y={7} textAnchor="middle" dominantBaseline="central" fontSize={0.7} fontWeight={800} fill="#fff">
             {turnName.length > 12 ? `${turnName.slice(0, 11)}…` : turnName}{"'s turn"}
           </text>
+        </g>
+      )}
+      {finger && (
+        <g transform={`translate(${finger.x} ${finger.y}) rotate(12)`} aria-hidden pointerEvents="none">
+          <rect x={-0.55} y={-0.55} width={1.1} height={1.1} rx={0.2} fill="#fff" stroke="#111" strokeWidth={0.06} opacity={0.95} />
+          {[[-0.25, -0.25], [0.25, 0.25], [0, 0]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r={0.1} fill="#111" />)}
         </g>
       )}
     </svg>
