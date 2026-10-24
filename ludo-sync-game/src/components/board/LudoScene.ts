@@ -480,8 +480,24 @@ export class LudoScene {
   // ---- tokens ---------------------------------------------------------------------------------
 
   /** Gives a token the look its design asks for, rebuilding only when the design actually changed. */
+  private env: THREE.Texture | null = null;
+  /** A small gradient-cube environment, so metal reads as polished without loading a file. */
+  private metalEnv(): THREE.Texture {
+    if (this.env) return this.env;
+    const sc = new THREE.Scene();
+    const cols = ["#7fb2ff", "#2a3a7a", "#ffd9a0", "#0b1030", "#c9a0ff", "#1c2a58"].map(c => new THREE.MeshBasicMaterial({ color: c, side: THREE.BackSide }));
+    sc.add(new THREE.Mesh(new THREE.BoxGeometry(20, 20, 20), cols));
+    const bright = new THREE.Mesh(new THREE.BoxGeometry(6, 0.4, 6), new THREE.MeshBasicMaterial({ color: "#ffffff" }));
+    bright.position.y = 8; sc.add(bright);
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.env = pm.fromScene(sc, 0.02).texture;
+    pm.dispose();
+    return this.env;
+  }
+
   private applyDesign(obj: TokenObj, d: ResolvedDesign) {
-    const key = JSON.stringify(d);
+    const metal = this.neonOn && d.shape === "classic";
+    const key = JSON.stringify(d) + (metal ? "|m" : "");
     if (obj.designKey === key) return;
     obj.designKey = key;
     if (obj.body) obj.holder.remove(obj.body);
@@ -503,14 +519,40 @@ export class LudoScene {
           obj.ownMaterials.push(x);
           const std = x as THREE.MeshStandardMaterial;
           if (!std.isMeshStandardMaterial) return;
+          if (metal) { // gold and silver figurines lit by a gradient environment
+            std.color.set(obj.seat % 2 === 0 ? "#f3c64a" : "#d5dbe6");
+            std.metalness = 1; std.roughness = 0.28;
+            std.envMap = this.metalEnv(); std.envMapIntensity = 1.25;
+            std.emissive.set(0x000000); std.emissiveIntensity = 0;
+            return;
+          }
           std.color.set(d.primary);
           std.emissive.set(d.glow ?? d.primary);
           std.emissiveIntensity = d.glow ? 0.15 + 0.6 * d.glowStrength : 0.18;
         });
       });
       body.position.set(0, this.templateLift[obj.seat] / TOKEN_SCALE, 0);
-      obj.holder.add(body);
-      obj.body = body;
+      if (metal) { // round pedestal: dark disc, seat-colour ring and a base glow
+        const col = new THREE.Color(SEAT_INFO[obj.seat].main);
+        const ped = new THREE.Group();
+        const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.15, 0.22, 24), new THREE.MeshStandardMaterial({ color: "#1b2036", roughness: 0.5, metalness: 0.6, envMap: this.metalEnv() }));
+        disc.position.y = 0.11;
+        const ringM = new THREE.MeshBasicMaterial({ color: col, toneMapped: false });
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.06, 6, 28), ringM);
+        ring.rotation.x = Math.PI / 2; ring.position.y = 0.2;
+        const glowM = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+        const glow = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), glowM);
+        glow.rotation.x = -Math.PI / 2; glow.position.y = 0.02;
+        ped.add(disc, ring, glow);
+        body.position.y += 0.22;
+        const wrap = new THREE.Group(); wrap.add(ped, body);
+        obj.ownMaterials.push(disc.material as THREE.Material, ringM, glowM);
+        obj.holder.add(wrap);
+        obj.body = wrap;
+      } else {
+        obj.holder.add(body);
+        obj.body = body;
+      }
       obj.facing = null;
     } else {
       const built = buildPiece3D(d);
@@ -603,7 +645,7 @@ export class LudoScene {
     if (input.rollKey !== this.lastRollKey) {
       this.lastRollKey = input.rollKey;
       if (input.rolled.length) {
-        this.dice.throw(input.rolled, SEAT_INFO[input.activeSeat ?? 0].main, input.rollMs, input.reduceMotion);
+        this.dice.throw(input.rolled, SEAT_INFO[input.activeSeat ?? 0].main, input.rollMs, input.reduceMotion, Math.atan2(Math.cos(this.world.rotation.y), -Math.sin(this.world.rotation.y)));
         this.diceFadeAt = 0;
       }
     }
@@ -864,6 +906,7 @@ export class LudoScene {
 
     // the board turns to the viewer's seat (and, for a winner, sways)
     const rot = this.world.rotation.y;
+    this.dressing?.orient(rot);
     const sway = winner !== null && !calm ? Math.sin(t * 0.5) * 0.18 : 0;
     const diff = this.rotationTarget + sway - rot;
     if (Math.abs(diff) > 0.0015) {
@@ -938,12 +981,14 @@ export class LudoScene {
           if (d.lengthSq() > 1e-4) { d.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), this.world.rotation.y); this.followDir.lerp(d, Math.min(1, dt * 6)).normalize(); }
         }
         const e = this.followK * this.followK * (3 - 2 * this.followK);
-        base.lerp(wp.clone().addScaledVector(this.followDir, -3.6).add(new THREE.Vector3(0, 2.4, 0)), e);
+        base.lerp(wp.clone().addScaledVector(this.followDir, -2.9).add(new THREE.Vector3(0, 1.75, 0)), e);
         this.camLook.lerp(wp.clone().addScaledVector(this.followDir, 1.3).add(new THREE.Vector3(0, 0.35, 0)), e);
         zoom = 6 * e;
       }
       this.camera.position.set(base.x + (Math.random() - 0.5) * a, base.y + (Math.random() - 0.5) * a, base.z + (Math.random() - 0.5) * a);
       this.camera.lookAt(this.camLook);
+      if (following && !this.input?.reduceMotion) this.camera.rotateZ(0.035 * this.followK * Math.sin(t * 0.7));
+      if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 28 - 20 * this.followK; this.scene.fog.far = 90 - 40 * this.followK; } // distance haze stands in for depth of field
       this.camera.fov = this.baseFov - 2.4 * this.kick - zoom;
       this.camera.updateProjectionMatrix();
       this.camMoved = true;
@@ -954,6 +999,7 @@ export class LudoScene {
       this.camera.position.copy(this.camBase);
       this.camera.lookAt(0, 0, 0);
       this.camera.fov = this.baseFov;
+      if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 28; this.scene.fog.far = 90; }
       this.camera.updateProjectionMatrix();
     }
 
@@ -1055,6 +1101,7 @@ export class LudoScene {
     this.neonBoard?.dispose();
     this.dice.dispose();
     this.dressing?.dispose();
+    this.env?.dispose();
     this.city?.dispose();
     this.skyTex?.dispose();
     this.glyphTextures.forEach(t => t.dispose());

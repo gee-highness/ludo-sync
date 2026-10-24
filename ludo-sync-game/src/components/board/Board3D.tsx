@@ -24,8 +24,7 @@ export interface Board3DProps extends BoardProps {
 export default function Board3D(props: Board3DProps) {
   const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving, rollKey = 0, insets } = props;
   // TEMP-DEBUG
-  const dbg = typeof window !== "undefined" ? (window as unknown as { __insets?: { top: number; right: number; bottom: number; left: number } }).__insets : undefined;
-  const insTop = (dbg ?? insets)?.top ?? 0, insRight = (dbg ?? insets)?.right ?? 0, insBottom = (dbg ?? insets)?.bottom ?? 0, insLeft = (dbg ?? insets)?.left ?? 0;
+  const insTop = insets?.top ?? 0, insRight = insets?.right ?? 0, insBottom = insets?.bottom ?? 0, insLeft = insets?.left ?? 0;
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<LudoScene | null>(null);
   const cb = useRef(props);

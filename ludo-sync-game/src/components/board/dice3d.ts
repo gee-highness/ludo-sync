@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
-const SIZE = 0.52;
+const SIZE = 0.83;
 /** Which value is on each BoxGeometry face: +x, -x, +y, -y, +z, -z (opposite faces add to 7). */
 const FACE_VALUE = [3, 4, 1, 6, 2, 5] as const;
 const FACE_NORMAL = [
@@ -60,7 +60,7 @@ export class DiceRig {
   }
 
   /** Throws one die per value. `calm` (or a zero duration) puts them straight down on their values. */
-  throw(values: number[], colour: string, durationMs: number, calm: boolean, now = performance.now()) {
+  throw(values: number[], colour: string, durationMs: number, calm: boolean, fromAngle?: number, now = performance.now()) {
     this.clear();
     this.fading = false; this.opacity = 1;
     const tex = this.textures(colour);
@@ -68,8 +68,8 @@ export class DiceRig {
       const mats = tex.map(map => new THREE.MeshStandardMaterial({ color: "#10131f", map, emissive: "#ffffff", emissiveMap: map, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }));
       const mesh = new THREE.Mesh(this.geo, mats);
       const n = values.length;
-      const to = new THREE.Vector3((i - (n - 1) / 2) * 0.95 + (Math.random() - 0.5) * 0.35, SIZE / 2 + 0.07, (Math.random() - 0.5) * 0.8);
-      const ang = Math.random() * Math.PI * 2;
+      const to = new THREE.Vector3((i - (n - 1) / 2) * 1.5 + (Math.random() - 0.5) * 0.4, SIZE / 2 + 0.07, (Math.random() - 0.5) * 0.8);
+      const ang = fromAngle === undefined ? Math.random() * Math.PI * 2 : fromAngle + (Math.random() - 0.5) * 0.5;
       const from = new THREE.Vector3(Math.cos(ang) * 6.5, 2.6, Math.sin(ang) * 6.5);
       const idx = FACE_VALUE.indexOf(value as 1 | 2 | 3 | 4 | 5 | 6);
       const align = new THREE.Quaternion().setFromUnitVectors(FACE_NORMAL[idx < 0 ? 2 : idx], new THREE.Vector3(0, 1, 0));

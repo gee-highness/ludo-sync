@@ -63,35 +63,49 @@ const chevrons = (g: CanvasRenderingContext2D, cx: number, cy: number, s: number
 };
 
 const navyTile = (g: CanvasRenderingContext2D, N: number) => {
-  g.fillStyle = "#0f1a38"; g.fillRect(0, 0, N, N);
-  g.fillStyle = "rgba(120,180,255,0.16)";
-  for (let y = 6; y < N; y += 12) for (let x = ((y / 12) % 2) * 6 + 6; x < N; x += 12) g.fillRect(x, y, 2, 2);
-  const grad = g.createLinearGradient(0, 0, 0, N); grad.addColorStop(0, "rgba(255,255,255,0.05)"); grad.addColorStop(1, "rgba(0,0,0,0.25)");
+  g.fillStyle = "#0e1a3c"; g.fillRect(0, 0, N, N);
+  // fine dotted texture
+  g.fillStyle = "rgba(120,180,255,0.17)";
+  for (let y = 6; y < N; y += 10) for (let x = ((y / 10) % 2) * 5 + 6; x < N; x += 10) g.fillRect(x, y, 2, 2);
+  const grad = g.createLinearGradient(0, 0, 0, N); grad.addColorStop(0, "rgba(255,255,255,0.07)"); grad.addColorStop(1, "rgba(0,0,0,0.28)");
   g.fillStyle = grad; g.fillRect(0, 0, N, N);
+  // lighter bevelled rim: bright top/left edge, darker bottom/right, like the slab tiles in the video
+  g.lineWidth = 7; g.strokeStyle = "rgba(170,205,255,0.5)";
+  g.beginPath(); g.moveTo(3, N - 3); g.lineTo(3, 3); g.lineTo(N - 3, 3); g.stroke();
+  g.strokeStyle = "rgba(10,20,50,0.85)";
+  g.beginPath(); g.moveTo(N - 3, 3); g.lineTo(N - 3, N - 3); g.lineTo(3, N - 3); g.stroke();
+  g.lineWidth = 2; g.strokeStyle = "rgba(120,170,255,0.35)"; g.strokeRect(10, 10, N - 20, N - 20);
 };
 
-/** The printed face of a Tycoon square: group bar on the lot side (bottom), name, price, and a glyph for the special kinds. Canvas bottom = the lot side. */
+/** The printed face of a Tycoon square: name, price and a glyph for the special kinds. Drawn upright; the scene keeps it facing the viewer. */
 const squareFace = (sq: Square): HTMLCanvasElement => {
   const N = 192, c = document.createElement("canvas");
   c.width = c.height = N;
   const g = c.getContext("2d")!;
   navyTile(g, N);
   g.textAlign = "center";
-  if (sq.kind === "property") {
-    g.fillStyle = GROUP_COLORS[sq.group]; g.fillRect(0, N - 34, N, 34);
-    g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(0, N - 34, N, 4);
-  }
   g.fillStyle = "#e8f1ff"; g.font = "700 25px system-ui, sans-serif"; g.textBaseline = "middle";
-  const glyphY = 60;
+  const glyphY = 62;
   if (sq.kind === "chance" || sq.kind === "chest") chevrons(g, N / 2, glyphY + 8, 36, sq.kind === "chance" ? "#facc15" : "#22d3ee");
   else if (sq.kind === "station") { g.strokeStyle = "#e8f1ff"; g.lineWidth = 7; g.strokeRect(N / 2 - 34, glyphY - 26, 68, 46); g.fillStyle = "#e8f1ff"; g.fillRect(N / 2 - 40, glyphY + 28, 80, 7); g.fillRect(N / 2 - 22, glyphY - 8, 14, 14); g.fillRect(N / 2 + 8, glyphY - 8, 14, 14); }
   else if (sq.kind === "utility") { g.fillStyle = "#facc15"; g.beginPath(); g.moveTo(N / 2 + 8, glyphY - 34); g.lineTo(N / 2 - 24, glyphY + 6); g.lineTo(N / 2 - 2, glyphY + 6); g.lineTo(N / 2 - 10, glyphY + 38); g.lineTo(N / 2 + 26, glyphY - 8); g.lineTo(N / 2 + 4, glyphY - 8); g.closePath(); g.fill(); }
-  else if (sq.kind === "tax") { g.strokeStyle = "#fb7185"; g.lineWidth = 7; g.beginPath(); g.arc(N / 2, glyphY, 30, 0, Math.PI * 2); g.stroke(); g.fillStyle = "#fb7185"; g.font = "800 38px system-ui"; g.fillText("$", N / 2, glyphY + 2); g.fillStyle = "#e8f1ff"; g.font = "700 25px system-ui, sans-serif"; }
-  g.fillStyle = "#e8f1ff"; g.font = "700 24px system-ui, sans-serif";
-  const lines = wrap(g, sq.name.toUpperCase(), N - 24).slice(0, 3);
-  const y0 = sq.kind === "property" ? 40 : 108;
-  lines.forEach((l, i) => g.fillText(l, N / 2, y0 + i * 27));
-  if (sq.price > 0) { g.font = "800 28px system-ui, sans-serif"; g.fillStyle = "#9fe8ff"; g.fillText(`$${sq.price}`, N / 2, sq.kind === "property" ? N - 52 : N - 26); }
+  else if (sq.kind === "tax") { g.strokeStyle = "#fb7185"; g.lineWidth = 7; g.beginPath(); g.arc(N / 2, glyphY, 30, 0, Math.PI * 2); g.stroke(); g.fillStyle = "#fb7185"; g.font = "800 38px system-ui"; g.fillText("$", N / 2, glyphY + 2); }
+  g.fillStyle = "#e8f1ff"; g.font = "700 25px system-ui, sans-serif";
+  const lines = wrap(g, sq.name.toUpperCase(), N - 28).slice(0, 3);
+  const y0 = sq.kind === "property" ? 62 : 118;
+  lines.forEach((l, i) => g.fillText(l, N / 2, y0 + i * 28));
+  if (sq.price > 0) { g.font = "800 30px system-ui, sans-serif"; g.fillStyle = "#9fe8ff"; g.fillText(`$${sq.price}`, N / 2, N - 30); }
+  return c;
+};
+
+/** The word START on a transparent plate, drawn upright. */
+const startLabel = (colour: string): HTMLCanvasElement => {
+  const c = document.createElement("canvas");
+  c.width = 192; c.height = 64;
+  const g = c.getContext("2d")!;
+  g.textAlign = "center"; g.textBaseline = "middle"; g.font = "800 40px system-ui, sans-serif";
+  g.lineWidth = 8; g.strokeStyle = "rgba(6,10,24,0.9)"; g.strokeText("START", 96, 34);
+  g.shadowColor = colour; g.shadowBlur = 10; g.fillStyle = "#ffffff"; g.fillText("START", 96, 34);
   return c;
 };
 
@@ -105,9 +119,8 @@ const plainFace = (kind: "ring" | "star" | "start", label: string, seatColour: s
   if (kind === "start") {
     g.fillStyle = seatColour; g.globalAlpha = 0.22; g.fillRect(0, 0, N, N); g.globalAlpha = 1;
     g.fillStyle = "#ffffff"; g.beginPath(); g.moveTo(N / 2, 26); g.lineTo(N / 2 + 46, 86); g.lineTo(N / 2 + 16, 86); g.lineTo(N / 2 + 16, 128); g.lineTo(N / 2 - 16, 128); g.lineTo(N / 2 - 16, 86); g.lineTo(N / 2 - 46, 86); g.closePath(); g.fill();
-    g.fillStyle = "#f87171"; g.fillRect(N / 2 - 52, 140, 104, 9);
-    g.fillStyle = "#e8f1ff"; g.font = "800 28px system-ui, sans-serif"; g.textAlign = "center"; g.fillText("START", N / 2, 172);
-    if (label) { g.font = "700 15px system-ui, sans-serif"; g.fillStyle = "#9fe8ff"; g.fillText(label, N / 2, 16); }
+    g.fillStyle = "#f87171"; g.fillRect(N / 2 - 52, 142, 104, 9);
+    void label;
   }
   return c;
 };
@@ -122,6 +135,8 @@ export interface BoardDressing {
   group: THREE.Group;
   update: (input: DressingInput) => void;
   tick: (now: number) => boolean;
+  /** Keeps printed text upright for the viewer: pass the world's current yaw. */
+  orient: (worldYaw: number) => void;
   dispose: () => void;
 }
 
@@ -154,6 +169,10 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
 
   // printed square faces
   const faces: THREE.Mesh[] = [];
+  const upright: THREE.Mesh[] = [];
+  const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2), yAxis = new THREE.Vector3(0, 1, 0);
+  const barGeo = track(new THREE.BoxGeometry(0.84, 0.06, 0.1));
+  const labelGeo = track(new THREE.PlaneGeometry(0.9, 0.3));
   const planeGeo = track(new THREE.PlaneGeometry(0.94, 0.94));
   const next = (i: number) => RING[(i + 1) % RING.length];
   const startOf = new Map<number, Seat>(SEATS.map(s => [[0, 13, 26, 39][s], s]));
@@ -167,7 +186,12 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     if (tycoonGame && !star && seat === undefined) {
       map = track(tex(squareFace(sq)));
       const lot = lotOf.get(ring);
-      angle = lot ? Math.atan2(lot.dx, lot.dz) : 0; // canvas bottom faces the lot
+      if (lot && sq.kind === "property") {
+        const bar = new THREE.Mesh(barGeo, track(new THREE.MeshBasicMaterial({ color: GROUP_COLORS[sq.group] ?? "#ffffff", toneMapped: false })));
+        bar.position.set(col - 7 + lot.dx * 0.42, TOP + 0.04, row - 7 + lot.dz * 0.42);
+        if (lot.dx !== 0) bar.rotation.y = Math.PI / 2;
+        group.add(bar);
+      }
     } else {
       map = track(tex(plainFace(seat !== undefined ? "start" : star ? "star" : "ring", seat !== undefined && tycoonGame ? "" : "", seat !== undefined ? SEAT_INFO[seat].main : "#ffffff")));
       const [nr, nc] = next(ring);
@@ -177,10 +201,16 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     const mat = track(new THREE.MeshBasicMaterial({ map, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     const m = new THREE.Mesh(planeGeo, mat);
     m.rotation.set(-Math.PI / 2, 0, 0);
-    m.rotateOnWorldAxis(new THREE.Vector3(0, 1, 0), angle);
+    if (tycoonGame && !star && seat === undefined) upright.push(m);
+    else m.rotateOnWorldAxis(yAxis, angle);
     m.position.set(col - 7, TOP, row - 7);
     group.add(m);
     faces.push(m);
+    if (tycoonGame && seat !== undefined) {
+      const lab = new THREE.Mesh(labelGeo, track(new THREE.MeshBasicMaterial({ map: track(tex(startLabel(SEAT_INFO[seat].main))), transparent: true, toneMapped: false, depthWrite: false })));
+      lab.rotation.x = -Math.PI / 2; lab.position.set(col - 7, TOP + 0.012, row - 7);
+      group.add(lab); upright.push(lab);
+    }
   });
 
   // owner bars, on the side of each square away from its lot
@@ -322,8 +352,13 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     return any;
   };
 
+  const orient = (yaw: number) => {
+    q1.setFromAxisAngle(yAxis, -yaw);
+    for (const m of upright) m.quaternion.copy(q1).multiply(q2);
+  };
+
   return {
-    group, update, tick,
+    group, update, tick, orient,
     dispose: () => { slots.forEach(s => s.built?.dispose()); owned.forEach(o => o.dispose()); void animating; void faces; },
   };
 };

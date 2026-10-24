@@ -72,8 +72,8 @@ export const buildNeonBoard = (): NeonBoard => {
     if (SEATS.some(s => START_INDEX[s] === i)) return;
     (STAR_RING_INDEXES.includes(i) ? starCells : ringCells).push(frame(col - 7, row - 7, 0.46, 0.05));
   });
-  add({ color: NEON_TRACK, thick: 0.05, geos: ringCells });
-  add({ color: 0xfde047, thick: 0.05, geos: starCells });
+  // the dressed navy tiles carry the track and star squares; only seat colours and home paths glow
+  [...ringCells, ...starCells].forEach(g => g.dispose());
 
   for (const seat of SEATS) {
     const [sr, sc] = RING[START_INDEX[seat]];

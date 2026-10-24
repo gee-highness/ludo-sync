@@ -107,7 +107,7 @@ const roofAtlas = () => {
     // deck panels
     for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) { g.fillStyle = (a + b) % 2 ? "#25357a" : "#1a2656"; g.fillRect(x0 + a * 32 + 1, b * 32 + 1, 30, 30); }
     // big lit skylight and a lit pad
-    g.fillStyle = col; g.globalAlpha = 0.85; g.fillRect(x0 + 18, 18, 52, 34); g.globalAlpha = 0.45; g.fillRect(x0 + 74, 70, 40, 40);
+    g.fillStyle = col; g.globalAlpha = 0.5; g.fillRect(x0 + 18, 18, 52, 34); g.globalAlpha = 0.25; g.fillRect(x0 + 74, 70, 40, 40);
     g.globalAlpha = 1; g.fillStyle = "rgba(255,255,255,0.55)";
     for (let k = 0; k < 6; k++) g.fillRect(x0 + 22 + k * 8, 22, 4, 26);
     // vents and small lights
@@ -116,8 +116,8 @@ const roofAtlas = () => {
     g.fillStyle = "#ffffff";
     for (let k = 0; k < 5; k++) g.fillRect(x0 + 8 + r() * 112, 8 + r() * 112, 3, 3);
     // glowing rim
-    g.fillStyle = col; g.globalAlpha = 0.95;
-    g.fillRect(x0, 0, T, 5); g.fillRect(x0, T - 5, T, 5); g.fillRect(x0, 0, 5, T); g.fillRect(x0 + T - 5, 0, 5, T);
+    g.fillStyle = col; g.globalAlpha = 0.6;
+    g.fillRect(x0, 0, T, 3); g.fillRect(x0, T - 3, T, 3); g.fillRect(x0, 0, 3, T); g.fillRect(x0 + T - 3, 0, 3, T);
     g.globalAlpha = 1;
   });
   const t = tex(c);
@@ -201,7 +201,7 @@ export const buildCityscape = (high: boolean): CityHandle => {
   const variants = Array.from({ length: 5 }, (_, i) => { const f = facade(7 + i * 13, 0.42 + (i % 3) * 0.12); track(f.map); track(f.glow); return f; });
   const wallMats = variants.map(v => track(new THREE.MeshStandardMaterial({ map: v.map, emissive: 0xffffff, emissiveMap: v.glow, emissiveIntensity: 1.25, roughness: 0.8 })));
   const atlas = track(roofAtlas());
-  const roofMat = track(new THREE.MeshBasicMaterial({ map: atlas, toneMapped: false }));
+  const roofMat = track(new THREE.MeshBasicMaterial({ map: atlas, color: 0x9aa4c8, toneMapped: false }));
   const bucket: THREE.BufferGeometry[][] = variants.map(() => []);
   const roofs: THREE.BufferGeometry[] = [];
   const trims: THREE.BufferGeometry[] = [];
