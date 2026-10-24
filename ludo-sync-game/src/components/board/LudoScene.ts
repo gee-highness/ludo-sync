@@ -43,7 +43,7 @@ const MODELS = {
 
 const TOKEN_SCALE = 0.42;
 const FOV = 36;
-const INACTIVE = 0x4a5568;
+const INACTIVE = 0x555555;
 const TAU = Math.PI * 2;
 const hex = (css: string) => parseInt(css.slice(1), 16);
 
@@ -284,7 +284,7 @@ export class LudoScene {
       (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
         const std = mat as THREE.MeshStandardMaterial;
         if (std.name === "Material.005") { std.color.setHex(0xf4f7fb); std.roughness = 0.85; }
-        else if (std.name === "Material.007") std.color.setHex(0x9aa7bd);
+        else if (std.name === "Material.007") std.color.setHex(0x9a9a9a);
         else if (std.name in bySeat) this.seatMats.column[bySeat[std.name]].push(std);
         else if (std.name in startBySeat) this.seatMats.start[startBySeat[std.name]].push(std);
       });
@@ -294,7 +294,7 @@ export class LudoScene {
       if (!m.isMesh) return;
       (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
         const std = mat as THREE.MeshStandardMaterial;
-        if (std.name === "Material.007") std.color.setHex(0x2d3748);
+        if (std.name === "Material.007") std.color.setHex(0x2b2b2b);
         else if (std.name in bySeat) this.seatMats.centre[bySeat[std.name]].push(std);
       });
     });
@@ -323,7 +323,7 @@ export class LudoScene {
     SEATS.forEach(seat => {
       const on = playing.has(seat);
       const info = SEAT_INFO[seat];
-      this.seatMats.column[seat].forEach(m => m.color.setHex(on ? hex(info.path) : 0xa0aec0));
+      this.seatMats.column[seat].forEach(m => m.color.setHex(on ? hex(info.path) : 0xa0a0a0));
       this.seatMats.start[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
       this.seatMats.centre[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
       const plate = this.yardPlates[seat];
@@ -336,8 +336,8 @@ export class LudoScene {
         (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
           const std = mat as THREE.MeshStandardMaterial;
           // the tile becomes a pale inner square, the model's frame a darker shade of the yard
-          if (std.name === "Material.007") std.color.setHex(on ? hex(shade(info.home, -0.38)) : 0x2d3748);
-          else std.color.setHex(on ? 0xf4e9e9 : 0x8d99a8);
+          if (std.name === "Material.007") std.color.setHex(on ? hex(shade(info.home, -0.38)) : 0x2b2b2b);
+          else std.color.setHex(on ? 0xf4e9e9 : 0x8f8f8f);
         });
       });
     });

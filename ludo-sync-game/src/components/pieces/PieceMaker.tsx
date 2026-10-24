@@ -111,7 +111,7 @@ export default function PieceMaker() {
   );
 
   return (
-    <Flex minH="100dvh" bg="#10172E" color="white" justify="center" px={3} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+    <Flex minH="100dvh" bg="#333333" color="white" justify="center" px={3} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="980px" align="stretch" spacing={4}>
         <HStack>
           <IconButton as={Link} href="/" aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />
@@ -136,7 +136,7 @@ export default function PieceMaker() {
               </Box>
               <Box bg="whiteAlpha.100" borderRadius="xl" p={2}>
                 <Text fontSize="xs" color="gray.400" textAlign="center">3D board</Text>
-                <Box bg="#1A202C" borderRadius="lg" mt={1}><PiecePreview3D design={resolved} seat={seat} /></Box>
+                <Box bg="#151515" borderRadius="lg" mt={1}><PiecePreview3D design={resolved} seat={seat} /></Box>
               </Box>
             </SimpleGrid>
             <HStack spacing={2} role="tablist" aria-label="Piece">

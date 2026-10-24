@@ -25,13 +25,13 @@ interface Props {
 const Preview = ({ seat, value }: { seat: Seat; value: SeatColors | null }) => {
   const c = resolveSeatColors(seat, value);
   return (
-    <svg viewBox="0 0 120 70" width="132" height="77" role="img" aria-label="Preview of your home, pieces and path" style={{ borderRadius: 8, background: "#10172E" }}>
+    <svg viewBox="0 0 120 70" width="132" height="77" role="img" aria-label="Preview of your home, pieces and path" style={{ borderRadius: 8, background: "#151515" }}>
       <rect x="4" y="4" width="62" height="62" rx="4" fill={c.home} />
       <rect x="12" y="12" width="46" height="46" rx="6" fill="#fff" opacity="0.88" />
       {[[26, 26], [44, 26], [26, 44], [44, 44]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r="7" fill={c.main} stroke="#fff" strokeWidth="1.5" />)}
       <rect x="70" y="26" width="46" height="18" fill={c.path} />
       <rect x="70" y="26" width="10" height="18" fill={c.main} />
-      <g stroke="#cbd5e0" strokeWidth="0.8" opacity="0.8">{[80, 90, 100, 110].map(x => <line key={x} x1={x} y1="26" x2={x} y2="44" />)}</g>
+      <g stroke="#cccccc" strokeWidth="0.8" opacity="0.8">{[80, 90, 100, 110].map(x => <line key={x} x1={x} y1="26" x2={x} y2="44" />)}</g>
     </svg>
   );
 };

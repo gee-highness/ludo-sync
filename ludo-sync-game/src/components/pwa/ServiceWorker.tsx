@@ -23,7 +23,7 @@ export const ServiceWorker = () => {
       toast({
         id: "sw-update", duration: null, isClosable: true, position: "bottom",
         render: ({ onClose }) => (
-          <div role="status" style={{ background: "#2D3748", color: "white", padding: 12, borderRadius: 12, display: "flex", gap: 12, alignItems: "center" }}>
+          <div role="status" style={{ background: "#151515", color: "white", padding: 12, borderRadius: 12, display: "flex", gap: 12, alignItems: "center" }}>
             <span>A new version is ready.</span>
             <Button size="sm" colorScheme="teal" minH="44px" onClick={() => { worker.postMessage({ type: "SKIP_WAITING" }); onClose(); }}>Update</Button>
           </div>

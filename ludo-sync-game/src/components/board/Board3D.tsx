@@ -68,7 +68,7 @@ export default function Board3D(props: Board3DProps) {
   const movable = options.filter((o, i, all) => all.findIndex(x => x.token === o.token) === i);
   return (
     <Box position="relative" w="100%" h="100%">
-      <Box ref={hostRef} position="absolute" inset={0} borderRadius="lg" overflow="hidden" bg="#1A202C" />
+      <Box ref={hostRef} position="absolute" inset={0} borderRadius="lg" overflow="hidden" bg="#151515" />
       <Box as="ul" listStyleType="none" m={0} p={0} position="absolute" w="1px" h="1px" overflow="hidden" clipPath="inset(50%)">
         {movable.map(o => {
           const seat = interactiveSeat!;

@@ -15,9 +15,9 @@ import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
 const MAX_BURSTS = 16;
-const INACTIVE = "#4A5568";
+const INACTIVE = "#555555";
 const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: number; rise: boolean; ring?: boolean }> = {
-  dust: { color: "#CBD5E0", n: 5, d: 0.55, r: 0.07, rise: false },
+  dust: { color: "#cccccc", n: 5, d: 0.55, r: 0.07, rise: false },
   none: { color: "#fff", n: 0, d: 0, r: 0, rise: false },
   sparkle: { color: "#FACC15", n: 7, d: 0.85, r: 0.06, rise: false },
   ember: { color: "#FB923C", n: 6, d: 0.7, r: 0.07, rise: true },
@@ -27,11 +27,11 @@ const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", s
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
 const PALETTES: Record<BoardTheme, Palette> = {
-  classic: { bg: "#1A202C", cell: "#F7FAFC", line: "#A0AEC0", panel: "#fff", inactiveCol: "#A0AEC0" },
-  midnight: { bg: "#05070F", cell: "#2D3748", line: "#4A5568", panel: "#1A202C", inactiveCol: "#4A5568" },
+  classic: { bg: "#151515", cell: "#F7F7F7", line: "#A0A0A0", panel: "#fff", inactiveCol: "#A0A0A0" },
+  midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
-  paper: { bg: "#E2E8F0", cell: "#FFFFFF", line: "#CBD5E0", panel: "#fff", inactiveCol: "#CBD5E0" },
+  paper: { bg: "#E5E5E5", cell: "#FFFFFF", line: "#CCCCCC", panel: "#fff", inactiveCol: "#CCCCCC" },
 };
 
 interface Burst { id: number; x: number; y: number; color: string; kind: "capture" | "home" | TrailId }
@@ -205,7 +205,7 @@ export default function Board2D({
         <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={active ? 0.88 : 0.35} />
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
-          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={0.28} stroke={active ? info.dark : "#2D3748"} strokeWidth={0.06} />;
+          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={0.28} stroke={active ? info.dark : "#2B2B2B"} strokeWidth={0.06} />;
         })}
         {player && (
           <text x={x0 + 3} y={y0 + (seat === 0 || seat === 3 ? 5.58 : 0.42)} textAnchor="middle" dominantBaseline="central" fontSize={0.46} fontWeight={800}

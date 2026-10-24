@@ -72,7 +72,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
   };
 
   return (
-    <Flex minH="100dvh" bg="#10172E" color="white" justify="center" position="relative" isolation="isolate" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+    <Flex minH="100dvh" bg="#333333" color="white" justify="center" position="relative" isolation="isolate" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="560px" align="stretch" spacing={5} p={3} borderRadius="2xl">
         <HStack>
           <IconButton aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
