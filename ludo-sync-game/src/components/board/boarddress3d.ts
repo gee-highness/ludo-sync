@@ -7,6 +7,8 @@ import type { TycoonState } from "@/lib/ludo/types";
 import { buildBuilding, type BuiltBuilding } from "./buildings3d";
 
 const TOP = 0.062;
+/** Centre of each seat's yard on the ground, as (x, z). */
+const YARD_C: Record<Seat, [number, number]> = { 0: [-4.5, 4.5], 1: [-4.5, -4.5], 2: [4.5, -4.5], 3: [4.5, 4.5] };
 
 const tex = (c: HTMLCanvasElement) => {
   const t = new THREE.CanvasTexture(c);
@@ -204,13 +206,15 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping;
     return track(new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0.7, roughness: 0.8 }));
   });
-  const trims = ["#22d3ee", "#f472b6", "#a78bfa", "#facc15"].map(c => track(new THREE.MeshBasicMaterial({ color: c })));
+  const trims = ["#22d3ee", "#f472b6", "#a78bfa", "#facc15"].map(c => track(new THREE.LineBasicMaterial({ color: c, transparent: true, opacity: 0.9 })));
+  const roofDark = track(new THREE.MeshStandardMaterial({ color: "#0b0e1c", roughness: 0.8 }));
   const boxGeo = track(new THREE.BoxGeometry(1, 1, 1));
-  const trimGeo = track(new THREE.BoxGeometry(1, 0.06, 1));
+  const edgeGeo = track(new THREE.EdgesGeometry(boxGeo));
   const generic = (x: number, z: number, w: number, h: number, i: number): THREE.Group => {
     const g = new THREE.Group();
-    const b = new THREE.Mesh(boxGeo, fillerMats[i % 3]); b.scale.set(w, h, w); b.position.y = h / 2;
-    const t = new THREE.Mesh(trimGeo, trims[i % 4]); t.scale.set(w + 0.04, 1, w + 0.04); t.position.y = h + 0.03;
+    const side = fillerMats[i % 3];
+    const b = new THREE.Mesh(boxGeo, [side, side, roofDark, roofDark, side, side]); b.scale.set(w, h, w); b.position.y = h / 2;
+    const t = new THREE.LineSegments(edgeGeo, trims[i % 4]); t.scale.set(w, h, w); t.position.y = h / 2;
     g.add(b, t); g.position.set(x, TOP, z);
     return g;
   };
@@ -227,6 +231,29 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     if (!border || lotCells.has(`${row},${col}`)) continue;
     if (!high && fi % 2) { fi++; continue; }
     group.add(generic(col - 7, row - 7, 0.78, 0.45 + ((fi * 7) % 5) * 0.16, fi++));
+  }
+
+  const padMats: { seat: Seat; mat: THREE.MeshBasicMaterial }[] = [];
+  // yard floors: a glowing street grid seen from above, and a pad under each of the four token slots
+  for (const seat of SEATS) {
+    const c = document.createElement("canvas"); c.width = c.height = 256;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#0a0e1d"; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = "rgba(34,211,238,0.5)"; g.lineWidth = 3;
+    for (let i = 0; i <= 6; i++) { g.beginPath(); g.moveTo(i * 42.6, 0); g.lineTo(i * 42.6, 256); g.moveTo(0, i * 42.6); g.lineTo(256, i * 42.6); g.stroke(); }
+    g.fillStyle = "rgba(255,210,122,0.18)";
+    for (let k = 0; k < 40; k++) g.fillRect(((k * 53) % 240) + 4, ((k * 97) % 240) + 4, 9, 6);
+    const [cx, cz] = YARD_C[seat];
+    const floor = new THREE.Mesh(track(new THREE.PlaneGeometry(5.9, 5.9)), track(new THREE.MeshBasicMaterial({ map: track(tex(c)), toneMapped: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })));
+    floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0.04, cz);
+    group.add(floor);
+    for (const [ox, oz] of [[-0.95, -0.95], [0.95, -0.95], [-0.95, 0.95], [0.95, 0.95]]) {
+      const padMat = track(new THREE.MeshBasicMaterial({ color: SEAT_INFO[seat].main, transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false, depthWrite: false }));
+      padMats.push({ seat, mat: padMat });
+      const pad = new THREE.Mesh(track(new THREE.RingGeometry(0.36, 0.5, 32)), padMat);
+      pad.rotation.x = -Math.PI / 2; pad.position.set(cx + ox, 0.07, cz + oz);
+      group.add(pad);
+    }
   }
 
   // buildings per lot
@@ -249,6 +276,7 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
 
   const update = (input: DressingInput) => {
     const now = performance.now();
+    for (const pm of padMats) pm.mat.color.set(SEAT_INFO[pm.seat].main);
     for (const s of slots.values()) {
       const ownerSeat: number = input.tycoon ? input.tycoon.owner[s.lot.ring] : -1;
       const lotSeat = s.lot.seat;

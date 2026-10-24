@@ -266,9 +266,9 @@ export default function GameScreen(props: GameScreenProps) {
   };
 
   const compact = !wide || short;
-  const round = (label: string, icon: React.ReactNode, onClick: () => void, extra: Record<string, unknown> = {}) => (
+  const round = (label: string, icon: React.ReactElement, onClick: () => void, extra: Record<string, unknown> = {}) => (
     <IconButton
-      key={label} aria-label={label} icon={<>{icon}</>} onClick={onClick} isRound w="44px" h="44px" minW="44px" bg="#fff" color="#1c1c1c" fontSize="lg"
+      key={label} aria-label={label} icon={icon} onClick={onClick} isRound w="44px" h="44px" minW="44px" bg="#fff" color="#1c1c1c" fontSize="lg"
       boxShadow="0 3px 10px rgba(0,0,0,.5)" _hover={{ bg: "gray.100" }} _active={{ bg: "gray.200" }} {...extra}
     />
   );
