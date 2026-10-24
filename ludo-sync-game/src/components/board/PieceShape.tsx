@@ -5,6 +5,8 @@ import { shade, type ResolvedDesign } from "@/lib/client/pieces";
 
 interface Props {
   design: ResolvedDesign;
+  /** The video's look for default pieces: a gold or silver metal figurine on a pedestal ringed in the seat colour. */
+  metal?: "gold" | "silver";
   /** Unique within the page; names the gradients and clip this piece uses. */
   id: string;
   /** Counter-rotation so a mark stays upright when the board is turned. */
@@ -40,7 +42,37 @@ const PatternMarks = ({ design }: { design: ResolvedDesign }) => {
 };
 
 /** One piece drawn in the flat board's coordinates, centred on (0, 0) and about 0.8 across. */
-export function PieceShape({ design, id, upright = 0 }: Props) {
+const METAL = {
+  gold: ["#fff3b8", "#f0b429", "#8a5a08"],
+  silver: ["#ffffff", "#b9c2d0", "#586272"],
+} as const;
+
+/** A metal figurine on a round pedestal; the seat colour shows as the ring and glow around the base. */
+function Figurine({ design, id, metal }: { design: ResolvedDesign; id: string; metal: "gold" | "silver" }) {
+  const [hi, mid, lo] = METAL[metal];
+  const body = pathOf("pawn");
+  return (
+    <g aria-hidden>
+      <defs>
+        <linearGradient id={`mt-${id}`} x1="0.1" y1="0" x2="0.9" y2="1">
+          <stop offset="0" stopColor={hi} /><stop offset="0.45" stopColor={mid} /><stop offset="0.62" stopColor={hi} stopOpacity={0.9} /><stop offset="1" stopColor={lo} />
+        </linearGradient>
+      </defs>
+      <ellipse cy={0.4} rx={0.5} ry={0.17} fill={design.primary} opacity={0.3} />
+      <ellipse cy={0.38} rx={0.41} ry={0.14} fill="#10131f" />
+      <ellipse cy={0.36} rx={0.41} ry={0.14} fill="none" stroke={design.primary} strokeWidth={0.07} />
+      <ellipse cy={0.34} rx={0.3} ry={0.09} fill="#232838" />
+      <g transform="translate(0 -0.06) scale(0.92)">
+        <path d={body} fill={`url(#mt-${id})`} stroke="#1b1305" strokeOpacity={0.45} strokeWidth={0.03} strokeLinejoin="round" />
+        <ellipse cx={-0.07} cy={-0.2} rx={0.045} ry={0.09} fill="#fff" opacity={0.75} transform="rotate(-18 -0.07 -0.2)" />
+        <path d="M-0.2 0.14 Q-0.13 0.1 -0.06 0.24" fill="none" stroke="#fff" strokeOpacity={0.5} strokeWidth={0.03} strokeLinecap="round" />
+      </g>
+    </g>
+  );
+}
+
+export function PieceShape({ design, id, upright = 0, metal }: Props) {
+  if (metal) return <Figurine design={design} id={id} metal={metal} />;
   const d = design;
   const shape = d.shape === "classic" ? "disc" : d.shape;
   const path = pathOf(shape);

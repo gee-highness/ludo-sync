@@ -45,7 +45,7 @@ export interface NeonBoard {
 }
 
 /** Glowing outlines for every square, yard and the centre: a thin bright line over a wide faint one, so it reads as neon. */
-export const buildNeonBoard = (): NeonBoard => {
+export const buildNeonBoard = (glow = true): NeonBoard => {
   const group = new THREE.Group();
   group.renderOrder = 1;
   const owned: { dispose: () => void }[] = [];
@@ -59,11 +59,14 @@ export const buildNeonBoard = (): NeonBoard => {
     // the same outline twice: bright and thin, then faint and wide for the glow
     const thin = material(layer.color, 0.95), wide = material(layer.color, 0.22);
     owned.push(thin, wide);
-    const a = new THREE.Mesh(merged, thin), b = new THREE.Mesh(merged.clone(), wide);
-    owned.push(b.geometry);
-    b.scale.set(1, 1, 1);
-    b.position.y = -0.004;
-    group.add(b, a);
+    const a = new THREE.Mesh(merged, thin);
+    if (glow) {
+      const b = new THREE.Mesh(merged.clone(), wide);
+      owned.push(b.geometry);
+      b.position.y = -0.004;
+      group.add(b);
+    }
+    group.add(a);
     entries.push({ mats: [thin, wide], seat: layer.seat, part: layer.part, base: layer.color });
   };
 

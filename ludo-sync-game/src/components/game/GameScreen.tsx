@@ -1,5 +1,6 @@
 "use client";
 
+import { isWorld } from "@/lib/client/themes";
 import {
   AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, HStack,
   IconButton, Text, VStack, useDisclosure, useMediaQuery,
@@ -97,7 +98,7 @@ export default function GameScreen(props: GameScreenProps) {
   const renderer = resolveRenderer(settings.renderer, caps);
   // with the 3D board the picture is full-bleed behind the interface, as in the reference; the flat board keeps the framed layout
   const [boardUses3d, setBoardUses3d] = useState(false);
-  const immersive = renderer === "3d" && boardUses3d;
+  const immersive = (renderer === "3d" && boardUses3d) || isWorld(settings.boardTheme);
   const railRef = useRef<HTMLDivElement>(null);
   const panelsRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -433,7 +434,7 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rollable={canRoll} onThrow={throwDice}
+              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />

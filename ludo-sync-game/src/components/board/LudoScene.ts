@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, type PlacedToken } from "./layout";
@@ -8,12 +9,17 @@ import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
 import { previewPath } from "@/lib/client/preview";
 import { buildNeonBoard, type NeonBoard } from "./neon3d";
-import { NIGHT, buildCityscape, skyTexture, type CityHandle } from "./cityscape3d";
+import { buildCityscape, skyTexture, type CityHandle } from "./cityscape3d";
+import { worldOf, type WorldTheme } from "@/lib/client/themes";
+import type { BoardTheme } from "@/lib/client/settings";
 import { buildBoardDressing, type BoardDressing } from "./boarddress3d";
 import { DiceRig } from "./dice3d";
 import type { IslandMap } from "@/lib/client/islands";
 import type { TycoonState } from "@/lib/ludo/types";
 import type { MovePreview } from "@/lib/client/settings";
+import { TIER_SPECS, TierGovernor, stepUp, type Tier, type TierSpec } from "@/lib/client/quality";
+import { flyDice } from "@/lib/client/diceFlight";
+import { flickFrom, isThrow, setPendingThrow, takePendingThrow, toThrow, type PointerSample, type ThrowInput } from "@/lib/client/throw";
 
 export interface SceneInput {
   tokens: PlacedToken[];
@@ -35,6 +41,8 @@ export interface SceneInput {
   neon: boolean;
   /** The neon-city look: night skyline, dark slab with girders, dressed squares and lots, island buildings. */
   look: boolean;
+  /** Which world palette to dress the look in. */
+  theme: BoardTheme;
   tycoon: TycoonState | null;
   islands: IslandMap;
   enterBonus: number;
@@ -42,6 +50,8 @@ export interface SceneInput {
   rollKey: number;
   rolled: number[];
   rollMs: number;
+  /** A swipe across the board throws the dice (it is the player's turn to roll). */
+  rollable: boolean;
   /** Keep the camera on the current token (a purchase or build decision is waiting). */
   hold: boolean;
   /** What each piece looks like, by seat then token. */
@@ -51,11 +61,15 @@ export interface SceneInput {
 }
 
 export interface SceneOptions {
-  quality: "high" | "low";
+  quality: Tier;
   onPick: (token: number) => void;
-  /** Called once when the frame rate stays poor, so the caller can fall back to the flat board. */
-  onSlow: () => void;
+  /** The frame rate stayed poor ("down") or stayed perfect ("up"): the caller picks the next tier, or the flat board below the lowest. */
+  onTier: (dir: "down" | "up") => void;
+  /** The player flicked the dice across the board. */
+  onThrow: (t: ThrowInput) => void;
   onContextLost: () => void;
+  /** Called once, after the first frame has been drawn. */
+  onFirstFrame?: () => void;
 }
 
 const MODELS = {
@@ -147,6 +161,8 @@ export class LudoScene {
   private hemi!: THREE.HemisphereLight;
   private sunLight!: THREE.DirectionalLight;
   private city: CityHandle | null = null;
+  private cityTheme: BoardTheme | null = null;
+  private world3: WorldTheme = worldOf("neon");
   private skyTex: THREE.Texture | null = null;
   private dressing: BoardDressing | null = null;
   private dressingTycoon = false;
@@ -180,36 +196,45 @@ export class LudoScene {
   private input: SceneInput | null = null;
   private hoverToken: number | null = null;
   private rotationTarget = 0;
-  private fpsSamples: number[] = [];
-  private slowReported = false;
   private downAt: { x: number; y: number } | null = null;
   private shake = 0;
   private kick = 0;
   private lastActive: Seat | null = null;
   private lastFirework = 0;
   private readonly high: boolean;
+  private readonly spec: TierSpec;
+  private readonly governor: TierGovernor;
+  /** Unrotated space for the dice, so a throw means the same thing whichever way the board is turned. */
+  private stage = new THREE.Group();
+  /** If the roll never arrives (offline, refused), the dice held after a flick are put down at this time. */
+  private dropAt = 0;
+  private swipe: { id: number; samples: PointerSample[]; held: boolean } | null = null;
+  private plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.4);
 
   constructor(private host: HTMLElement, private opts: SceneOptions) {
-    const high = opts.quality === "high";
+    const spec = TIER_SPECS[opts.quality];
+    this.spec = spec;
+    const high = spec.rich;
     this.high = high;
-    this.renderer = new THREE.WebGLRenderer({ antialias: high, alpha: true, powerPreference: high ? "high-performance" : "low-power" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, high ? 1.5 : 1.25));
+    this.governor = new TierGovernor(dir => this.opts.onTier(dir), () => stepUp(this.opts.quality) !== null);
+    this.renderer = new THREE.WebGLRenderer({ antialias: spec.antialias, alpha: true, powerPreference: spec.antialias ? "high-performance" : "low-power" });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, spec.pixelRatio));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = high;
+    this.renderer.shadowMap.enabled = spec.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     const canvas = this.renderer.domElement;
-    canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:manipulation;outline:none";
+    canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;outline:none";
     canvas.addEventListener("webglcontextlost", this.onContextLost);
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerleave", this.onPointerLeave);
+    canvas.addEventListener("pointercancel", this.onPointerCancel);
     host.appendChild(canvas);
 
-    // TEMP-DEBUG-PERF
-    if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__ludoScene = this;
     this.scene.add(this.world);
+    this.scene.add(this.stage);
     this.hemi = new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7);
     this.scene.add(this.hemi);
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
@@ -246,7 +271,7 @@ export class LudoScene {
       this.pathDots.push(d);
       this.world.add(d);
     }
-    this.dice = new DiceRig(this.world);
+    this.dice = new DiceRig(this.stage);
     this.initParticles();
 
     this.ro = new ResizeObserver(() => this.resize());
@@ -382,8 +407,8 @@ export class LudoScene {
   private applyColours(playing: ReadonlySet<Seat>) {
     const neon = this.neonOn;
     // neon: the tiles go dark and the glowing outlines carry the colour
-    this.tileMats.forEach(m => m.color.setHex(neon ? 0x191919 : 0xd6d6d6));
-    this.edgeMats.forEach(m => m.color.setHex(neon ? 0x101010 : 0x9a9a9a));
+    this.tileMats.forEach(m => m.color.setHex(neon ? this.world3.tile : 0xd6d6d6));
+    this.edgeMats.forEach(m => m.color.setHex(neon ? this.world3.edge : 0x9a9a9a));
     this.centreEdgeMats.forEach(m => m.color.setHex(neon ? 0x101010 : 0x2b2b2b));
     this.neonBoard?.setColours(playing);
     const dim = (css: string, k: number) => hex(shade(css, k));
@@ -426,7 +451,7 @@ export class LudoScene {
   // ---- particles and shockwaves -------------------------------------------------------------
 
   private initParticles() {
-    const n = this.high ? 480 : 200;
+    const n = this.spec.particles;
     const pos = new Float32Array(n * 3).fill(-999);
     const col = new Float32Array(n * 3);
     const geo = new THREE.BufferGeometry();
@@ -537,18 +562,35 @@ export class LudoScene {
       if (metal) { // round pedestal: dark disc, seat-colour ring and a base glow
         const col = new THREE.Color(SEAT_INFO[obj.seat].main);
         const ped = new THREE.Group();
-        const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.15, 0.22, 24), new THREE.MeshStandardMaterial({ color: "#1b2036", roughness: 0.5, metalness: 0.6, envMap: this.metalEnv() }));
-        disc.position.y = 0.11;
-        const ringM = new THREE.MeshBasicMaterial({ color: col, toneMapped: false });
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.06, 6, 28), ringM);
-        ring.rotation.x = Math.PI / 2; ring.position.y = 0.2;
-        const glowM = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
-        const glow = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), glowM);
-        glow.rotation.x = -Math.PI / 2; glow.position.y = 0.02;
-        ped.add(disc, ring, glow);
+        if (this.high) {
+          const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.15, 0.22, 24), new THREE.MeshStandardMaterial({ color: "#1b2036", roughness: 0.5, metalness: 0.6, envMap: this.metalEnv() }));
+          disc.position.y = 0.11;
+          const ringM = new THREE.MeshBasicMaterial({ color: col, toneMapped: false });
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(1.08, 0.06, 6, 28), ringM);
+          ring.rotation.x = Math.PI / 2; ring.position.y = 0.2;
+          const glowM = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+          const glow = new THREE.Mesh(new THREE.CircleGeometry(1.7, 24), glowM);
+          glow.rotation.x = -Math.PI / 2; glow.position.y = 0.02;
+          ped.add(disc, ring, glow);
+          obj.ownMaterials.push(disc.material as THREE.Material, ringM, glowM);
+        } else {
+          // one draw for the whole pedestal: dark disc with a seat-colour rim, as vertex colours
+          const disc = new THREE.CylinderGeometry(1.05, 1.15, 0.22, 16).translate(0, 0.11, 0);
+          const rim = new THREE.TorusGeometry(1.08, 0.06, 4, 16).rotateX(Math.PI / 2).translate(0, 0.2, 0);
+          const paint = (g: THREE.BufferGeometry, c: THREE.Color) => {
+            const n = g.getAttribute("position").count, arr = new Float32Array(n * 3);
+            for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+            g.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+          };
+          paint(disc, new THREE.Color("#1b2036")); paint(rim, col);
+          const geo = mergeGeometries([disc, rim], false)!;
+          disc.dispose(); rim.dispose();
+          const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.4, emissive: col, emissiveIntensity: 0.15 });
+          ped.add(new THREE.Mesh(geo, mat));
+          obj.ownMaterials.push(mat, { dispose: () => geo.dispose() } as unknown as THREE.Material);
+        }
         body.position.y += 0.22;
         const wrap = new THREE.Group(); wrap.add(ped, body);
-        obj.ownMaterials.push(disc.material as THREE.Material, ringM, glowM);
         obj.holder.add(wrap);
         obj.body = wrap;
       } else {
@@ -605,7 +647,7 @@ export class LudoScene {
   private setNeon(on: boolean) {
     this.neonOn = on;
     if (on && !this.neonBoard) {
-      this.neonBoard = buildNeonBoard();
+      this.neonBoard = buildNeonBoard(this.high);
       this.world.add(this.neonBoard.group);
     }
     if (this.neonBoard) this.neonBoard.group.visible = on;
@@ -613,14 +655,20 @@ export class LudoScene {
 
   /** Builds or removes the neon city, the dressed board, and the night lighting to match the look setting. */
   private applyLook(input: SceneInput) {
+    if (input.look && this.city && this.cityTheme !== input.theme) {
+      this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
+      this.skyTex?.dispose(); this.skyTex = null;
+    }
     if (input.look && !this.city) {
-      this.city = buildCityscape(this.high);
+      const w = this.world3 = worldOf(input.theme);
+      this.cityTheme = input.theme;
+      this.city = buildCityscape(this.high, { window: w.windowTint, roof: w.roofTint, ground: w.groundTint, water: w.waterTint, accent: w.accent });
       this.scene.add(this.city.group);
-      this.skyTex = skyTexture();
+      this.skyTex = skyTexture(w);
       this.scene.background = this.skyTex;
-      this.scene.fog = new THREE.Fog(NIGHT.fog, 28, 90);
-      this.hemi.color.setHex(NIGHT.hemiSky); this.hemi.groundColor.setHex(NIGHT.hemiGround); this.hemi.intensity = NIGHT.hemiK;
-      this.sunLight.color.setHex(NIGHT.sun); this.sunLight.intensity = NIGHT.sunK;
+      this.scene.fog = new THREE.Fog(w.fog, 28, 90);
+      this.hemi.color.setHex(w.hemiSky); this.hemi.groundColor.setHex(w.hemiGround); this.hemi.intensity = 1.25;
+      this.sunLight.color.setHex(w.sun); this.sunLight.intensity = 0.9;
     } else if (!input.look && this.city) {
       this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
       this.skyTex?.dispose(); this.skyTex = null;
@@ -642,12 +690,20 @@ export class LudoScene {
 
   update(input: SceneInput) {
     this.input = input;
+    this.renderer.domElement.style.touchAction = input.rollable && !input.reduceMotion ? "none" : "manipulation";
     this.applyLook(input);
     if (this.lastRollKey < 0) this.lastRollKey = input.rollKey;
     if (input.rollKey !== this.lastRollKey) {
       this.lastRollKey = input.rollKey;
       if (input.rolled.length) {
-        this.dice.throw(input.rolled, SEAT_INFO[input.activeSeat ?? 0].main, input.rollMs, input.reduceMotion, Math.atan2(Math.cos(this.world.rotation.y), -Math.sin(this.world.rotation.y)));
+        const colour = SEAT_INFO[input.activeSeat ?? 0].main;
+        this.dropAt = 0;
+        const th = input.reduceMotion ? null : takePendingThrow();
+        if (th) this.dice.fly(input.rolled, colour, flyDice(th, input.rolled, input.rollKey + 1));
+        else {
+          this.dice.release();
+          this.dice.throw(input.rolled, colour, input.rollMs, input.reduceMotion, Math.atan2(Math.cos(this.world.rotation.y), -Math.sin(this.world.rotation.y)));
+        }
         this.diceFadeAt = 0;
       }
     }
@@ -950,6 +1006,7 @@ export class LudoScene {
     }
 
     // the thrown dice, the dressed board's rising buildings, and the city's traffic and signs
+    if (this.dropAt && now >= this.dropAt) { this.dropAt = 0; if (!this.swipe) this.dice.release(); }
     if (this.diceFadeAt && now >= this.diceFadeAt) { this.diceFadeAt = 0; this.dice.fadeOut(now); }
     if (this.dice.update(now)) animating = true;
     if (this.dressing?.tick(now)) animating = true;
@@ -1027,21 +1084,14 @@ export class LudoScene {
     }
     for (const g of this.ghosts) if (g.visible && !calm) { g.position.y = 0.06 + Math.abs(Math.sin(t * 4)) * 0.12; ambient = true; }
 
-    const gap = this.high ? 33 : 66;
+    const gap = this.spec.ambientGap;
     if (animating || now - this.lastAmbient >= gap || !ambient) {
       this.renderer.render(this.scene, this.camera);
+      if (!this.firstFrameDone) { this.firstFrameDone = true; this.opts.onFirstFrame?.(); }
       if (!animating) this.lastAmbient = now;
     }
 
-    if (animating && rawDt > 0 && rawDt < 400 && !this.slowReported) {
-      this.fpsSamples.push(rawDt);
-      if (this.fpsSamples.length >= 90) {
-        const sorted = [...this.fpsSamples].sort((a, b) => a - b);
-        const median = sorted[sorted.length >> 1];
-        if (1000 / median < 22) { this.slowReported = true; this.opts.onSlow(); }
-        this.fpsSamples = [];
-      }
-    }
+    if (animating) this.governor.frame(rawDt, now);
     if (animating || ambient) this.raf = requestAnimationFrame(this.tick);
     else this.lastFrame = 0;
   };
@@ -1066,8 +1116,52 @@ export class LudoScene {
     return [...this.tokens.values()].find(o => o.proxy === hits[0].object) ?? null;
   }
 
-  private onPointerDown = (e: PointerEvent) => { this.downAt = { x: e.clientX, y: e.clientY }; };
+  /** Where a pointer is on the plane the dice fly over, in board squares (x right, z towards the viewer). */
+  private onPlane(e: PointerEvent): { x: number; z: number } | null {
+    this.raycaster.setFromCamera(this.pointer(e), this.camera);
+    const p = this.raycaster.ray.intersectPlane(this.plane, new THREE.Vector3());
+    return p ? { x: p.x, z: p.z } : null;
+  }
+
+  private onPointerDown = (e: PointerEvent) => {
+    this.downAt = { x: e.clientX, y: e.clientY };
+    const input = this.input;
+    if (!input?.rollable || input.reduceMotion || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const p = this.onPlane(e);
+    if (!p) return;
+    this.swipe = { id: e.pointerId, samples: [{ x: e.clientX, y: e.clientY, t: e.timeStamp }], held: false };
+    try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+  };
+  private endSwipe(e: PointerEvent): boolean {
+    const sw = this.swipe;
+    if (!sw || sw.id !== e.pointerId) return false;
+    this.swipe = null;
+    try { this.renderer.domElement.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    const d = this.downAt;
+    this.downAt = null;
+    const end = sw.samples[sw.samples.length - 1];
+    // lifting the finger is not movement: only add the last sample if it moved, so a slow frame cannot make a flick look like a stop
+    if (end.x !== e.clientX || end.y !== e.clientY) sw.samples.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
+    const f = flickFrom(sw.samples);
+    const thrown = this.input?.rollable && isThrow(f);
+    if (!thrown) { if (sw.held) this.dice.release(); return !!d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12; }
+    // the same flick a little way along the plane gives the velocity in board squares per second
+    const a = this.onPlane(e);
+    const lastT = sw.samples[sw.samples.length - 1].t;
+    let ref = sw.samples[0];
+    for (let i = sw.samples.length - 1; i >= 0; i--) if (lastT - sw.samples[i].t >= 120) { ref = sw.samples[i]; break; }
+    const b = this.onPlane({ clientX: ref.x, clientY: ref.y, pointerId: e.pointerId } as PointerEvent);
+    if (!a || !b) { if (sw.held) this.dice.release(); return true; }
+    const dt = Math.max(1, lastT - ref.t) / 1000;
+    const th = toThrow(a.x, a.z, (a.x - b.x) / dt, (a.z - b.z) / dt);
+    setPendingThrow(th);
+    this.opts.onThrow(th);
+    this.dropAt = performance.now() + 2500;
+    if (!this.dice.holding) this.dice.grab(2, SEAT_INFO[this.input?.activeSeat ?? 0].main, th.x, th.z);
+    return true;
+  };
   private onPointerUp = (e: PointerEvent) => {
+    if (this.endSwipe(e)) return;
     const d = this.downAt;
     this.downAt = null;
     if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 12) return;
@@ -1075,13 +1169,26 @@ export class LudoScene {
     if (obj) this.opts.onPick(obj.token);
   };
   private onPointerMove = (e: PointerEvent) => {
+    const sw = this.swipe;
+    if (sw && sw.id === e.pointerId) {
+      sw.samples.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
+      if (sw.samples.length > 40) sw.samples.shift();
+      const d = this.downAt;
+      if (d && (sw.held || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 10)) {
+        const p = this.onPlane(e);
+        if (p) { if (!sw.held) { sw.held = true; this.dice.grab(2, SEAT_INFO[this.input?.activeSeat ?? 0].main, p.x, p.z); } else this.dice.move(p.x, p.z); this.invalidate(); }
+      }
+      return;
+    }
     if (e.pointerType === "touch") return;
     const obj = this.hit(e);
     this.renderer.domElement.style.cursor = obj ? "pointer" : "default";
     const t = obj ? obj.token : null;
     if (t !== this.hoverToken) this.setHover(t);
   };
+  private onPointerCancel = (e: PointerEvent) => { if (this.swipe?.id === e.pointerId) { if (this.swipe.held) this.dice.release(); this.swipe = null; this.downAt = null; } };
   private onPointerLeave = () => { if (this.hoverToken !== null) this.setHover(null); };
+  private firstFrameDone = false;
   private onContextLost = (e: Event) => { e.preventDefault(); this.opts.onContextLost(); };
 
   dispose() {
@@ -1090,6 +1197,7 @@ export class LudoScene {
     this.ro.disconnect();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("webglcontextlost", this.onContextLost);
+    canvas.removeEventListener("pointercancel", this.onPointerCancel);
     canvas.removeEventListener("pointerdown", this.onPointerDown);
     canvas.removeEventListener("pointerup", this.onPointerUp);
     canvas.removeEventListener("pointermove", this.onPointerMove);

@@ -1,5 +1,6 @@
 "use client";
 
+import { WORLDS } from "@/lib/client/themes";
 import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
@@ -53,14 +54,14 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 <option value="follow">Moving</option><option value="tilt">Tilted</option><option value="top">Top-down</option>
               </Select>
             </Row>
-            <Row label="3D quality" hint="Lower saves battery">
+            <Row label="Graphics" hint="Auto adapts to your device">
               <Select w="120px" size="sm" value={s.quality} onChange={e => update({ quality: e.target.value as Settings["quality"] })} bg="gray.700">
-                <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>
+                <option value="auto">Auto</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="lite">Lite</option>
               </Select>
             </Row>
-            <Row label="Board theme" hint="Colours of the flat board">
+            <Row label="Theme" hint="World colours: sky, city and board">
               <Select w="120px" size="sm" value={s.boardTheme} onChange={e => update({ boardTheme: e.target.value as Settings["boardTheme"] })} bg="gray.700">
-                {BOARD_THEMES.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
+                {BOARD_THEMES.map(t => <option key={t} value={t}>{WORLDS[t]?.name ?? t[0].toUpperCase() + t.slice(1)}</option>)}
               </Select>
             </Row>
             <Row label="Pieces" hint="Shapes, colours, patterns, 2D and 3D">

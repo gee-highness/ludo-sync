@@ -28,12 +28,12 @@ const tex = (c: HTMLCanvasElement, repeat = false) => {
   return t;
 };
 
-export const skyTexture = (): THREE.CanvasTexture => {
+export const skyTexture = (w: Pick<typeof NIGHT, "skyTop" | "skyHorizon"> = NIGHT): THREE.CanvasTexture => {
   const c = document.createElement("canvas");
   c.width = 4; c.height = 256;
   const g = c.getContext("2d")!;
   const grad = g.createLinearGradient(0, 0, 0, 256);
-  grad.addColorStop(0, NIGHT.skyTop); grad.addColorStop(0.7, NIGHT.skyHorizon); grad.addColorStop(1, NIGHT.skyHorizon);
+  grad.addColorStop(0, w.skyTop); grad.addColorStop(0.7, w.skyHorizon); grad.addColorStop(1, w.skyHorizon);
   g.fillStyle = grad; g.fillRect(0, 0, 4, 256);
   return tex(c);
 };
@@ -177,7 +177,7 @@ const waterTexture = () => {
  * of lit towers (merged into a handful of meshes) with glowing rooftops, antennas and signs, a harbour, and traffic.
  * `high` = denser and animated; low = sparser, still.
  */
-export const buildCityscape = (high: boolean): CityHandle => {
+export const buildCityscape = (high: boolean, tint: { window: number; roof: number; ground: number; water: number; accent: string } = { window: 0xffffff, roof: 0x9aa4c8, ground: 0xffffff, water: 0xffffff, accent: "#22d3ee" }): CityHandle => {
   const group = new THREE.Group();
   const owned: { dispose: () => void }[] = [];
   const track = <T extends { dispose: () => void }>(x: T): T => { owned.push(x); return x; };
@@ -190,7 +190,7 @@ export const buildCityscape = (high: boolean): CityHandle => {
   const gt = track(groundTile());
   gt.repeat.set(2 * HALF + 2, 2 * HALF + 2);
   gt.offset.set(0.5, 0.5);
-  const groundMat = track(new THREE.MeshBasicMaterial({ map: gt, toneMapped: false }));
+  const groundMat = track(new THREE.MeshBasicMaterial({ map: gt, color: tint.ground, toneMapped: false }));
   const ground = new THREE.Mesh(track(new THREE.PlaneGeometry((2 * HALF + 2) * BLOCK, (2 * HALF + 2) * BLOCK)), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.position.y = FLOOR;
   group.add(ground);
@@ -198,19 +198,19 @@ export const buildCityscape = (high: boolean): CityHandle => {
   // harbour: water to the south-east (screen bottom-right in the default view), with a neon quay line
   const wt = track(waterTexture());
   wt.repeat.set(3, 3);
-  const water = new THREE.Mesh(track(new THREE.PlaneGeometry(34, 26)), track(new THREE.MeshBasicMaterial({ map: wt, toneMapped: false })));
+  const water = new THREE.Mesh(track(new THREE.PlaneGeometry(34, 26)), track(new THREE.MeshBasicMaterial({ map: wt, color: tint.water, toneMapped: false })));
   water.rotation.x = -Math.PI / 2; water.position.set(19, FLOOR + 0.04, 17);
   group.add(water);
-  const quay = new THREE.Mesh(track(new THREE.BoxGeometry(34.4, 0.08, 0.2)), track(new THREE.MeshBasicMaterial({ color: "#22d3ee", toneMapped: false })));
+  const quay = new THREE.Mesh(track(new THREE.BoxGeometry(34.4, 0.08, 0.2)), track(new THREE.MeshBasicMaterial({ color: tint.accent, toneMapped: false })));
   quay.position.set(19, FLOOR + 0.07, 4);
   const quay2 = quay.clone(); quay2.rotation.y = Math.PI / 2; quay2.scale.x = 0.75; quay2.position.set(2, FLOOR + 0.07, 17);
   group.add(quay, quay2);
 
   // towers: merged per wall variant so a thousand of them cost a handful of draw calls
   const variants = Array.from({ length: 5 }, (_, i) => { const f = facade(7 + i * 13, 0.42 + (i % 3) * 0.12); track(f.map); track(f.glow); return f; });
-  const wallMats = variants.map(v => track(new THREE.MeshStandardMaterial({ map: v.map, emissive: 0xffffff, emissiveMap: v.glow, emissiveIntensity: 1.25, roughness: 0.8 })));
+  const wallMats = variants.map(v => track(new THREE.MeshStandardMaterial({ map: v.map, emissive: tint.window, emissiveMap: v.glow, emissiveIntensity: 1.25, roughness: 0.8 })));
   const atlas = track(roofAtlas());
-  const roofMat = track(new THREE.MeshBasicMaterial({ map: atlas, color: 0x9aa4c8, toneMapped: false }));
+  const roofMat = track(new THREE.MeshBasicMaterial({ map: atlas, color: tint.roof, toneMapped: false }));
   const bucket: THREE.BufferGeometry[][] = variants.map(() => []);
   const roofs: THREE.BufferGeometry[] = [];
   const trims: THREE.BufferGeometry[] = [];

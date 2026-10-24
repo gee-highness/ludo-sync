@@ -1,23 +1,25 @@
 "use client";
 
+import { isWorld } from "@/lib/client/themes";
 import { Box } from "@chakra-ui/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SEAT_INFO, SEATS, type Seat } from "@/lib/ludo/board";
 import { usePalette } from "@/lib/client/palette";
 import { useIslands } from "@/lib/client/islands";
 import { tuningOf } from "@/lib/ludo/types";
 import { useSettings } from "@/lib/client/settings";
 import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
+import type { Tier } from "@/lib/client/quality";
 import { LudoScene, type SceneInput } from "./LudoScene";
 import { placeTokens, seatTokens } from "./layout";
 import type { BoardProps } from "./types";
 
 export interface Board3DProps extends BoardProps {
   camera: "tilt" | "top" | "follow";
-  quality: "high" | "low";
+  quality: Tier;
   onReady: () => void;
   onFail: () => void;
-  onSlow: () => void;
+  onTier: (dir: "down" | "up") => void;
 }
 
 /** The 3D board: a canvas for pointers, plus hidden buttons so keyboards and screen readers can play too. */
@@ -26,6 +28,7 @@ export default function Board3D(props: Board3DProps) {
   // TEMP-DEBUG
   const insTop = insets?.top ?? 0, insRight = insets?.right ?? 0, insBottom = insets?.bottom ?? 0, insLeft = insets?.left ?? 0;
   const hostRef = useRef<HTMLDivElement>(null);
+  const [drawn, setDrawn] = useState(false);
   const sceneRef = useRef<LudoScene | null>(null);
   const cb = useRef(props);
   cb.current = props;
@@ -44,9 +47,9 @@ export default function Board3D(props: Board3DProps) {
     tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: settings.boardTheme === "neon", look: settings.boardTheme === "neon", tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
-    rollKey, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide", insets: { top: insTop, right: insRight, bottom: insBottom, left: insLeft },
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey, insTop, insRight, insBottom, insLeft]);
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: isWorld(settings.boardTheme), look: isWorld(settings.boardTheme), theme: settings.boardTheme, tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
+    rollKey, rollable: !!props.rollable, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide", insets: { top: insTop, right: insRight, bottom: insBottom, left: insLeft },
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey, props.rollable, insTop, insRight, insBottom, insLeft]);
   const inputRef = useRef(input);
   inputRef.current = input;
 
@@ -54,12 +57,15 @@ export default function Board3D(props: Board3DProps) {
     const host = hostRef.current;
     if (!host) return;
     let scene: LudoScene;
+    setDrawn(false);
     try {
       scene = new LudoScene(host, {
         quality,
         onPick: token => cb.current.onPick(token),
-        onSlow: () => cb.current.onSlow(),
+        onTier: dir => cb.current.onTier(dir),
+        onThrow: t => cb.current.onThrow?.(t),
         onContextLost: () => cb.current.onFail(),
+        onFirstFrame: () => setDrawn(true),
       });
     } catch {
       cb.current.onFail();
@@ -77,6 +83,15 @@ export default function Board3D(props: Board3DProps) {
   return (
     <Box position="relative" w="100%" h="100%">
       <Box ref={hostRef} position="absolute" inset={0} borderRadius="lg" overflow="hidden" bg="#151515" />
+      {!drawn && (
+        <Box
+          position="absolute" inset={0} display="flex" alignItems="center" justifyContent="center" pointerEvents="none"
+          bg="linear-gradient(180deg, #0b1030, #1b1146 55%, #3a1a5e)" color="whiteAlpha.800" fontSize="sm" letterSpacing="0.08em"
+          role="status" aria-live="polite"
+        >
+          Loading city…
+        </Box>
+      )}
       <Box as="ul" listStyleType="none" m={0} p={0} position="absolute" w="1px" h="1px" overflow="hidden" clipPath="inset(50%)">
         {movable.map(o => {
           const seat = interactiveSeat!;

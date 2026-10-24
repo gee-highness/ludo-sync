@@ -2,18 +2,20 @@ import { useCallback, useSyncExternalStore } from "react";
 import { parseTuning } from "../ludo/tuning";
 import { sanitizeColors, sanitizePalette, type PaletteMap, type SeatColors } from "./palette";
 import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
+import { parseQuality, type QualityPref } from "./quality";
 import { readJSON, writeJSON } from "./storage";
 
 export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
-export type QualityPref = "auto" | "high" | "low";
+export type { QualityPref } from "./quality";
 export type CameraPref = "tilt" | "top" | "follow";
 /** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
 export type MovePreview = "dots" | "end" | "off";
 export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
-export type BoardTheme = "neon" | "classic" | "midnight" | "forest" | "sunset" | "paper";
-export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "classic", "midnight", "forest", "sunset", "paper"];
+export type BoardTheme = "neon" | "atlantic" | "forest" | "atlantis" | "transylvania" | "tokyo" | "la" | "london" | "paris" | "snow" | "park" | "classic" | "midnight" | "sunset" | "paper";
+/** World themes (full city look) first, then the flat boards. */
+export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "atlantic", "forest", "atlantis", "transylvania", "tokyo", "la", "london", "paris", "snow", "park", "classic", "midnight", "sunset", "paper"];
 
 export interface Settings {
   sound: boolean;
@@ -83,8 +85,8 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     volume: typeof r.volume === "number" && r.volume >= 0 && r.volume <= 1 ? r.volume : d.volume,
     haptics: bool(r.haptics, d.haptics),
     renderer: oneOf(r.renderer, ["auto", "3d", "2d"], d.renderer),
-    quality: oneOf(r.quality, ["auto", "high", "low"], d.quality),
-    camera: oneOf(r.camera, ["tilt", "top"], d.camera),
+    quality: parseQuality(r.quality, d.quality),
+    camera: oneOf(r.camera, ["tilt", "top", "follow"], d.camera),
     speed: oneOf(r.speed, ["normal", "fast", "instant"], d.speed),
     motion: oneOf(r.motion, ["auto", "reduce", "full"], d.motion),
     symbols: bool(r.symbols, d.symbols),

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { updateSettings, useSettings } from "@/lib/client/settings";
 import { useCapabilities } from "@/lib/client/device";
+import { detectStartTier, recalledTier, rememberTier, stepDown, stepUp, type Tier } from "@/lib/client/quality";
 import Board2D from "./Board2D";
 import type { BoardProps } from "./types";
 
@@ -30,22 +31,34 @@ export default function BoardView(props: BoardProps & {
   const toast = useToast();
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [lowered, setLowered] = useState(false);
+  const [shifted, setShifted] = useState<Tier | null>(null);
   const [skip, setSkip] = useState(false);
 
   useEffect(() => { setSkip(slowThisSession()); }, []);
+  useEffect(() => { setShifted(null); }, [settings.quality]);
 
   const use3d = renderer === "3d" && !failed && !skip;
   useEffect(() => { onUse3d?.(use3d); }, [use3d, onUse3d]);
-  const autoQuality = caps?.lowPower ? "low" : "high";
-  const quality = lowered ? "low" : settings.quality === "auto" ? autoQuality : settings.quality;
+  const start = (): Tier => {
+    const nav = typeof navigator === "undefined" ? null : (navigator as Navigator & { deviceMemory?: number });
+    return recalledTier() ?? detectStartTier(caps, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1, nav?.hardwareConcurrency ?? 8, nav?.deviceMemory ?? 8);
+  };
+  const base: Tier = settings.quality === "auto" ? start() : settings.quality;
+  const quality: Tier = shifted ?? base;
 
-  const onSlow = useCallback(() => {
-    if (quality === "high") { setLowered(true); setReady(false); return; }
+  const onTier = useCallback((dir: "down" | "up") => {
+    if (dir === "up" && settings.quality !== "auto") return;
+    const next = dir === "down" ? stepDown(quality) : stepUp(quality);
+    if (next) {
+      setShifted(next); setReady(false);
+      if (settings.quality === "auto") rememberTier(next);
+      return;
+    }
+    if (dir === "up") return;
     try { sessionStorage.setItem(SLOW_KEY, "1"); } catch { /* ignore */ }
     setFailed(true);
     toast({ title: "Switched to the flat board", description: "The 3D board was running slowly on this device.", status: "info", duration: 6000, isClosable: true });
-  }, [quality, toast]);
+  }, [quality, settings.quality, toast]);
   const onFail = useCallback(() => setFailed(true), []);
   const onReady = useCallback(() => setReady(true), []);
 
@@ -55,7 +68,7 @@ export default function BoardView(props: BoardProps & {
       <Box position="absolute" inset={0} display={showing3d ? "none" : "block"}>{!showing3d && <Board2D {...board} />}</Box>
       {use3d && (
         <Box position="absolute" inset={0} visibility={showing3d ? "visible" : "hidden"}>
-          <Board3D {...board} camera={settings.camera} quality={quality} onReady={onReady} onFail={onFail} onSlow={onSlow} />
+          <Board3D {...board} camera={settings.camera} quality={quality} onReady={onReady} onFail={onFail} onTier={onTier} />
         </Box>
       )}
       {showing3d && !hideCameraToggle && (

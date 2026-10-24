@@ -241,8 +241,10 @@ export const buildBoardDressing = (high: boolean, tycoonGame: boolean): BoardDre
     } else {
       const kind = seat !== undefined ? "start" : star ? "star" : "ring";
       const tile = shared(`${kind}${seat ?? ""}`, () => plainFace(kind, "", seat !== undefined ? SEAT_INFO[seat].main : "#ffffff"));
-      const [nr, nc] = next(ring);
-      flat.push({ ring, tile, angle: Math.atan2(-(nc - col), -(nr - row)) }); // canvas top points the way pieces travel
+      // canvas top points the way pieces travel; the ring cuts the four corners diagonally, so those tiles keep the heading they arrived with
+      let [nr, nc] = next(ring);
+      if (nr !== row && nc !== col) { const [pr, pc] = RING[(ring + RING.length - 1) % RING.length]; nr = row + (row - pr); nc = col + (col - pc); }
+      flat.push({ ring, tile, angle: Math.atan2(-(nc - col), -(nr - row)) });
     }
     if (tycoonGame && seat !== undefined) labelTiles.push({ ring, tile: -1 });
   });

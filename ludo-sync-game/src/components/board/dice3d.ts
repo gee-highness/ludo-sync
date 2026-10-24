@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import type { DiceFlight } from "@/lib/client/diceFlight";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
 const SIZE = 0.83;
@@ -33,8 +34,11 @@ interface Die {
   from: THREE.Vector3; to: THREE.Vector3;
   final: THREE.Quaternion; axis: THREE.Vector3; spin: number;
   t0: number; dur: number; settled: boolean;
+  /** Set while the die is following a computed flight rather than the canned throw. */
+  idx?: number;
 }
 
+const HOLD_Y = 1.3;
 const BOUNCES: [number, number][] = [[0.42, 2.1], [0.7, 0.8], [0.88, 0.3], [1, 0]];
 
 /** Two (or one) dark glass dice with glowing pips: thrown on to the board, they tumble, bounce and settle on the rolled values. Cosmetic only. */
@@ -45,6 +49,10 @@ export class DiceRig {
   private fadeFrom = 0;
   private fading = false;
   private opacity = 1;
+  private flight: DiceFlight | null = null;
+  private flightStart = 0;
+  private startY = 0;
+  private held: { x: number; z: number; t0: number } | null = null;
 
   constructor(private parent: THREE.Object3D) {}
 
@@ -55,6 +63,7 @@ export class DiceRig {
   }
 
   private clear() {
+    this.flight = null; this.held = null;
     for (const d of this.dice) { this.parent.remove(d.mesh); d.mats.forEach(m => m.dispose()); }
     this.dice = [];
   }
@@ -85,6 +94,59 @@ export class DiceRig {
     });
   }
 
+  private mesh(tex: THREE.CanvasTexture[]) {
+    const mats = tex.map(map => new THREE.MeshStandardMaterial({ color: "#10131f", map, emissive: "#ffffff", emissiveMap: map, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }));
+    return { mats, mesh: new THREE.Mesh(this.geo, mats) };
+  }
+
+  private alignTo(value: number) {
+    const idx = FACE_VALUE.indexOf(value as 1 | 2 | 3 | 4 | 5 | 6);
+    return new THREE.Quaternion().setFromUnitVectors(FACE_NORMAL[idx < 0 ? 2 : idx], new THREE.Vector3(0, 1, 0));
+  }
+
+  /** Picks the dice up under a finger: they hover at (x, z) and follow it until `fly` or `release`. */
+  grab(count: number, colour: string, x: number, z: number, now = performance.now()) {
+    if (this.held) { this.held.x = x; this.held.z = z; return; }
+    this.clear();
+    this.fading = false; this.opacity = 1; this.flight = null;
+    const tex = this.textures(colour);
+    for (let i = 0; i < count; i++) {
+      const { mats, mesh } = this.mesh(tex);
+      const z0 = new THREE.Vector3();
+      this.dice.push({ mesh, mats, from: z0, to: z0, final: new THREE.Quaternion(), axis: new THREE.Vector3(1, 0.6, 0.3).normalize(), spin: 0, t0: now, dur: 1, settled: false, idx: i });
+      this.parent.add(mesh);
+    }
+    this.held = { x, z, t0: now };
+  }
+
+  move(x: number, z: number) { if (this.held) { this.held.x = x; this.held.z = z; } }
+  get holding() { return this.held !== null; }
+  /** Puts held dice down without a throw. */
+  release() { if (this.held) { this.held = null; this.clear(); } }
+
+  /** Sends the dice along `flight`; they tumble and land on `values` exactly at its end. Continues from the held position, if any. */
+  fly(values: number[], colour: string, flight: DiceFlight, now = performance.now()) {
+    const tex = this.textures(colour);
+    const prev = this.dice.length === values.length ? this.dice : null;
+    this.startY = this.held ? HOLD_Y : 0;
+    this.held = null;
+    if (!prev) { this.clear(); }
+    values.forEach((value, i) => {
+      const reuse = prev?.[i];
+      const { mats, mesh } = reuse ?? this.mesh(tex);
+      const final = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), (flight.rest[i]?.rot ?? 0) * Math.PI / 180).multiply(this.alignTo(value));
+      const die: Die = {
+        mesh, mats, from: new THREE.Vector3(), to: new THREE.Vector3(flight.rest[i]?.x ?? 0, SIZE / 2 + 0.07, flight.rest[i]?.z ?? 0), final,
+        axis: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize(),
+        spin: (3 + Math.random() * 3) * Math.PI, t0: now, dur: flight.duration * 1000, settled: false, idx: i,
+      };
+      if (reuse) this.dice[i] = die; else { this.dice.push(die); this.parent.add(mesh); }
+    });
+    this.flight = flight; this.flightStart = now;
+    this.fading = false; this.opacity = 1;
+    for (const d of this.dice) d.mats.forEach(m => { m.opacity = 0.88; });
+  }
+
   /** Lets the dice sink away (after the move). */
   fadeOut(now = performance.now()) {
     if (!this.dice.length || this.fading) return;
@@ -97,8 +159,30 @@ export class DiceRig {
   update(now: number): boolean {
     let moving = false;
     const q = new THREE.Quaternion();
+    if (this.held) {
+      const t = (now - this.held.t0) / 1000, n = this.dice.length;
+      this.dice.forEach((d, i) => {
+        d.mesh.visible = true;
+        d.mesh.position.set(this.held!.x + (i - (n - 1) / 2) * 0.95, HOLD_Y + Math.sin(t * 5 + i) * 0.06, this.held!.z);
+        d.mesh.rotation.set(t * 2.2 + i, t * 1.7, t * 1.1);
+      });
+      return true;
+    }
+    const frames = this.flight ? this.flight.frame((now - this.flightStart) / 1000) : null;
     for (const d of this.dice) {
       if (d.settled) continue;
+      if (frames && d.idx !== undefined && frames[d.idx]) {
+        const k = (now - d.t0) / d.dur;
+        if (k >= 1) { d.mesh.position.copy(d.to); d.mesh.quaternion.copy(d.final); d.settled = true; continue; }
+        moving = true;
+        const f = frames[d.idx];
+        const settle = Math.max(0, 1 - k / 0.16); // from the hand's height down to the board
+        d.mesh.position.set(f.x, d.to.y + f.lift * 0.9 + this.startY * settle * settle, f.z);
+        q.setFromAxisAngle(d.axis, d.spin * Math.pow(1 - k, 2));
+        d.mesh.quaternion.copy(d.final).premultiply(q);
+        d.mesh.visible = true;
+        continue;
+      }
       const k = (now - d.t0) / d.dur;
       if (k < 0) { moving = true; continue; }
       d.mesh.visible = true;

@@ -19,6 +19,7 @@ export interface BoardProps {
   moving?: { seat: Seat; token: number } | null;
   /** Bumps on every roll, so the 3D board can throw its dice. */
   rollKey?: number;
+  rolled?: number[];
   /** CSS px of the canvas covered by the interface on each side; the 3D scene frames the board in what is left. */
   insets?: { top: number; right: number; bottom: number; left: number };
   /** True while the person may roll: dragging across the board and letting go throws the dice. */

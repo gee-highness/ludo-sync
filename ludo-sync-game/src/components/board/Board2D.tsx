@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GROUP_COLORS, SQUARES } from "@/lib/ludo/tycoon";
 import {
   FINISH, RING, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat,
@@ -8,10 +8,13 @@ import {
 import type { MoveOption } from "@/lib/ludo/types";
 import { previewPath } from "@/lib/client/preview";
 import { flickFrom, isThrow, toThrow, type PointerSample } from "@/lib/client/throw";
+import { isWorld, worldOf } from "@/lib/client/themes";
 import { useSettings, type BoardTheme } from "@/lib/client/settings";
 import { usePalette } from "@/lib/client/palette";
-import { resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
+import { isDefaultDesign, resolveDesign, useDesigns, type TrailId } from "@/lib/client/pieces";
 import { PieceShape } from "./PieceShape";
+import Backdrop2D from "./Backdrop2D";
+import Dice2D from "./Dice2D";
 import { BuildingShape } from "./BuildingGlyph";
 import { islandFor, useIslands } from "@/lib/client/islands";
 import type { BoardProps } from "./types";
@@ -31,11 +34,12 @@ const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", s
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
 const NEON_TRACK = "#9fe8ff";
+const NEON_LIKE: Palette = { bg: "", cell: "", line: "", panel: "#1b1b1b", inactiveCol: "#555555" };
 const PALETTES: Record<BoardTheme, Palette> = {
-  neon: { bg: "#0e0e0e", cell: "#171717", line: NEON_TRACK, panel: "#1b1b1b", inactiveCol: "#555555" },
+  neon: { bg: "#0b1330", cell: "#122248", line: NEON_TRACK, panel: "#1b1b1b", inactiveCol: "#555555" },
+  atlantic: NEON_LIKE, forest: NEON_LIKE, atlantis: NEON_LIKE, transylvania: NEON_LIKE, tokyo: NEON_LIKE, la: NEON_LIKE, london: NEON_LIKE, paris: NEON_LIKE, snow: NEON_LIKE, park: NEON_LIKE,
   classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
-  forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
   paper: { bg: "#E5E5E5", cell: "#FFFFFF", line: "#CCCCCC", panel: "#fff", inactiveCol: "#CCCCCC" },
 };
@@ -92,14 +96,21 @@ const CSS = `
 
 /** The flat board: an SVG that scales to any screen, rotated so `viewSeat` sits at the bottom. */
 export default function Board2D({
-  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow,
+  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow, rollKey, rolled, insets,
 }: BoardProps) {
   const islands = useIslands();
-  usePalette(); // seat colours are changed in place; this redraws when they are
+  const paletteVersion = usePalette(); // seat colours are changed in place; this redraws when they are
   // dragging across the board and letting go throws the dice
   const svgRef = useRef<SVGSVGElement>(null);
   const drag = useRef<{ samples: PointerSample[]; id: number } | null>(null);
-  const [finger, setFinger] = useState<{ x: number; y: number } | null>(null);
+  const fingerEl = useRef<SVGGElement>(null);
+  const showFinger = (p: { x: number; y: number } | null) => {
+    const g = fingerEl.current;
+    if (!g) return;
+    if (!p) { g.setAttribute("display", "none"); return; }
+    g.setAttribute("display", "inline");
+    g.setAttribute("transform", `translate(${p.x} ${p.y}) rotate(12)`);
+  };
   const toBoard = (e: { clientX: number; clientY: number }) => {
     const svg = svgRef.current;
     const m = svg?.getScreenCTM();
@@ -113,29 +124,31 @@ export default function Board2D({
     if (!rollable || !onThrow || (e.target as Element).closest("[role=button]")) return;
     drag.current = { samples: [{ x: e.clientX, y: e.clientY, t: performance.now() }], id: e.pointerId };
     svgRef.current?.setPointerCapture(e.pointerId);
-    setFinger(toBoard(e));
+    showFinger(toBoard(e));
   };
   const onMove = (e: React.PointerEvent<SVGSVGElement>) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
     d.samples.push({ x: e.clientX, y: e.clientY, t: performance.now() });
     if (d.samples.length > 40) d.samples.shift();
-    setFinger(toBoard(e));
+    showFinger(toBoard(e));
   };
   const onUp = (e: React.PointerEvent<SVGSVGElement>) => {
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
     drag.current = null;
-    setFinger(null);
-    const rect = svgRef.current?.getBoundingClientRect();
+    showFinger(null);
+    const m = svgRef.current?.getScreenCTM();
     const f = flickFrom(d.samples);
-    if (!rect || !onThrow || !isThrow(f)) return;
-    const unit = rect.width / 15; // pixels per square
-    onThrow(toThrow((e.clientX - (rect.left + rect.width / 2)) / unit, (e.clientY - (rect.top + rect.height / 2)) / unit, f.vx / unit, f.vy / unit));
+    if (!m || !onThrow || !isThrow(f)) return;
+    // pixels per board square and where the middle of the board is on screen, from the live transform (so zoom does not matter)
+    const unit = m.a, cxPx = m.a * 7 + m.e, cyPx = m.d * 7 + m.f;
+    onThrow(toThrow((e.clientX - cxPx) / unit, (e.clientY - cyPx) / unit, f.vx / unit, f.vy / unit));
   };
   const [settings] = useSettings();
-  const pal = PALETTES[settings.boardTheme];
-  const neon = settings.boardTheme === "neon";
+  const world = worldOf(settings.boardTheme);
+  const neon = isWorld(settings.boardTheme);
+  const pal = useMemo(() => neon ? { ...PALETTES[settings.boardTheme], bg: world.bg, cell: world.cell, line: world.accent } : PALETTES[settings.boardTheme], [neon, world, settings.boardTheme]);
   const designs = useDesigns();
   const rotation = -90 * viewSeat;
   const playing = useMemo(() => new Set(state.players.map(p => p.seat)), [state.players]);
@@ -188,6 +201,7 @@ export default function Board2D({
     return placeTokens(tokens, moving).sort((x, y) => movableLast(x) - movableLast(y));
   }, [tokens, interactiveSeat, byToken, moving]);
 
+  const cells = useMemo(() => {
   const cells: React.ReactNode[] = [];
   for (let row = 0; row < 15; row++) {
     for (let col = 0; col < 15; col++) {
@@ -202,13 +216,15 @@ export default function Board2D({
       cells.push(
         <g key={`${row}-${col}`}>
           {neon ? (() => {
-            const glow = !active ? "#666666" : info.kind === "column" ? seatInfo!.path : info.kind === "start" ? seatInfo!.main : info.kind === "star" ? "#facc15" : NEON_TRACK;
+            const tint = !active ? null : info.kind === "column" ? seatInfo!.path : info.kind === "start" ? seatInfo!.main : null;
+            const rim = !active ? "#4a4f60" : info.kind === "start" ? seatInfo!.light : info.kind === "column" ? seatInfo!.path : "#3d5aa8";
             return (
               <g>
                 <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={pal.cell} />
-                {(info.kind === "column" || info.kind === "start") && active && <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={glow} fillOpacity={info.kind === "start" ? 0.38 : 0.16} />}
-                <rect x={col - 0.44} y={row - 0.44} width={0.88} height={0.88} rx={0.12} fill="none" stroke={glow} strokeOpacity={0.26} strokeWidth={0.17} />
-                <rect x={col - 0.44} y={row - 0.44} width={0.88} height={0.88} rx={0.12} fill="none" stroke={glow} strokeOpacity={0.95} strokeWidth={0.05} />
+                {tint && <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={tint} fillOpacity={info.kind === "start" ? 0.6 : 0.3} />}
+                <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill="url(#nd-dots)" />
+                <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.07} strokeOpacity={0.9} />
+                <path d={`M${col - 0.44} ${row - 0.44}H${col + 0.44}`} stroke="#fff" strokeOpacity={0.12} strokeWidth={0.05} />
               </g>
             );
           })() : <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />}
@@ -219,7 +235,12 @@ export default function Board2D({
             const icon = sq.kind === "station" ? "🚉" : sq.kind === "utility" ? "💡" : sq.kind === "chest" ? "🎁" : sq.kind === "tax" ? "💸" : sq.kind === "chance" ? "❓" : null;
             return (
               <g aria-hidden>
-                {sq.kind === "property" && <rect x={col - 0.5} y={row - 0.5} width={CELL} height={0.3} fill={GROUP_COLORS[sq.group]} />}
+                {sq.kind === "property" && (
+                  row === 0 ? <rect x={col - 0.5} y={row + 0.2} width={CELL} height={0.3} fill={GROUP_COLORS[sq.group]} />
+                    : row === 14 ? <rect x={col - 0.5} y={row - 0.5} width={CELL} height={0.3} fill={GROUP_COLORS[sq.group]} />
+                    : col === 0 ? <rect x={col + 0.2} y={row - 0.5} width={0.3} height={CELL} fill={GROUP_COLORS[sq.group]} />
+                    : <rect x={col - 0.5} y={row - 0.5} width={0.3} height={CELL} fill={GROUP_COLORS[sq.group]} />
+                )}
                 {icon && (
                   <text x={col} y={row + 0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.55} transform={`rotate(${-rotation} ${col} ${row})`}>{icon}</text>
                 )}
@@ -234,8 +255,14 @@ export default function Board2D({
           })()}
           {info.kind === "star" && (
             <g transform={`translate(${col} ${row}) rotate(${-rotation})`} aria-hidden>
-              <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.78} fill={neon ? "#fde047" : "#D69E2E"}
-                style={{ animationDelay: `${((row * 15 + col) % 7) * 0.35}s` }}>★</text>
+              {neon ? (
+                <g fill="none" stroke="#fde047" strokeWidth={0.11} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M-0.24 0.02L0 -0.2L0.24 0.02" /><path d="M-0.24 0.28L0 0.06L0.24 0.28" opacity={0.6} />
+                </g>
+              ) : (
+                <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.78} fill="#D69E2E"
+                  style={{ animationDelay: `${((row * 15 + col) % 7) * 0.35}s` }}>★</text>
+              )}
             </g>
           )}
           {info.kind === "start" && (
@@ -248,6 +275,10 @@ export default function Board2D({
       );
     }
   }
+  return cells;
+  // the board squares only change with the game state, rotation, theme and colours
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tycoon, playing, rotation, neon, paletteVersion, islands, pal]);
 
   const yards = SEATS.map(seat => {
     const info = SEAT_INFO[seat];
@@ -259,8 +290,8 @@ export default function Board2D({
       <g key={seat}>
         {neon ? (
           <g>
-            <rect x={x0} y={y0} width={6} height={6} fill="#121212" />
-            <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} fillOpacity={0.14} />
+            <rect x={x0} y={y0} width={6} height={6} fill="#0b1330" />
+            <rect x={x0} y={y0} width={6} height={6} fill={active ? `url(#nd-yard-${seat})` : INACTIVE} fillOpacity={active ? 1 : 0.14} />
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.28} strokeWidth={0.3} />
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeWidth={0.07} />
           </g>
@@ -270,7 +301,7 @@ export default function Board2D({
         {neon && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.7} strokeWidth={0.04} />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
-          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={neon ? 0.12 : 0.28} stroke={neon ? (active ? info.main : "#666") : active ? info.dark : "#2B2B2B"} strokeWidth={neon ? 0.07 : 0.06} />;
+          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={neon ? 0.35 : 0.28} stroke={neon ? (active ? info.main : "#666") : active ? info.dark : "#2B2B2B"} strokeWidth={neon ? 0.07 : 0.06} />;
         })}
         {player && (
           <text x={x0 + 3} y={y0 + (seat === 0 || seat === 3 ? 5.58 : 0.42)} textAnchor="middle" dominantBaseline="central" fontSize={0.46} fontWeight={800}
@@ -320,11 +351,77 @@ export default function Board2D({
     );
   })();
 
-  return (
+  // immersive layout: the board is centred in the free area between the panels and the SVG viewBox is driven imperatively (follow camera)
+  const immersive = !!insets;
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      const w = Math.round(r.width), h = Math.round(r.height);
+      setBox(b => (b.w === w && b.h === h ? b : { w, h }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [immersive]);
+  const [it, ir, ib, il] = [insets?.top ?? 0, insets?.right ?? 0, insets?.bottom ?? 0, insets?.left ?? 0];
+  const base = useMemo(() => {
+    if (!immersive || !box.w || !box.h) return { x: -0.5, y: -0.5, w: 15, h: 15 };
+    const aw = Math.max(1, box.w - il - ir), ah = Math.max(1, box.h - it - ib);
+    const sc = Math.min(aw, ah) / 15.4;
+    return { x: -0.5 - (il + (aw - 15 * sc) / 2) / sc, y: -0.5 - (it + (ah - 15 * sc) / 2) / sc, w: box.w / sc, h: box.h / sc };
+  }, [immersive, box, it, ir, ib, il]);
+  const cam = useRef({ x: 7, y: 7, z: 1 });
+  const applyCam = (b: typeof base) => {
+    const svg = svgRef.current;
+    if (!svg || !immersive) return;
+    const c = cam.current;
+    svg.setAttribute("viewBox", `${c.x - (7 - b.x) / c.z} ${c.y - (7 - b.y) / c.z} ${b.w / c.z} ${b.h / c.z}`);
+  };
+  useLayoutEffect(() => { applyCam(base); }); // after every render, so a re-render never leaves a stale viewBox
+  const movingKey = moving ? moving.seat * 4 + moving.token : -1;
+  const follow = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const t = moving ? placed.find(p => p.seat === moving.seat && p.token === moving.token) : undefined;
+    if (!t) { follow.current = null; return; }
+    const a = (rotation * Math.PI) / 180, dx = t.at.x - 7, dy = t.at.y - 7;
+    follow.current = { x: 7 + dx * Math.cos(a) - dy * Math.sin(a), y: 7 + dx * Math.sin(a) + dy * Math.cos(a) };
+  });
+  const holdUntil = useRef(0);
+  const followCamera = immersive && settings.camera === "follow" && !reduceMotion;
+  useEffect(() => {
+    if (!followCamera) { cam.current = { x: 7, y: 7, z: 1 }; applyCam(base); return; }
+    if (movingKey >= 0) holdUntil.current = Infinity;
+    else if (holdUntil.current === Infinity) holdUntil.current = performance.now() + 700;
+    let raf = 0, last = performance.now();
+    let tgt = { x: cam.current.x, y: cam.current.y, z: cam.current.z };
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const f = follow.current;
+      if (movingKey >= 0 && f) tgt = { x: f.x, y: f.y, z: 2.2 };
+      else if (now > holdUntil.current) tgt = { x: 7, y: 7, z: 1 };
+      const c = cam.current, k = 1 - Math.exp(-dt * 7);
+      c.x += (tgt.x - c.x) * k; c.y += (tgt.y - c.y) * k; c.z += (tgt.z - c.z) * k;
+      const rest = movingKey < 0 && now > holdUntil.current && Math.abs(c.x - 7) + Math.abs(c.y - 7) + Math.abs(c.z - 1) < 0.01;
+      if (rest) cam.current = { x: 7, y: 7, z: 1 };
+      applyCam(base);
+      if (!rest) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followCamera, movingKey, base]);
+
+  const svgEl = (
     <svg
-      ref={svgRef} viewBox="-0.5 -0.5 15 15" role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
+      ref={svgRef} viewBox={immersive ? undefined : "-0.5 -0.5 15 15"} role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-      style={{ width: "100%", height: "100%", display: "block", touchAction: rollable ? "none" : "manipulation", "--hop": `${hopMs}ms` } as React.CSSProperties}
+      style={{ width: "100%", height: "100%", display: "block", position: "relative", touchAction: rollable ? "none" : "manipulation", "--hop": `${hopMs}ms` } as React.CSSProperties}
     >
       <style>{CSS}</style>
       <defs>
@@ -336,8 +433,18 @@ export default function Board2D({
             </radialGradient>
           );
         })}
+        {neon && (
+          <>
+            <pattern id="nd-dots" width={0.25} height={0.25} patternUnits="userSpaceOnUse"><circle cx={0.125} cy={0.125} r={0.022} fill="#8fb0ff" fillOpacity={0.3} /></pattern>
+            {SEATS.map(seat => (
+              <radialGradient key={`y${seat}`} id={`nd-yard-${seat}`} cx="0.5" cy="0.5" r="0.7">
+                <stop offset="0" stopColor={SEAT_INFO[seat].main} stopOpacity={0.5} /><stop offset="1" stopColor={SEAT_INFO[seat].main} stopOpacity={0.1} />
+              </radialGradient>
+            ))}
+          </>
+        )}
       </defs>
-      <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={pal.bg} />
+      <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={neon && immersive ? world.bg : pal.bg} />
       <g transform={`rotate(${rotation} 7 7)`}>
         {yards}
         {cells}
@@ -375,7 +482,7 @@ export default function Board2D({
                     : t.progress === YARD ? "tok-spin" : "tok-hop"
                 }>
                   <circle className="focus-ring" r={0.44} fill="none" stroke="transparent" strokeWidth={0.06} />
-                  <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} /></g>
+                  <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} metal={neon && isDefaultDesign(designs[t.seat][t.token]) ? (t.seat % 2 === 0 ? "gold" : "silver") : undefined} /></g>
                   {symbols && (
                     <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.4} fontWeight={800} fill="#fff"
                       transform={`rotate(${-rotation})`} aria-hidden>{info.glyph}</text>
@@ -415,12 +522,20 @@ export default function Board2D({
           </text>
         </g>
       )}
-      {finger && (
-        <g transform={`translate(${finger.x} ${finger.y}) rotate(12)`} aria-hidden pointerEvents="none">
-          <rect x={-0.55} y={-0.55} width={1.1} height={1.1} rx={0.2} fill="#fff" stroke="#111" strokeWidth={0.06} opacity={0.95} />
-          {[[-0.25, -0.25], [0.25, 0.25], [0, 0]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r={0.1} fill="#111" />)}
-        </g>
-      )}
+      {neon && <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.3} fill="none" stroke={world.frame} strokeOpacity={0.35} strokeWidth={0.5} pointerEvents="none" />}
+      {neon && <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.3} fill="none" stroke={world.accent} strokeOpacity={0.8} strokeWidth={0.07} pointerEvents="none" />}
+      {immersive && rollKey !== undefined && <Dice2D rollKey={rollKey} rolled={rolled ?? []} reduceMotion={!!reduceMotion} moving={!!moving} />}
+      <g ref={fingerEl} display="none" aria-hidden pointerEvents="none">
+        <rect x={-0.55} y={-0.55} width={1.1} height={1.1} rx={0.2} fill="#fff" stroke="#111" strokeWidth={0.06} opacity={0.95} />
+        {[[-0.25, -0.25], [0.25, 0.25], [0, 0]].map(([x, y]) => <circle key={`${x}${y}`} cx={x} cy={y} r={0.1} fill="#111" />)}
+      </g>
     </svg>
+  );
+  if (!immersive) return svgEl;
+  return (
+    <div ref={boxRef} style={{ position: "absolute", inset: 0, overflow: "hidden", background: neon ? world.bg : pal.bg }}>
+      {neon && <Backdrop2D theme={settings.boardTheme} />}
+      {svgEl}
+    </div>
   );
 }
