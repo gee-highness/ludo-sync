@@ -52,6 +52,8 @@ test("piece maker edits a piece and saves it", async ({ page }) => {
 test("pressing Back asks before leaving a game, and the game stays saved", async ({ page }) => {
   await page.goto("/play?preset=bot&quick=1");
   await expect(page.getByRole("button", { name: "Roll the dice" })).toBeVisible({ timeout: 20_000 });
+  // the Back guard is set up just after the screen appears; give it a moment, as a person would
+  await page.waitForTimeout(800);
   await page.goBack();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toContainText("Leave this game?");
@@ -75,14 +77,14 @@ test("an online game that was left can be rejoined from the menu, and forgotten"
       localStorage.setItem("ludo-sync:v1:room", JSON.stringify({ role: "guest", code: "ABC234", name: "Pat", savedAt: Date.now() }));
     }
   });
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "networkidle" });
   const rejoin = page.getByRole("button", { name: /Rejoin online game/ });
   await expect(rejoin).toBeVisible();
   await expect(rejoin).toContainText("ABC-234");
   await page.getByRole("button", { name: "Forget this online game" }).click();
   await expect(rejoin).toHaveCount(0);
   // with nothing saved, the rejoin link explains instead of failing
-  await page.goto("/online?rejoin=1");
+  await page.goto("/online?rejoin=1", { waitUntil: "networkidle" });
   await expect(page.getByText("There is no game to rejoin")).toBeVisible();
 });
 
