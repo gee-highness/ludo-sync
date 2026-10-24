@@ -36,11 +36,18 @@ export interface GuestOptions {
   name: string;
   /** Secret that proves this device owns its seat after a reconnect. */
   clientId: string;
-  /** Pause before each reconnect attempt; the last entry is the final try. */
+  /**
+   * Pause before each reconnect attempt; the last entry is the final try. Left out, a game in progress keeps trying for
+   * about ten minutes before giving up on the host, and a lobby for about half a minute.
+   */
   retryDelays?: number[];
+  /** Coming back to a game this device was in: a room that is not there yet is waited for, not reported as an error. */
+  rejoin?: boolean;
 }
 
 const DEFAULT_RETRY = [500, 1000, 2000, 4000, 6000, 8000, 10000];
+/** While a game is running a host that vanished may just be reloading; wait roughly ten and a half minutes. */
+const PLAYING_RETRY = [...DEFAULT_RETRY, ...Array.from({ length: 40 }, () => 15000)];
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 const friendly = (e: unknown): string => {
@@ -68,10 +75,18 @@ export class GuestClient {
   private reactionListeners = new Set<(r: Reaction) => void>();
   private stopped = false;
   private reactionId = 0;
-  private retryDelays: number[];
+  private retryDelays: number[] | undefined;
 
   constructor(private opts: GuestOptions) {
-    this.retryDelays = opts.retryDelays ?? DEFAULT_RETRY;
+    this.retryDelays = opts.retryDelays;
+  }
+
+  /** The pauses to use now: whatever was configured, else the long schedule while a game is under way. */
+  private delays(): number[] {
+    if (this.retryDelays) return this.retryDelays;
+    const room = this.snap.room;
+    const playing = room?.phase === "playing" && room.state?.phase !== "over";
+    return playing || this.opts.rejoin ? PLAYING_RETRY : DEFAULT_RETRY;
   }
 
   getSnapshot() { return this.snap; }
@@ -112,13 +127,14 @@ export class GuestClient {
       } catch (e) {
         if (this.stopped || this.terminal()) return;
         const gone = e instanceof TransportError && e.kind === "peer-unavailable";
-        if (first && attempt === 0 && gone) { this.set({ status: "error", error: friendly(e) }); return; }
-        if (attempt >= this.retryDelays.length) {
+        if (first && attempt === 0 && gone && !this.opts.rejoin) { this.set({ status: "error", error: friendly(e) }); return; }
+        const delays = this.delays();
+        if (attempt >= delays.length) {
           this.set(gone ? { status: "host-left" } : { status: "error", error: friendly(e) });
           return;
         }
-        if (!first || attempt > 0) this.set({ status: "reconnecting" });
-        await sleep(this.retryDelays[attempt]);
+        if (!first || attempt > 0 || this.opts.rejoin) this.set({ status: "reconnecting" });
+        await sleep(delays[attempt]);
       }
     }
   }
@@ -163,7 +179,7 @@ export class GuestClient {
   private onRoom(room: RoomView) {
     const s = room.state;
     if (s) {
-      if (room.gameId !== this.gameId || this.n === null || room.n > this.n) {
+      if (room.gameId !== this.gameId || this.n === null || room.n !== this.n) {
         this.gameId = room.gameId;
         this.n = room.n;
         this.bus.push(s, []);
@@ -203,12 +219,24 @@ export class GuestClient {
   setPieces(designs: PieceDesign[]) { this.send({ t: "pieces", designs }); }
   claimSeat(seat: Seat) { this.send({ t: "seat", seat }); }
 
-  /** Leaves on purpose; the host frees the seat (or counts a forfeit). */
-  leave() {
+  /**
+   * Leaves. While a game is running this is a soft leave by default: the connection just closes, the seat stays reserved
+   * (the host plays it if it is that seat's turn), and a new GuestClient with the same clientId and code takes it back.
+   * `leave({ forfeit: true })`, or leaving the lobby or a finished game, tells the host to free the seat or count a forfeit.
+   */
+  leave(opts: { forfeit?: boolean } = {}) {
+    const room = this.snap.room;
+    const inGame = room?.phase === "playing" && room.state?.phase !== "over";
+    const soft = inGame && !opts.forfeit && room?.you.seat !== null;
     this.stopped = true;
-    this.send({ t: "bye" });
-    this.chan?.closeAfterSend();
+    if (soft) {
+      this.chan?.close();
+    } else {
+      this.send({ t: "bye" });
+      this.chan?.closeAfterSend();
+    }
+    this.chan = undefined;
     const endpoint = this.endpoint;
-    setTimeout(() => endpoint?.close(), 200);
+    setTimeout(() => endpoint?.close(), soft ? 0 : 200);
   }
 }

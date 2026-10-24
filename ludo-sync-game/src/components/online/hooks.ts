@@ -9,44 +9,92 @@ import { GuestClient, type GuestSnapshot } from "@/lib/net/guest";
 import { HostSession, type HostSnapshot, type Reaction } from "@/lib/net/host";
 import { PeerNetwork } from "@/lib/net/peerTransport";
 import type { Rules } from "@/lib/ludo/types";
+import type { HostResume } from "@/lib/net/resume";
+import { clearRoomRecord, saveRoomRecord } from "@/lib/client/rooms";
 
-/** Opens a room on this device and follows it. Null until the browser has made the session. */
-export const useHostSession = (name: string, rules: Rules) => {
+/**
+ * Opens a room on this device (or opens a saved one again) and follows it. Leaving the screen only pauses the room:
+ * the game is saved as it goes, guests wait for the host to come back, and `endRoom` is the one way to close it for good.
+ */
+export const useHostSession = (name: string, rules: Rules, resume?: HostResume) => {
   const [session, setSession] = useState<HostSession | null>(null);
   const [snap, setSnap] = useState<HostSnapshot | null>(null);
+  const ended = useRef(false);
+  const sessionRef = useRef<HostSession | null>(null);
 
   useEffect(() => {
-    const s = new HostSession({ network: new PeerNetwork(), name, rules });
+    ended.current = false;
+    const s = new HostSession({ network: new PeerNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
-    const off = s.subscribe(setSnap);
+    // keep a copy of a game in progress, so the room can be opened again after leaving, a crash or a closed tab
+    const persist = () => {
+      if (ended.current) return;
+      const r = s.exportResume();
+      if (!r) return;
+      if (r.phase === "playing" && r.state && r.state.phase !== "over") saveRoomRecord({ role: "host", code: s.code, name, host: r });
+      else if (!resume || r.state?.phase === "over") clearRoomRecord();
+    };
+    const off = s.subscribe(snapshot => { setSnap(snapshot); persist(); });
     void s.open();
     // plays for anyone away or out of time
     const timer = setInterval(() => s.tick(), 1000);
-    return () => { clearInterval(timer); off(); s.close(); setSession(null); };
+    return () => {
+      clearInterval(timer); off();
+      if (ended.current) s.close(); else s.suspend();
+      sessionRef.current = null;
+      setSession(null);
+    };
     // the room is made once, for the name and rules chosen on the previous screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { session, snap };
+  /** Closes the room for everyone and forgets it. */
+  const endRoom = () => {
+    ended.current = true;
+    clearRoomRecord();
+    sessionRef.current?.close();
+  };
+  return { session, snap, endRoom };
 };
 
-export const useGuestClient = (code: string, name: string) => {
+export const useGuestClient = (code: string, name: string, rejoin = false) => {
   const [client, setClient] = useState<GuestClient | null>(null);
   const [snap, setSnap] = useState<GuestSnapshot | null>(null);
+  const quit = useRef(false);
+  const clientRef = useRef<GuestClient | null>(null);
 
   useEffect(() => {
-    const c = new GuestClient({ network: new PeerNetwork(), code, name, clientId: getClientId() });
+    quit.current = false;
+    const c = new GuestClient({ network: new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
+    clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
-    const off = c.subscribe(setSnap);
+    let saved = false;
+    const off = c.subscribe(snapshot => {
+      setSnap(snapshot);
+      const playing = snapshot.room?.phase === "playing" && snapshot.state && snapshot.state.phase !== "over";
+      if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error" || snapshot.state?.phase === "over") {
+        if (saved || snapshot.state?.phase === "over") clearRoomRecord();
+        saved = false;
+      } else if (playing && !saved && !quit.current) {
+        saved = saveRoomRecord({ role: "guest", code, name });
+      }
+    });
     void c.start();
-    return () => { off(); c.leave(); setClient(null); };
+    return () => { off(); c.leave(quit.current ? { forfeit: true } : undefined); clientRef.current = null; setClient(null); };
     // one connection per visit to this screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  return { client, snap };
+  /** Gives up the seat for good. */
+  const quitForGood = () => {
+    quit.current = true;
+    clearRoomRecord();
+    clientRef.current?.leave({ forfeit: true });
+  };
+  return { client, snap, quitForGood };
 };
 
 /** Recent reactions, each lasting a few seconds. */

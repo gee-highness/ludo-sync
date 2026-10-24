@@ -8,6 +8,8 @@ import { cleanName } from "@/lib/ludo/engine";
 import { cleanRoomCode, isRoomCode } from "@/lib/net/crypto";
 import { extractRoomCode } from "@/lib/net/identity";
 import { getSettings, updateSettings } from "@/lib/client/settings";
+import { loadRoomRecord } from "@/lib/client/rooms";
+import type { HostResume } from "@/lib/net/resume";
 import { useGuestClient, useHostSession, usePieceSync } from "./hooks";
 import { Lobby } from "./Lobby";
 import OnlineGame from "./OnlineGame";
@@ -35,8 +37,8 @@ const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: 
   </Shell>
 );
 
-function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
-  const { session, snap } = useHostSession(name, getSettings().rules);
+function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume; onExit: () => void }) {
+  const { session, snap, endRoom } = useHostSession(name, getSettings().rules, resume);
   usePieceSync(snap?.room ?? null, session ? d => session.setPieces(d) : undefined);
   if (!session || !snap || snap.status === "opening") {
     return <Center minH="100dvh" bg="#10172E"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
@@ -49,7 +51,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   if (room.phase === "playing" && state) {
     return (
       <OnlineGame
-        room={room} state={state} bus={session.bus} act={session.act} isHost onExit={onExit}
+        room={room} state={state} bus={session.bus} act={session.act} isHost onExit={onExit} onForfeit={() => { endRoom(); onExit(); }}
         onReaction={cb => session.onReaction(cb)} sendReaction={e => session.sendReaction(e)}
         chat={{ items: snap.chat, onSend: t => session.sendChat(t) }}
         onRematch={state.phase === "over" ? session.rematch : undefined}
@@ -71,8 +73,8 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   );
 }
 
-function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit: () => void }) {
-  const { client, snap } = useGuestClient(code, name);
+function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string; rejoin?: boolean; onExit: () => void }) {
+  const { client, snap, quitForGood } = useGuestClient(code, name, rejoin);
   usePieceSync(snap?.room ?? null, client ? d => client.setPieces(d) : undefined);
   if (!client || !snap) return <Center minH="100dvh" bg="#10172E"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onExit} />;
@@ -85,7 +87,7 @@ function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit:
   if (room.phase === "playing" && snap.state) {
     return (
       <OnlineGame
-        room={room} state={snap.state} bus={client.bus} act={client.act} isHost={false} onExit={onExit}
+        room={room} state={snap.state} bus={client.bus} act={client.act} isHost={false} onExit={onExit} onForfeit={() => { quitForGood(); onExit(); }}
         onReaction={cb => client.onReaction(cb)} sendReaction={e => client.react(e)}
         chat={{ items: snap.chat, onSend: t => client.sendChat(t) }}
         note={snap.status === "reconnecting" ? "Reconnecting…" : undefined}
@@ -100,7 +102,7 @@ function GuestFlow({ code, name, onExit }: { code: string; name: string; onExit:
   );
 }
 
-type Step = { kind: "choose" } | { kind: "host" } | { kind: "join"; code: string };
+type Step = { kind: "choose" } | { kind: "host"; resume?: HostResume } | { kind: "join"; code: string; rejoin?: boolean };
 
 export default function OnlineClient() {
   const router = useRouter();
@@ -111,15 +113,29 @@ export default function OnlineClient() {
   const [typed, setTyped] = useState(linkCode ?? "");
   const [ready, setReady] = useState(false);
 
-  useEffect(() => { setName(getSettings().playerName); setReady(true); }, []);
+  const [noRoom, setNoRoom] = useState(false);
+  useEffect(() => {
+    setName(getSettings().playerName);
+    // coming back to a game that was left: the saved record says which room and whether this device was hosting it
+    if (params.get("rejoin") === "1") {
+      const rec = loadRoomRecord();
+      if (rec) {
+        setName(rec.name);
+        setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true });
+      } else setNoRoom(true);
+    }
+    setReady(true);
+    // read once, when the screen opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const exit = useCallback(() => router.push("/"), [router]);
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 
   if (!ready) return <Center minH="100dvh" bg="#10172E"><Spinner color="white" size="xl" /></Center>;
-  if (step.kind === "host") return <HostFlow name={finalName} onExit={exit} />;
-  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} onExit={exit} />;
+  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
+  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
 
   const code = cleanRoomCode(typed);
   return (
@@ -128,6 +144,7 @@ export default function OnlineClient() {
         <Text fontSize="sm" color="gray.300" mb={1}>Your name</Text>
         <Input value={name} maxLength={20} onChange={e => setName(e.target.value)} bg="gray.700" border="none" aria-label="Your name" />
       </Box>
+      {noRoom && <Text bg="whiteAlpha.100" borderRadius="lg" p={3}>There is no game to rejoin. It may have ended or been open too long.</Text>}
       {linkCode && (
         <Text bg="whiteAlpha.100" borderRadius="lg" p={3}>You were invited to room <b>{linkCode.slice(0, 3)}-{linkCode.slice(3)}</b>.</Text>
       )}

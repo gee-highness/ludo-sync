@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { loadGame, type SavedGame } from "@/lib/client/save";
 import { loadStats, type Stats } from "@/lib/client/stats";
 import { sound } from "@/lib/client/audio";
+import { clearRoomRecord, loadRoomRecord, type RoomRecord } from "@/lib/client/rooms";
 import { HowToPlay } from "@/components/game/HowToPlay";
 import { SettingsDrawer } from "@/components/game/SettingsDrawer";
 import { InstallButton } from "@/components/pwa/InstallButton";
@@ -18,8 +19,9 @@ export default function MenuScreen() {
   const prefs = useDisclosure();
   const [saved, setSaved] = useState<SavedGame | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [room, setRoom] = useState<RoomRecord | null>(null);
 
-  useEffect(() => { setSaved(loadGame()); setStats(loadStats()); }, []);
+  useEffect(() => { setSaved(loadGame()); setStats(loadStats()); setRoom(loadRoomRecord()); }, []);
 
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
@@ -40,6 +42,17 @@ export default function MenuScreen() {
                 <Text fontSize="xs" fontWeight={400}>{saved.state.players.map(p => p.name).join(" · ")}</Text>
               </VStack>
             </Button>
+          )}
+          {room && (
+            <HStack w="100%" spacing={2} align="stretch">
+              <Button colorScheme="orange" size="lg" flex={1} h="auto" py={3} onClick={go("/online?rejoin=1")}>
+                <VStack spacing={0}>
+                  <Text>Rejoin online game</Text>
+                  <Text fontSize="xs" fontWeight={400}>Room {room.code.slice(0, 3)}-{room.code.slice(3)}{room.role === "host" ? " · you are hosting" : ""}</Text>
+                </VStack>
+              </Button>
+              <Button variant="outline" color="white" h="auto" aria-label="Forget this online game" title="Forget this online game" onClick={() => { clearRoomRecord(); setRoom(null); }}>✕</Button>
+            </HStack>
           )}
           <Button colorScheme="teal" size="lg" w="100%" onClick={go("/play?preset=bot")}>Play vs bots</Button>
           <Button colorScheme="purple" size="lg" w="100%" onClick={go("/play?preset=local")}>Pass and play</Button>

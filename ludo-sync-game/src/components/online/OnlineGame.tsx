@@ -22,13 +22,15 @@ interface Props {
   sendReaction: (emoji: string) => void;
   chat: ChatSource;
   onExit: () => void;
+  /** Quit for good: a guest gives up the seat, the host closes the room for everyone. */
+  onForfeit: () => void;
   onRematch?: () => void;
   /** Shown when the link to the host is down. */
   note?: string;
 }
 
 /** The ordinary game screen, dressed for a room: who is away, quick reactions, rematch from the host. */
-export default function OnlineGame({ room, state, bus, act, isHost, onReaction, sendReaction, chat, onExit, onRematch, note }: Props) {
+export default function OnlineGame({ room, state, bus, act, isHost, onReaction, sendReaction, chat, onExit, onForfeit, onRematch, note }: Props) {
   const reactions = useReactionLog(onReaction);
   const mySeats: Seat[] = room.you.seat === null ? [] : [room.you.seat];
   const away = useMemo(() => new Set(room.slots.flatMap(s => (s.kind === "human" && !s.connected ? [s.seat] : []))), [room.slots]);
@@ -36,7 +38,13 @@ export default function OnlineGame({ room, state, bus, act, isHost, onReaction, 
   return (
     <GameScreen
       state={state} bus={bus} mySeats={mySeats} act={act} runBots={isHost} onExit={onExit}
-      exitWarning={isHost ? "Leaving closes the room for everyone." : room.you.seat === null ? "You will stop watching this game." : "Leaving forfeits your seat in the running game."}
+      exitWarning={isHost
+        ? "The game pauses while you are away and guests wait for you. Open the menu and choose Rejoin to carry on."
+        : room.you.seat === null ? "You will stop watching this game. You can rejoin from the menu."
+        : "Your seat is kept and the game plays your turns while you are away. Open the menu and choose Rejoin to come back."}
+      onForfeit={room.you.seat === null && !isHost ? undefined : onForfeit}
+      forfeitWarning={isHost ? "Closing the room ends the game for everyone and cannot be undone." : "Quitting for good gives up your seat and cannot be undone."}
+      guardUnload
       onRematch={onRematch} rematchLabel="Rematch" waitingText="Waiting for the host to start a rematch…"
       title={`Room ${formatRoomCode(room.code)}${mySeats.length === 0 ? " · watching" : ""}`}
       tags={tags} away={away}

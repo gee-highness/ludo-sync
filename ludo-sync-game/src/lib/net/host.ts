@@ -7,10 +7,12 @@ import { DEFAULT_RULES, type Action, type BotLevel, type GameEvent, type GameSta
 import { FrameBus } from "../client/frames";
 import { newRoomCode } from "./crypto";
 import { CHAT_HISTORY, PROTOCOL, ROOM_ID_PREFIX, cleanChat, cleanText, parseClientMsg, type ChatItem, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
+import { HOST_ID, RESUME_VERSION, parseHostResume, type HostResume, type ResumeSlot } from "./resume";
 import { SecureChannel } from "./secure";
 import { TransportError, type Endpoint, type Link, type Network } from "./transport";
 
-export const HOST_ID = "host";
+export { HOST_ID };
+export type { HostResume };
 const MAX_MEMBERS = 12;
 /** How long a seat whose owner is offline gets before a bot-style auto-play takes their turn. */
 export const AWAY_GRACE_MS = 8_000;
@@ -55,6 +57,10 @@ export interface HostOptions {
   turnMs?: number;
   now?: () => number;
   code?: string;
+  /** Reopen a room that was suspended or left: same code, seats, game and chat. Checked again here; junk is ignored. */
+  resume?: HostResume;
+  /** How long and how often to retry while the pairing service still holds a resumed room's old id. */
+  resumeRetry?: { everyMs: number; forMs: number };
 }
 
 /**
@@ -84,6 +90,8 @@ export class HostSession {
   private listeners = new Set<(s: HostSnapshot) => void>();
   private reactionListeners = new Set<(r: Reaction) => void>();
   private snapshot!: HostSnapshot;
+  private resumed = false;
+  private ended = false;
   code: string;
 
   constructor(private opts: HostOptions) {
@@ -93,13 +101,74 @@ export class HostSession {
     this.code = opts.code ?? newRoomCode();
     this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, pieces: null, chatAt: [] });
     this.slots[0] = { kind: "human", id: HOST_ID };
+    const resume = opts.resume ? parseHostResume(opts.resume) : null;
+    if (resume) this.restore(resume);
+    this.refresh();
+  }
+
+  /** Puts a validated resume back: members are offline until they reconnect, so away seats are auto-played. */
+  private restore(r: HostResume) {
+    this.resumed = true;
+    this.code = r.code;
+    this.rules = { ...r.rules };
+    this.turnMs = r.turnMs;
+    this.phase = r.phase;
+    this.gameId = r.gameId;
+    this.n = r.n;
+    this.state = r.state;
+    this.chat = [...r.chat];
+    this.chatId = r.chatId;
+    this.reactionId = r.reactionId;
+    this.banned = new Set(r.banned);
+    this.members = new Map();
+    for (const m of r.members) {
+      this.members.set(m.id, { id: m.id, name: m.name, host: m.host, chan: null, check: "", lastReact: 0, pieces: m.pieces, chatAt: [] });
+    }
+    this.slots = r.slots.map((s): Slot => (s.kind === "human" ? { kind: "human", id: s.id } : s.kind === "bot" ? { ...s } : { kind: "empty" }));
+    this.lastActionAt = this.now();
+    if (this.state) this.bus.push(this.state, []);
+  }
+
+  /** A copy of the room that can be saved and used to open it again. Null once the room has been closed for good. */
+  exportResume(): HostResume | null {
+    if (this.ended) return null;
+    return {
+      v: RESUME_VERSION,
+      code: this.code,
+      name: this.members.get(HOST_ID)!.name,
+      rules: { ...this.rules },
+      turnMs: this.turnMs,
+      phase: this.phase,
+      gameId: this.gameId,
+      n: this.n,
+      state: this.state,
+      slots: this.slots.map((s): ResumeSlot => (s.kind === "human" ? { kind: "human", id: s.id } : s.kind === "bot" ? { kind: "bot", level: s.level, name: s.name } : { kind: "empty" })),
+      members: [...this.members.values()].map(m => ({ id: m.id, name: m.name, host: m.host, pieces: m.pieces })),
+      banned: [...this.banned],
+      chat: this.chat.slice(-CHAT_HISTORY),
+      chatId: this.chatId,
+      reactionId: this.reactionId,
+    };
+  }
+
+  /**
+   * Leaves the room without telling anyone it is over: connections just drop, so guests wait and reconnect, and
+   * `exportResume()` still describes the room so it can be opened again with `resume`.
+   */
+  suspend() {
+    if (this.status === "closed") return;
+    for (const m of this.members.values()) { m.chan?.close(); m.chan = null; }
+    this.status = "closed";
+    this.endpoint?.close();
     this.refresh();
   }
 
   // ---- lifecycle ---------------------------------------------------------------------------
 
   async open(): Promise<void> {
-    for (let attempt = 0; attempt < 6; attempt++) {
+    const retry = this.opts.resumeRetry ?? { everyMs: 2000, forMs: 60_000 };
+    const attempts = this.resumed ? Math.max(1, Math.ceil(retry.forMs / Math.max(1, retry.everyMs)) + 1) : 6;
+    for (let attempt = 0; attempt < attempts; attempt++) {
       try {
         const endpoint = await this.opts.network.open(ROOM_ID_PREFIX + this.code);
         if (this.status === "closed") { endpoint.close(); return; }
@@ -110,7 +179,10 @@ export class HostSession {
         this.refresh();
         return;
       } catch (e) {
-        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code) { this.code = newRoomCode(); continue; }
+        if (e instanceof TransportError && e.kind === "unavailable-id" && this.resumed) {
+          // the pairing service may still hold the old id for a little while
+          if (attempt < attempts - 1) { await new Promise(r => setTimeout(r, retry.everyMs)); if (this.status === "closed") return; continue; }
+        } else if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code) { this.code = newRoomCode(); continue; }
         this.status = "error";
         this.error = e instanceof TransportError && e.kind === "network"
           ? "Could not reach the pairing service. Check your connection and try again."
@@ -122,6 +194,7 @@ export class HostSession {
   }
 
   close() {
+    this.ended = true;
     if (this.status === "closed") return;
     for (const m of this.members.values()) { m.chan?.send({ t: "bye" } satisfies HostMsg); m.chan?.closeAfterSend(); }
     this.status = "closed";

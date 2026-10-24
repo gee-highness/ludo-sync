@@ -70,3 +70,10 @@ sends them to anyone who joins or reconnects. Spectators can chat; removed guest
 ## Performance notes
 Particle bursts on the flat board expire on their own timers and are capped; the hidden flat board is not rendered while 3D shows;
 the 3D renderer caps its pixel ratio and shadow-map size and renders city animation at a lower rate; and the 3D renderer renders only when something moves.
+
+## Leaving and rejoining
+Leaving a game is deliberate: Back and swipe-back ask first, and the leave buttons stay locked for a moment after the dialog opens.
+"Leave for now" never costs you anything: local games are saved every move (menu: Resume game); online guests keep their seat and the
+host plays their turns while they are away (menu: Rejoin online game); a host who leaves pauses the room, which is saved on their device
+and opened again under the same code while guests keep reconnecting for about ten minutes. "Quit for good" is the only way to give up a seat
+or close a room. Code: `hooks/useLeaveGuard.ts`, `lib/client/rooms.ts`, `lib/net/resume.ts`, `HostSession.suspend/exportResume`.

@@ -4,6 +4,7 @@ import { currentPlayer } from "../ludo/engine";
 import { newClientId, cleanRoomCode, isRoomCode, newRoomCode } from "./crypto";
 import { GuestClient } from "./guest";
 import { AWAY_GRACE_MS, HostSession, type Reaction } from "./host";
+import { HOST_ID, parseHostResume, type HostResume } from "./resume";
 import { MemoryNetwork } from "./transport";
 
 const until = async (cond: () => boolean, label = "condition", ms = 8000) => {
@@ -240,7 +241,7 @@ describe("reconnect, kick, leave", () => {
     const { host, guests } = await setup();
     host.start();
     await until(() => !!guests[0].getSnapshot().state, "state");
-    guests[0].leave();
+    guests[0].leave({ forfeit: true });
     await until(() => hostState(host)?.phase === "over", "game over");
     expect(hostState(host)!.winner).toBe(0);
   });
@@ -381,5 +382,238 @@ describe("chat", () => {
     await until(() => guests[0].getSnapshot().status === "kicked", "kicked");
     expect(guests[0].sendChat("let me back")).toBe(false);
     expect(host.getSnapshot().chat).toHaveLength(0);
+  });
+});
+
+const LONG = Array.from({ length: 300 }, () => 15);
+
+/** Plays host moves until it is the guest's (seat 1) turn to roll or move. */
+const toGuestTurn = (host: HostSession) => {
+  let guard = 0;
+  while (currentPlayer(hostState(host)!).seat !== 1) {
+    if (++guard > 500) throw new Error("never reached the guest's turn");
+    expect(host.act(autoAction(hostState(host)!)!)).toBe(true);
+  }
+};
+
+describe("leaving and coming back", () => {
+  it("a soft leave keeps the seat; rejoining restores seat, pieces, chat and game, and play finishes", async () => {
+    const { host, guests, ids, net } = await setup();
+    const g = guests[0];
+    g.setPieces(Array.from({ length: 4 }, () => ({ shape: "crown" })) as never);
+    expect(g.sendChat("see you in a minute")).toBe(true);
+    host.start();
+    await until(() => !!g.getSnapshot().state, "state");
+    await until(() => g.getSnapshot().chat.length === 1, "chat");
+    toGuestTurn(host);
+    const seatBefore = g.getSnapshot().room!.you.seat;
+
+    g.leave();
+    await until(() => host.getSnapshot().members.find(m => m.id === ids[0])?.connected === false, "away");
+    // the seat is still theirs and the game is still on
+    expect(host.getSnapshot().members.find(m => m.id === ids[0])!.seat).toBe(seatBefore);
+    expect(hostState(host)!.phase).not.toBe("over");
+
+    // it is their turn and they are away: the host plays it for them
+    const seq = hostState(host)!.seq;
+    expect(host.tick(Date.now() + AWAY_GRACE_MS + 1000)).toBe(true);
+    expect(hostState(host)!.seq).toBeGreaterThan(seq);
+
+    const back = new GuestClient({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5, 5] });
+    cleanup.push(() => back.leave({ forfeit: true }));
+    void back.start();
+    await until(() => back.getSnapshot().status === "connected", "rejoined");
+    const room = back.getSnapshot().room!;
+    expect(room.you.seat).toBe(seatBefore);
+    const slot = room.slots[seatBefore!];
+    expect(slot.kind === "human" && slot.pieces?.[0]).toMatchObject({ shape: "crown" });
+    await until(() => back.getSnapshot().chat.some(c => c.text === "see you in a minute"), "chat history");
+    await until(() => back.getSnapshot().state?.seq === hostState(host)!.seq, "state restored");
+    await playOut(host, back);
+    expect(hostState(host)!.phase).toBe("over");
+  });
+
+  it("leave({ forfeit: true }) in a game forfeits and frees the seat", async () => {
+    const { host, guests, ids } = await setup();
+    host.start();
+    await until(() => !!guests[0].getSnapshot().state, "state");
+    guests[0].leave({ forfeit: true });
+    await until(() => hostState(host)?.phase === "over", "over");
+    expect(host.getSnapshot().members.some(m => m.id === ids[0])).toBe(false);
+  });
+
+  it("leaving the lobby frees the seat", async () => {
+    const { host, guests, ids } = await setup();
+    guests[0].leave();
+    await until(() => !host.getSnapshot().members.some(m => m.id === ids[0]), "gone");
+    expect(host.getSnapshot().room.slots[1].kind).toBe("empty");
+  });
+
+  it("a guest keeps reconnecting, not host-left, while the host is gone for a while mid-game", async () => {
+    const { host, guests, net } = await setup({ retry: LONG });
+    host.start();
+    await until(() => !!guests[0].getSnapshot().state, "state");
+    host.suspend();
+    await new Promise(r => setTimeout(r, 200));
+    expect(guests[0].getSnapshot().status).toBe("reconnecting");
+    void net;
+  });
+
+  it("without custom delays a running game waits about ten minutes for the host", async () => {
+    const { host, guests } = await setup({ retry: undefined as never });
+    // setup always passes delays; build a guest that does not
+    void guests;
+    const net = new MemoryNetwork();
+    const h = new HostSession({ network: net, name: "H", code: "ABC234" });
+    await h.open();
+    const g = new GuestClient({ network: net, code: "ABC234", name: "G", clientId: newClientId() });
+    cleanup.push(() => h.close(), () => g.leave({ forfeit: true }));
+    void g.start();
+    await until(() => g.getSnapshot().status === "connected", "connected");
+    h.start();
+    await until(() => g.getSnapshot().room?.phase === "playing", "playing");
+    const delays = (g as unknown as { delays: () => number[] }).delays();
+    expect(delays.reduce((a, b) => a + b, 0)).toBeGreaterThanOrEqual(600_000);
+    void host;
+  });
+
+  it("a real goodbye from the host still ends the game for guests at once", async () => {
+    const { host, guests } = await setup({ retry: LONG });
+    host.start();
+    await until(() => !!guests[0].getSnapshot().state, "state");
+    const t0 = Date.now();
+    host.close();
+    await until(() => guests[0].getSnapshot().status === "host-left", "host-left");
+    expect(Date.now() - t0).toBeLessThan(1500);
+    expect(host.exportResume()).toBeNull();
+  });
+});
+
+describe("host resume", () => {
+  const startedRoom = async () => {
+    const r = await setup({ retry: LONG });
+    r.guests[0].setPieces(Array.from({ length: 4 }, () => ({ shape: "star" })) as never);
+    r.guests[0].sendChat("hello");
+    r.host.start();
+    await until(() => !!r.guests[0].getSnapshot().state, "state");
+    // a few moves each way
+    for (let i = 0; i < 12 && hostState(r.host)!.phase !== "over"; i++) {
+      const s = hostState(r.host)!;
+      if (currentPlayer(s).seat === 0) r.host.act(autoAction(s)!);
+      else { r.guests[0].act(autoAction(s)!); await until(() => hostState(r.host)!.seq !== s.seq || hostState(r.host)!.turn !== s.turn, "guest move"); }
+    }
+    await until(() => g1(r.guests[0]).state?.seq === hostState(r.host)!.seq, "guest caught up");
+    return r;
+  };
+  const g1 = (g: GuestClient) => g.getSnapshot();
+
+  it("exports JSON, suspends, and a new host with the same code carries the game on to a finish", async () => {
+    const { host, guests, net } = await startedRoom();
+    const exported = host.exportResume()!;
+    const saved: HostResume = JSON.parse(JSON.stringify(exported));
+    expect(parseHostResume(saved)).toEqual(exported);
+    const before = hostState(host)!;
+    host.suspend();
+    expect(host.getSnapshot().status).toBe("closed");
+    expect(host.exportResume()).not.toBeNull();
+
+    const host2 = new HostSession({ network: net, name: "ignored", resume: saved, resumeRetry: { everyMs: 5, forMs: 1000 } });
+    cleanup.push(() => host2.close());
+    expect(host2.code).toBe("ABC234");
+    expect(hostState(host2)).toEqual(before);
+    await host2.open();
+    expect(host2.getSnapshot().status).toBe("ready");
+    await until(() => guests[0].getSnapshot().status === "connected", "guest reconnected");
+    await until(() => guests[0].getSnapshot().room?.n === host2.getSnapshot().room.n, "frames line up");
+    expect(g1(guests[0]).state).toEqual(before);
+    expect(host2.getSnapshot().members.find(m => m.id !== HOST_ID)!.seat).toBe(1);
+    const slot = host2.getSnapshot().room.slots[1];
+    expect(slot.kind === "human" && slot.pieces?.[0]).toMatchObject({ shape: "star" });
+    expect(host2.getSnapshot().chat.some(c => c.text === "hello")).toBe(true);
+    await playOut(host2, guests[0]);
+    expect(hostState(host2)!.phase).toBe("over");
+  });
+
+  it("waits for the pairing service to release the old id", async () => {
+    const { host, net } = await setup({ guests: 0 });
+    host.setSlot(1, "bot");
+    host.start();
+    const resume = host.exportResume()!;
+    host.suspend();
+    // someone (the old endpoint, in real life) still holds the id for a moment
+    const squatter = await net.open("ludosync-ABC234");
+    const h2 = new HostSession({ network: net, name: "H", resume, resumeRetry: { everyMs: 10, forMs: 2000 } });
+    cleanup.push(() => h2.close());
+    void squatter;
+    const opening = h2.open();
+    await new Promise(r => setTimeout(r, 60));
+    expect(h2.getSnapshot().status).toBe("opening");
+    squatter.close();
+    await opening;
+    expect(h2.getSnapshot().status).toBe("ready");
+  });
+
+  it("gives up with a clear error if the id never frees", async () => {
+    const { host, net } = await setup({ guests: 0 });
+    const resume = host.exportResume()!;
+    host.suspend();
+    await net.open("ludosync-ABC234");
+    const h2 = new HostSession({ network: net, name: "H", resume, resumeRetry: { everyMs: 5, forMs: 40 } });
+    await h2.open();
+    expect(h2.getSnapshot().status).toBe("error");
+    expect(h2.getSnapshot().error).toMatch(/already in use/);
+  });
+
+  it("auto-plays for guests who have not come back yet", async () => {
+    const { host, guests, net } = await startedRoom();
+    toGuestTurn(host);
+    const resume = JSON.parse(JSON.stringify(host.exportResume()));
+    host.suspend();
+    guests[0].leave();
+    const host2 = new HostSession({ network: net, name: "H", resume, resumeRetry: { everyMs: 5, forMs: 500 } });
+    cleanup.push(() => host2.close());
+    await host2.open();
+    const seq = hostState(host2)!.seq;
+    expect(host2.tick(Date.now() + AWAY_GRACE_MS + 5000)).toBe(true);
+    expect(hostState(host2)!.seq).toBeGreaterThan(seq);
+  });
+
+  it("parseHostResume rejects junk and cleans what it keeps", async () => {
+    const { host } = await setup({ guests: 0 });
+    host.setSlot(1, "bot");
+    host.start();
+    const good = JSON.parse(JSON.stringify(host.exportResume()));
+    expect(parseHostResume(good)).not.toBeNull();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const bad = (patch: (r: Record<string, any>) => void) => { const r = JSON.parse(JSON.stringify(good)); patch(r); return parseHostResume(r); };
+    expect(parseHostResume(null)).toBeNull();
+    expect(parseHostResume("x")).toBeNull();
+    expect(parseHostResume({})).toBeNull();
+    expect(bad(r => { r.v = 2; })).toBeNull();
+    expect(bad(r => { r.code = "nope"; })).toBeNull();
+    expect(bad(r => { r.state = null; })).toBeNull(); // playing needs a state
+    expect(bad(r => { r.phase = "lobby"; })).toBeNull(); // lobby must not have one
+    expect(bad(r => { r.state.players = []; })).toBeNull();
+    expect(bad(r => { r.slots = r.slots.slice(1); })).toBeNull();
+    expect(bad(r => { r.slots[1] = { kind: "human", id: "x".repeat(20) }; })).toBeNull();
+    expect(bad(r => { r.members = []; })).toBeNull();
+    expect(bad(r => { r.members[0].host = false; })).toBeNull();
+    expect(bad(r => { r.rules.tuning = { winTokens: 99 }; })).toBeNull();
+    expect(bad(r => { r.rules.twoDice = "yes"; })).toBeNull();
+    expect(bad(r => { r.turnMs = -5; })).toBeNull();
+    expect(bad(r => { r.banned = ["../../etc"]; })).toBeNull();
+    const cleaned = bad(r => { r.name = "  A   very    long   name that goes on and on  "; r.chat = [{ id: 1, seat: 0, name: "n", text: "\u0000\u0007", at: 1 }, { id: 2, seat: null, name: "ok", text: "fine", at: 2 }]; })!;
+    expect(cleaned.name.length).toBeLessThanOrEqual(20);
+    expect(cleaned.chat.map(c => c.text)).toEqual(["fine"]);
+    host.close();
+  });
+
+  it("a resume that fails validation is ignored, giving an ordinary new room", async () => {
+    const net = new MemoryNetwork();
+    const h = new HostSession({ network: net, name: "Fresh", code: "XYZ234", resume: { v: 1 } as never });
+    cleanup.push(() => h.close());
+    await h.open();
+    expect(h.code).toBe("XYZ234");
+    expect(h.getSnapshot().room.phase).toBe("lobby");
   });
 });
