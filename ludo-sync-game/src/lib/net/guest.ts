@@ -222,11 +222,12 @@ export class GuestClient {
   /**
    * Leaves. While a game is running this is a soft leave by default: the connection just closes, the seat stays reserved
    * (the host plays it if it is that seat's turn), and a new GuestClient with the same clientId and code takes it back.
-   * `leave({ forfeit: true })`, or leaving the lobby or a finished game, tells the host to free the seat or count a forfeit.
+   * `leave({ forfeit: true })`, or leaving the lobby, tells the host to free the seat or count a forfeit.
    */
   leave(opts: { forfeit?: boolean } = {}) {
     const room = this.snap.room;
-    const inGame = room?.phase === "playing" && room.state?.phase !== "over";
+    // a finished game is still the room's game until the host moves on, so a seat is kept there too
+    const inGame = room?.phase === "playing";
     const soft = inGame && !opts.forfeit && room?.you.seat !== null;
     this.stopped = true;
     if (soft) {

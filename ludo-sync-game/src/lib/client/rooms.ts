@@ -36,7 +36,5 @@ export const loadRoomRecord = (maxAgeMs = 6 * 3600e3, now = Date.now()): RoomRec
   if (r.role === "guest") return { role: "guest", code: r.code, name, savedAt: r.savedAt };
   const host = parseHostResume(r.host);
   if (!host || host.code !== r.code) return bad();
-  // a finished game or an empty lobby is not worth coming back to
-  if (host.state?.phase === "over") return bad();
   return { role: "host", code: r.code, name, savedAt: r.savedAt, host };
 };

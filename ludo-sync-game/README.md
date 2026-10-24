@@ -77,3 +77,6 @@ Leaving a game is deliberate: Back and swipe-back ask first, and the leave butto
 host plays their turns while they are away (menu: Rejoin online game); a host who leaves pauses the room, which is saved on their device
 and opened again under the same code while guests keep reconnecting for about ten minutes. "Quit for good" is the only way to give up a seat
 or close a room. Code: `hooks/useLeaveGuard.ts`, `lib/client/rooms.ts`, `lib/net/resume.ts`, `HostSession.suspend/exportResume`.
+
+Rematches keep everyone: leaving a finished game is as soft as leaving a running one (the seat is kept until "Quit for good"), the host
+rematches with whoever holds a seat, and anyone who arrives while a finished game waits for its rematch is given a free seat.

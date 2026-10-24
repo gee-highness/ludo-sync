@@ -255,7 +255,7 @@ export class HostSession {
       if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
       m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null, chatAt: [] };
       this.members.set(msg.id, m);
-      if (this.phase === "lobby") {
+      if (this.seatsOpen()) {
         const free = this.slots.findIndex(s => s.kind === "empty");
         if (free >= 0) this.slots[free] = { kind: "human", id: m.id };
       }
@@ -303,8 +303,13 @@ export class HostSession {
     return i < 0 ? null : (i as Seat);
   }
 
+  /** Seats can be taken in the lobby, and while a finished game waits for its rematch. */
+  private seatsOpen(): boolean {
+    return this.phase === "lobby" || this.state?.phase === "over";
+  }
+
   private claimSeat(m: Member, seat: Seat) {
-    if (this.phase !== "lobby" || this.slots[seat].kind !== "empty") return;
+    if (!this.seatsOpen() || this.slots[seat].kind !== "empty") return;
     const old = this.seatOf(m.id);
     if (old !== null) this.slots[old] = { kind: "empty" };
     this.slots[seat] = { kind: "human", id: m.id };

@@ -617,3 +617,49 @@ describe("host resume", () => {
     expect(h.getSnapshot().room.phase).toBe("lobby");
   });
 });
+
+describe("rematch keeps the invited players", () => {
+  it("a guest who leaves the finished game keeps their seat and is in the rematch when they return", async () => {
+    const { net, host, guests, ids } = await setup();
+    const g = guests[0];
+    host.start();
+    await until(() => !!g.getSnapshot().state, "state");
+    await playOut(host, g);
+    // they press Back on the winner screen: the seat must not be given up
+    g.leave();
+    await until(() => host.getSnapshot().members.some(m => !m.host && !m.connected), "host sees them away");
+    expect(host.getSnapshot().room.slots[1].kind).toBe("human");
+    expect(host.rematch()).toBe(true);
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 1]);
+    const back = new GuestClient({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5, 5], rejoin: true });
+    cleanup.push(() => back.leave());
+    void back.start();
+    await until(() => back.getSnapshot().status === "connected" && back.getSnapshot().state?.phase === "roll", "back in the new game");
+    expect(back.getSnapshot().room?.you.seat).toBe(1);
+    expect(back.getSnapshot().state?.seq).toBe(0);
+  }, 60_000);
+
+  it("someone who arrives while a finished game waits for its rematch gets a seat", async () => {
+    const { net, host, guests } = await setup();
+    host.start();
+    await until(() => !!guests[0].getSnapshot().state, "state");
+    await playOut(host, guests[0]);
+    const late = new GuestClient({ network: net, code: "ABC234", name: "Late", clientId: newClientId(), retryDelays: [5, 5, 5, 5] });
+    cleanup.push(() => late.leave());
+    void late.start();
+    await until(() => late.getSnapshot().status === "connected", "late guest connected");
+    expect(late.getSnapshot().room?.you.seat).toBe(2);
+    expect(host.rematch()).toBe(true);
+    await until(() => late.getSnapshot().state?.phase === "roll", "late guest in the rematch");
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 1, 2]);
+  }, 60_000);
+
+  it("quitting for good after the game still frees the seat", async () => {
+    const { host, guests } = await setup();
+    host.start();
+    await until(() => !!guests[0].getSnapshot().state, "state");
+    await playOut(host, guests[0]);
+    guests[0].leave({ forfeit: true });
+    await until(() => host.getSnapshot().room.slots[1].kind === "empty", "seat freed");
+  }, 60_000);
+});

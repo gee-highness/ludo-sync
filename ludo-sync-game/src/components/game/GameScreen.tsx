@@ -83,10 +83,11 @@ export default function GameScreen(props: GameScreenProps) {
   const speed = reduceMotion && settings.speed === "normal" ? "fast" : settings.speed;
   const renderer = state.rules.tycoon ? "2d" : resolveRenderer(settings.renderer, caps);
 
-  useWakeLock(settings.keepAwake && state.phase !== "over");
+  useWakeLock(settings.keepAwake && (state.phase !== "over" || !!props.guardUnload));
 
   // Back, swipe-back and (online) closing the tab all ask first; the leave buttons then stay locked for a moment
-  useLeaveGuard(state.phase !== "over", exit.onOpen, props.guardUnload);
+  // online, the guard stays up after the game ends too: the room carries on to a rematch
+  useLeaveGuard(state.phase !== "over" || !!props.guardUnload, exit.onOpen, props.guardUnload);
   useEffect(() => {
     if (!exit.isOpen) return;
     setLockLeft(2);

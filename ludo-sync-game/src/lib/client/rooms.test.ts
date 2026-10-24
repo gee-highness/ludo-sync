@@ -54,7 +54,7 @@ describe("room record", () => {
     void raw;
   });
 
-  it("does not offer to come back to a finished game", async () => {
+  it("still offers a finished game: the host may start a rematch", async () => {
     const net = new MemoryNetwork();
     const host = new HostSession({ network: net, name: "H", code: "ABC234" });
     await host.open();
@@ -64,6 +64,6 @@ describe("room record", () => {
     host.close();
     resume.state.phase = "over"; resume.state.winner = 0;
     saveRoomRecord({ role: "host", code: "ABC234", name: "H", host: resume });
-    expect(loadRoomRecord()).toBeNull();
+    expect(loadRoomRecord()?.host?.state?.phase).toBe("over");
   });
 });

@@ -33,8 +33,9 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume) 
       if (ended.current) return;
       const r = s.exportResume();
       if (!r) return;
-      if (r.phase === "playing" && r.state && r.state.phase !== "over") saveRoomRecord({ role: "host", code: s.code, name, host: r });
-      else if (!resume || r.state?.phase === "over") clearRoomRecord();
+      // a finished game is kept too: the room goes on if the host starts a rematch
+      if (r.phase === "playing" && r.state) saveRoomRecord({ role: "host", code: s.code, name, host: r });
+      else if (!resume) clearRoomRecord();
     };
     const off = s.subscribe(snapshot => { setSnap(snapshot); persist(); });
     void s.open();
@@ -74,9 +75,9 @@ export const useGuestClient = (code: string, name: string, rejoin = false) => {
     let saved = false;
     const off = c.subscribe(snapshot => {
       setSnap(snapshot);
-      const playing = snapshot.room?.phase === "playing" && snapshot.state && snapshot.state.phase !== "over";
-      if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error" || snapshot.state?.phase === "over") {
-        if (saved || snapshot.state?.phase === "over") clearRoomRecord();
+      const playing = snapshot.room?.phase === "playing" && !!snapshot.state;
+      if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") {
+        if (saved) clearRoomRecord();
         saved = false;
       } else if (playing && !saved && !quit.current) {
         saved = saveRoomRecord({ role: "guest", code, name });
