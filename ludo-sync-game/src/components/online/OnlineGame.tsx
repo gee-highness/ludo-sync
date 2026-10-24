@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge } from "@chakra-ui/react";
+import { Badge, Box } from "@chakra-ui/react";
 import { useMemo } from "react";
 import type { Seat } from "@/lib/ludo/board";
 import type { Action, GameState } from "@/lib/ludo/types";
@@ -9,9 +9,8 @@ import { formatRoomCode } from "@/lib/net/crypto";
 import type { Reaction } from "@/lib/net/host";
 import type { RoomView } from "@/lib/net/protocol";
 import GameScreen from "../game/GameScreen";
-import { ReactionPanel } from "./Reactions";
-import { ChatDrawer, type ChatSource } from "./ChatPanel";
-import { useReactions } from "./hooks";
+import { ChatPanel, type ChatSource } from "./ChatPanel";
+import { useReactionLog } from "./hooks";
 
 interface Props {
   room: RoomView;
@@ -30,7 +29,7 @@ interface Props {
 
 /** The ordinary game screen, dressed for a room: who is away, quick reactions, rematch from the host. */
 export default function OnlineGame({ room, state, bus, act, isHost, onReaction, sendReaction, chat, onExit, onRematch, note }: Props) {
-  const items = useReactions(onReaction);
+  const reactions = useReactionLog(onReaction);
   const mySeats: Seat[] = room.you.seat === null ? [] : [room.you.seat];
   const away = useMemo(() => new Set(room.slots.flatMap(s => (s.kind === "human" && !s.connected ? [s.seat] : []))), [room.slots]);
   const tags = useMemo(() => Object.fromEntries(room.slots.flatMap(s => (s.kind === "human" && s.host ? [[s.seat, "Host"]] : []))), [room.slots]);
@@ -41,8 +40,12 @@ export default function OnlineGame({ room, state, bus, act, isHost, onReaction, 
       onRematch={onRematch} rematchLabel="Rematch" waitingText="Waiting for the host to start a rematch…"
       title={`Room ${formatRoomCode(room.code)}${mySeats.length === 0 ? " · watching" : ""}`}
       tags={tags} away={away}
-      headerExtra={<>{note && <Badge colorScheme="orange">{note}</Badge>}<ChatDrawer items={chat.items} onSend={chat.onSend} mySeat={room.you.seat} /></>}
-      panelExtra={<ReactionPanel items={items} onSend={sendReaction} />}
+      headerExtra={note ? <Badge colorScheme="orange">{note}</Badge> : undefined}
+      panelExtra={
+        <Box bg="whiteAlpha.100" borderRadius="xl" p={2} flexShrink={0}>
+          <ChatPanel items={chat.items} onSend={chat.onSend} mySeat={room.you.seat} reactions={reactions} onReact={sendReaction} height="clamp(230px, 34dvh, 340px)" />
+        </Box>
+      }
     />
   );
 }

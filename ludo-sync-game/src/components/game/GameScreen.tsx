@@ -68,6 +68,7 @@ export default function GameScreen(props: GameScreenProps) {
   const [choice, setChoice] = useState<number | null>(null);
   const [bonus, setBonus] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
+  const [canFullscreen, setCanFullscreen] = useState(false);
   const captures = useRef(0);
   const recorded = useRef(false);
 
@@ -89,6 +90,8 @@ export default function GameScreen(props: GameScreenProps) {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
+
+  useEffect(() => { setCanFullscreen(!!document.fullscreenEnabled); }, []);
 
   useEffect(() => {
     const on = () => setFullscreen(!!document.fullscreenElement);
@@ -213,7 +216,7 @@ export default function GameScreen(props: GameScreenProps) {
         {!wide && <IconButton aria-label="Game log" icon={<InfoIcon />} variant="ghost" color="white" onClick={log.onOpen} />}
         <IconButton aria-label={settings.sound ? "Mute sound" : "Unmute sound"} variant="ghost" color="white" fontSize="lg"
           icon={<span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>} onClick={() => { sound.unlock(); updateSettings({ sound: !settings.sound }); }} />
-        {typeof document !== "undefined" && document.fullscreenEnabled && (
+        {canFullscreen && (
           <IconButton aria-label={fullscreen ? "Exit full screen" : "Full screen"} variant="ghost" color="white" fontSize="lg"
             icon={<span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>} onClick={toggleFullscreen} display={{ base: "none", md: "inline-flex" }} />
         )}

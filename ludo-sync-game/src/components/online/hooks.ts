@@ -98,3 +98,15 @@ export const usePieceSync = (room: RoomView | null, send: ((designs: PieceDesign
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [others, mySeat]);
 };
+
+export interface ReactionEntry extends Reaction { at: number }
+
+/** Every reaction received this session, newest last, so the chat log can show them alongside messages. */
+export const useReactionLog = (subscribe: ((cb: (r: Reaction) => void) => () => void) | undefined, max = 100): ReactionEntry[] => {
+  const [items, setItems] = useState<ReactionEntry[]>([]);
+  useEffect(() => {
+    if (!subscribe) return;
+    return subscribe(r => setItems(l => [...l.slice(-(max - 1)), { ...r, at: Date.now() }]));
+  }, [subscribe, max]);
+  return items;
+};

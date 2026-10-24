@@ -63,7 +63,7 @@ Tycoon always plays on the flat board. Every number is tunable in the rules edit
   the host), so everyone sees every player's pieces the way that player made them; seats without designs use the standard pieces.
 
 ## Online chat
-Rooms have text chat (`components/online/ChatPanel.tsx`): scrollable, 200 characters per message, Enter to send. The host cleans every
+Rooms have one chat panel (`components/online/ChatPanel.tsx`) beside the dice: a sideways-scrolling bar of 18 emoji reactions, and a scrollable log that shows messages and reactions together (200 characters per message, Enter to send). The host cleans every
 message (control characters stripped, whitespace collapsed), rate-limits each member (5 messages per 5 seconds), keeps the last 50 and
 sends them to anyone who joins or reconnects. Spectators can chat; removed guests cannot.
 

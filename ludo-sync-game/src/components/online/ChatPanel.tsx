@@ -1,9 +1,10 @@
 "use client";
 
-import { Badge, Box, Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, HStack, IconButton, Input, Text, VStack } from "@chakra-ui/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Box, Button, HStack, Input, Text, VStack } from "@chakra-ui/react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SEAT_INFO } from "@/lib/ludo/board";
-import { MAX_CHAT, type ChatItem } from "@/lib/net/protocol";
+import { MAX_CHAT, REACTIONS, type ChatItem } from "@/lib/net/protocol";
+import type { ReactionEntry } from "./hooks";
 import type { Seat } from "@/lib/ludo/board";
 
 const NEAR_BOTTOM = 48;
@@ -14,49 +15,57 @@ export interface ChatSource {
   onSend: (text: string) => boolean;
 }
 
-/** Counts messages that arrived while the chat was closed. */
-export const useUnread = (items: ChatItem[], open: boolean): number => {
-  const seen = useRef(items.length ? items[items.length - 1].id : 0);
-  const [unread, setUnread] = useState(0);
-  const last = items.length ? items[items.length - 1].id : 0;
-  useEffect(() => {
-    if (open) { seen.current = last; setUnread(0); return; }
-    setUnread(items.filter(i => i.id > seen.current).length);
-  }, [items, open, last]);
-  return unread;
-};
-
 const time = (at: number) => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** The message list and the box to type in. Scrolls itself to new messages unless you have scrolled up to read. */
-export function ChatPanel({ items, onSend, mySeat, height }: ChatSource & { mySeat: Seat | null; height?: string | number }) {
+type Entry = { key: string; at: number; chat?: ChatItem; reaction?: ReactionEntry };
+
+interface PanelProps extends ChatSource {
+  mySeat: Seat | null;
+  height?: string | number;
+  /** Reactions received, shown in the same scrolling log as messages. */
+  reactions?: ReactionEntry[];
+  /** When given, a scrollable bar of emoji is shown above the log. */
+  onReact?: (emoji: string) => void;
+}
+
+/**
+ * One panel for talking: a sideways-scrolling bar of emoji, a log of messages and reactions that scrolls up and down
+ * (following new entries unless you have scrolled up to read), and a box to type in.
+ */
+export function ChatPanel({ items, onSend, mySeat, height, reactions = [], onReact }: PanelProps) {
   const list = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const [text, setText] = useState("");
   const [behind, setBehind] = useState(0);
-  const lastId = items.length ? items[items.length - 1].id : 0;
-  const shownId = useRef(lastId);
+  const entries: Entry[] = useMemo(
+    () => [
+      ...items.map((chat): Entry => ({ key: `c${chat.id}`, at: chat.at, chat })),
+      ...reactions.map((reaction): Entry => ({ key: `r${reaction.id}`, at: reaction.at, reaction })),
+    ].sort((x, y) => x.at - y.at),
+    [items, reactions],
+  );
+  const shown = useRef(entries.length);
 
   const toBottom = useCallback(() => {
     const el = list.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
     stick.current = true;
-    shownId.current = lastId;
+    shown.current = entries.length;
     setBehind(0);
-  }, [lastId]);
+  }, [entries.length]);
 
   useLayoutEffect(() => {
     if (stick.current) toBottom();
-    else setBehind(items.filter(i => i.id > shownId.current).length);
-  }, [items, toBottom]);
+    else setBehind(Math.max(0, entries.length - shown.current));
+  }, [entries, toBottom]);
 
   const onScroll = () => {
     const el = list.current;
     if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM;
     stick.current = near;
-    if (near) { shownId.current = lastId; setBehind(0); }
+    if (near) { shown.current = entries.length; setBehind(0); }
   };
 
   const submit = (e: React.FormEvent) => {
@@ -68,16 +77,40 @@ export function ChatPanel({ items, onSend, mySeat, height }: ChatSource & { mySe
 
   return (
     <VStack align="stretch" spacing={2} h={height ?? "100%"} minH={0}>
+      {onReact && (
+        <HStack
+          spacing={1} role="group" aria-label="Quick reactions" overflowX="auto" flexShrink={0} pb={1} tabIndex={0}
+          sx={{ scrollSnapType: "x proximity", overscrollBehaviorX: "contain", scrollbarWidth: "thin" }}
+        >
+          {REACTIONS.map(e => (
+            <Button
+              key={e} aria-label={`Send ${e}`} variant="ghost" fontSize="xl" minW="44px" h="44px" p={0} flexShrink={0} sx={{ scrollSnapAlign: "start" }}
+              onClick={() => onReact(e)}
+            ><span aria-hidden>{e}</span></Button>
+          ))}
+        </HStack>
+      )}
       <Box position="relative" flex={1} minH={0}>
         <Box
-          ref={list} onScroll={onScroll} role="log" aria-live="polite" aria-label="Chat messages" tabIndex={0}
+          ref={list} onScroll={onScroll} role="log" aria-live="polite" aria-label="Chat and reactions" tabIndex={0}
           h="100%" overflowY="auto" bg="blackAlpha.300" borderRadius="lg" p={2} sx={{ overscrollBehavior: "contain" }}
         >
-          {items.length === 0 && <Text color="gray.400" fontSize="sm" p={2}>No messages yet. Say hello!</Text>}
-          {items.map(i => {
+          {entries.length === 0 && <Text color="gray.400" fontSize="sm" p={2}>No messages yet. Say hello!</Text>}
+          {entries.map(({ key, chat, reaction }) => {
+            if (reaction) {
+              const mine = mySeat !== null && reaction.seat === mySeat;
+              return (
+                <HStack key={key} mb={2} spacing={2} justify={mine ? "flex-end" : "flex-start"} fontSize="xs" color="gray.400">
+                  {reaction.seat !== null && <Box w="8px" h="8px" borderRadius="full" bg={SEAT_INFO[reaction.seat].main} aria-hidden />}
+                  <Text as="span" fontWeight={700} color="gray.200">{reaction.name}</Text>
+                  <Text as="span" fontSize="xl" lineHeight={1}>{reaction.emoji}</Text>
+                </HStack>
+              );
+            }
+            const i = chat!;
             const mine = mySeat !== null && i.seat === mySeat;
             return (
-              <Box key={i.id} mb={2} textAlign={mine ? "right" : "left"}>
+              <Box key={key} mb={2} textAlign={mine ? "right" : "left"}>
                 <HStack justify={mine ? "flex-end" : "flex-start"} spacing={1} fontSize="xs" color="gray.400">
                   {i.seat !== null && <Box w="8px" h="8px" borderRadius="full" bg={SEAT_INFO[i.seat].main} aria-hidden />}
                   <Text as="span" fontWeight={700} color="gray.200">{i.name}</Text>
@@ -94,7 +127,7 @@ export function ChatPanel({ items, onSend, mySeat, height }: ChatSource & { mySe
         </Box>
         {behind > 0 && (
           <Button size="xs" colorScheme="teal" position="absolute" bottom={2} left="50%" transform="translateX(-50%)" onClick={toBottom} boxShadow="lg">
-            {behind} new message{behind > 1 ? "s" : ""} ↓
+            {behind} new ↓
           </Button>
         )}
       </Box>
@@ -111,32 +144,5 @@ export function ChatPanel({ items, onSend, mySeat, height }: ChatSource & { mySe
         </HStack>
       </form>
     </VStack>
-  );
-}
-
-/** The chat button for a game's header, with an unread badge, and the drawer it opens. */
-export function ChatDrawer({ items, onSend, mySeat }: ChatSource & { mySeat: Seat | null }) {
-  const [open, setOpen] = useState(false);
-  const unread = useUnread(items, open);
-  return (
-    <>
-      <Box position="relative" display="inline-block">
-        <IconButton
-          aria-label={unread ? `Open chat, ${unread} unread` : "Open chat"} variant="ghost" color="white" fontSize="lg"
-          icon={<span aria-hidden>💬</span>} onClick={() => setOpen(true)}
-        />
-        {unread > 0 && <Badge colorScheme="red" borderRadius="full" position="absolute" top="2px" right="0" fontSize="2xs" aria-hidden>{unread > 9 ? "9+" : unread}</Badge>}
-      </Box>
-      <Drawer isOpen={open} onClose={() => setOpen(false)} placement="right" size="sm">
-        <DrawerOverlay />
-        <DrawerContent bg="gray.800" color="white" maxH="100dvh">
-          <DrawerCloseButton />
-          <DrawerHeader>Chat</DrawerHeader>
-          <DrawerBody pb={3} display="flex" flexDirection="column" minH={0}>
-            <ChatPanel items={items} onSend={onSend} mySeat={mySeat} />
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
-    </>
   );
 }

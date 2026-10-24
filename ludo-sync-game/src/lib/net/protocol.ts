@@ -5,7 +5,7 @@ import { isClientId } from "./crypto";
 import { sanitizeDesign, type PieceDesign } from "../client/pieces";
 
 export const PROTOCOL = 1;
-export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏"] as const;
+export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏", "❤️", "👏", "🔥", "😢", "🤔", "😎", "🙌", "💀", "😴", "🍀", "🤝", "👀"] as const;
 export const ROOM_ID_PREFIX = "ludosync-";
 export const MAX_NAME = 20;
 export const MAX_CHAT = 200;
