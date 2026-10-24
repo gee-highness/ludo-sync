@@ -22,7 +22,10 @@ export interface Board3DProps extends BoardProps {
 
 /** The 3D board: a canvas for pointers, plus hidden buttons so keyboards and screen readers can play too. */
 export default function Board3D(props: Board3DProps) {
-  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving, rollKey = 0 } = props;
+  const { state, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, quality, moving, rollKey = 0, insets } = props;
+  // TEMP-DEBUG
+  const dbg = typeof window !== "undefined" ? (window as unknown as { __insets?: { top: number; right: number; bottom: number; left: number } }).__insets : undefined;
+  const insTop = (dbg ?? insets)?.top ?? 0, insRight = (dbg ?? insets)?.right ?? 0, insBottom = (dbg ?? insets)?.bottom ?? 0, insLeft = (dbg ?? insets)?.left ?? 0;
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<LudoScene | null>(null);
   const cb = useRef(props);
@@ -43,8 +46,8 @@ export default function Board3D(props: Board3DProps) {
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
     interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: settings.boardTheme === "neon", look: settings.boardTheme === "neon", tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
-    rollKey, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide",
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey]);
+    rollKey, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide", insets: { top: insTop, right: insRight, bottom: insBottom, left: insLeft },
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey, insTop, insRight, insBottom, insLeft]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

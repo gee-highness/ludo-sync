@@ -94,6 +94,35 @@ export default function GameScreen(props: GameScreenProps) {
   const reduceMotion = settings.motion === "reduce" || (settings.motion === "auto" && !!caps?.reducedMotion);
   const speed = reduceMotion && settings.speed === "normal" ? "fast" : settings.speed;
   const renderer = resolveRenderer(settings.renderer, caps);
+  // with the 3D board the picture is full-bleed behind the interface, as in the reference; the flat board keeps the framed layout
+  const [boardUses3d, setBoardUses3d] = useState(false);
+  const immersive = renderer === "3d" && boardUses3d;
+  const railRef = useRef<HTMLDivElement>(null);
+  const panelsRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [insets, setInsets] = useState({ top: 0, right: 0, bottom: 0, left: 0 });
+
+  // how much of the screen the interface covers, so the 3D scene frames the board in what is left
+  useEffect(() => {
+    const zero = { top: 0, right: 0, bottom: 0, left: 0 };
+    if (!immersive) { setInsets(prev => (prev.top || prev.right || prev.bottom || prev.left ? zero : prev)); return; }
+    const measure = () => {
+      const W = window.innerWidth, H = window.innerHeight;
+      const box = (el: HTMLElement | null) => el?.getBoundingClientRect();
+      const rail = box(railRef.current), pan = box(panelsRef.current), bot = box(bottomRef.current), head = box(headerRef.current);
+      let next = zero;
+      if (wide) next = { top: 8, left: rail ? rail.right + 8 : 0, right: pan ? Math.max(0, W - pan.left + 4) : 0, bottom: bot ? Math.max(0, H - bot.top + 4) : 0 };
+      else next = { top: Math.max(head?.bottom ?? 0, pan?.bottom ?? 0) + 4, left: 0, right: 0, bottom: bot ? Math.max(0, H - bot.top + 4) : 0 };
+      next = { top: Math.round(next.top), left: Math.round(next.left), right: Math.round(next.right), bottom: Math.round(next.bottom) };
+      setInsets(prev => (prev.top === next.top && prev.left === next.left && prev.right === next.right && prev.bottom === next.bottom ? prev : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    for (const el of [railRef.current, panelsRef.current, bottomRef.current, headerRef.current]) if (el) ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
+  }, [immersive, wide, short]);
 
   useWakeLock(settings.keepAwake && (state.phase !== "over" || !!props.guardUnload));
 
@@ -245,6 +274,7 @@ export default function GameScreen(props: GameScreenProps) {
   const choiceOptions = choice === null ? [] : moves.filter(o => o.token === choice);
 
   const pending = shown.tycoon?.pending ?? null;
+  const rolledText = shown.rolled.length ? shown.rolled.join(" and ") : "";
   const status = (() => {
     if (shown.phase === "over") return "Game over";
     const others = `${me.name}`;
@@ -255,8 +285,11 @@ export default function GameScreen(props: GameScreenProps) {
     if (busy) return shown.phase === "roll" ? `${others} is rolling…` : `${others} is moving…`;
     if (canRoll && bonus) return mySeats.length > 1 ? `${me.name}: ${bonus}` : bonus;
     if (canRoll) return mySeats.length > 1 ? `${me.name}, roll the dice` : "Your turn: roll the dice";
-    if (iAct) return choice !== null ? "Choose which number to use" : mySeats.length > 1 ? `${me.name}, pick a glowing token` : "Pick a glowing token";
-    return shown.phase === "roll" ? `${others} is rolling…` : `${others} is choosing a move`;
+    if (iAct) {
+      const rolled = rolledText ? `${mySeats.length > 1 ? me.name : "You"} rolled ${rolledText} · ` : "";
+      return rolled + (choice !== null ? "choose which number to use" : mySeats.length > 1 ? "pick a glowing token" : "pick a glowing token");
+    }
+    return shown.phase === "roll" ? `${others} is rolling…` : `${others} ${rolledText ? `rolled ${rolledText} and ` : ""}is choosing a move`;
   })();
   const announce = lines.length ? lines[lines.length - 1].text : "";
 
@@ -273,8 +306,10 @@ export default function GameScreen(props: GameScreenProps) {
     />
   );
   const leaveBtn = round("Leave game", <ChevronLeftIcon boxSize={6} />, exit.onOpen);
+  const topCamera = settings.camera === "top";
   const iconButtons = [
-    !wide && round("Game log", <InfoIcon />, log.onOpen),
+    (!wide || immersive) && round(immersive && props.panelExtra ? "Chat and game log" : "Game log", immersive && props.panelExtra ? <span aria-hidden>💬</span> : <InfoIcon />, log.onOpen),
+    immersive && round(topCamera ? "Switch to the moving camera" : "Switch to the top-down view", <span aria-hidden>{topCamera ? "◩" : "⬒"}</span>, () => updateSettings({ camera: topCamera ? "follow" : "top" })),
     round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
     canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
     round("How to play", <QuestionIcon />, help.onOpen),
@@ -288,6 +323,28 @@ export default function GameScreen(props: GameScreenProps) {
     />
   );
   const tycoonCard = iAct && shown.phase === "decide" ? <PropertyCard state={shown} act={act} wide={wide} /> : null;
+
+  // the red pill rolls; it reads END TURN only where an optional action is waiting (a Tycoon purchase or build you may skip)
+  const deciding = iAct && shown.phase === "decide";
+  const pillLabel = deciding ? "End turn" : canRoll && bonus ? "Roll again" : "Roll dice";
+  const pillEnabled = canRoll || deciding;
+  const pillAction = deciding ? () => { act({ type: "pass" }); } : roll;
+  const choiceButtons = choiceOptions.length > 0 && (
+    <HStack spacing={2} flexWrap="wrap">
+      {choiceOptions.map(o => (
+        <Button key={o.die} size="md" minH="44px" colorScheme="teal" onClick={() => move(o)}>
+          Use {o.die}{shown.dice.length === 2 && o.die === shown.dice[0] + shown.dice[1] ? " (both)" : ""}
+        </Button>
+      ))}
+      <Button size="md" minH="44px" variant="ghost" bg="blackAlpha.600" color="white" onClick={() => setChoice(null)}>Cancel</Button>
+    </HStack>
+  );
+  const statusBar = (
+    <StatusBar
+      text={status} tone={canRoll && bonus ? "bonus" : undefined}
+      extra={shown.sixes > 0 && shown.phase !== "over" ? <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text> : undefined}
+    />
+  );
   const controls = (
     <VStack align="stretch" spacing={2}>
       <HStack spacing={3} align="center">
@@ -295,22 +352,10 @@ export default function GameScreen(props: GameScreenProps) {
           values={shown.rolled} rollKey={anim.rollKey} canRoll={canRoll} onRoll={roll} accent={accent} tumble={!reduceMotion && speed !== "instant"}
           size={wide && !short ? 64 : 50} label={canRoll ? "Roll the dice" : `Dice showing ${shown.rolled.join(" and ") || "nothing yet"}`}
         />
-        <RollButton enabled={canRoll} label={canRoll && bonus ? "Roll again" : "Roll dice"} onClick={roll} />
+        <RollButton enabled={pillEnabled} label={pillLabel} onClick={pillAction} pulse={!reduceMotion} />
       </HStack>
-      {choiceOptions.length > 0 && (
-        <HStack spacing={2} flexWrap="wrap">
-          {choiceOptions.map(o => (
-            <Button key={o.die} size="md" minH="44px" colorScheme="teal" onClick={() => move(o)}>
-              Use {o.die}{shown.dice.length === 2 && o.die === shown.dice[0] + shown.dice[1] ? " (both)" : ""}
-            </Button>
-          ))}
-          <Button size="md" minH="44px" variant="ghost" onClick={() => setChoice(null)}>Cancel</Button>
-        </HStack>
-      )}
-      <StatusBar
-        text={status} tone={canRoll && bonus ? "bonus" : undefined}
-        extra={shown.sixes > 0 && shown.phase !== "over" ? <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text> : undefined}
-      />
+      {choiceButtons}
+      {statusBar}
     </VStack>
   );
   const logBox = (
@@ -321,12 +366,48 @@ export default function GameScreen(props: GameScreenProps) {
     </Box>
   );
 
+  // ---- full-bleed layout: the 3D picture fills the screen and the interface floats over it ----
+  const edge = "calc(env(safe-area-inset-left) + 12px)";
+  const hudTop = "calc(env(safe-area-inset-top) + 12px)";
+  const glass = { bg: "rgba(21,21,21,.62)", backdropFilter: "blur(4px)" } as const;
+  const bottomHud = immersive && (
+    <Box
+      ref={bottomRef} position="absolute" left={0} right={0} bottom={0} zIndex={5} pointerEvents="none"
+      px={wide ? "calc(env(safe-area-inset-left) + 24px)" : 2} pb="calc(env(safe-area-inset-bottom) + 18px)" pt={2}
+    >
+      {choiceOptions.length > 0 && <Box pointerEvents="auto" mb={2} display="flex" justifyContent="center">{choiceButtons}</Box>}
+      <Flex align="center" gap={3}>
+        <Box flex="0 0 auto" w={wide ? "210px" : "148px"} pointerEvents="auto"><RollButton block small={!wide} enabled={pillEnabled} label={pillLabel} onClick={pillAction} pulse={!reduceMotion} /></Box>
+        <Box flex={1} minW={0} maxW={wide ? "640px" : undefined} mx={wide ? "auto" : 0} pointerEvents="auto">{statusBar}</Box>
+        {wide && <Box flex="0 0 auto" w="210px" aria-hidden />}
+      </Flex>
+    </Box>
+  );
+  const mainProps = immersive
+    ? { position: "absolute" as const, inset: 0, maxW: "none", px: 0, pt: 0, pb: 0, gap: 0, pointerEvents: "none" as const, zIndex: 0 }
+    : { maxW: "1400px", px: 2, pt: wide ? 2 : 0, pb: 2, gap: wide ? 3 : 2 };
+  const boardBoxProps = immersive
+    ? { position: "absolute" as const, inset: 0, display: "block", pointerEvents: "auto" as const }
+    : {
+        flex: wide ? 1 : "0 0 auto", display: "grid", placeItems: "center", position: "relative" as const,
+        w: wide ? undefined : "min(100%, calc(100dvh - 330px))", alignSelf: wide ? undefined : "center",
+        sx: wide ? { containerType: "size" } : { aspectRatio: "1 / 1" },
+      };
+  const boardInnerProps = immersive
+    ? { sx: { width: "100%", height: "100%" } }
+    : { sx: wide ? { width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" } : { width: "100%", height: "100%" } };
+  const sideProps = immersive
+    ? (wide
+        ? { position: "absolute" as const, top: hudTop, right: "calc(env(safe-area-inset-right) + 8px)", w: "clamp(200px, 24vw, 290px)", pointerEvents: "auto" as const, overflow: "visible", flex: "none", zIndex: 5, spacing: 0 }
+        : { position: "absolute" as const, top: "calc(env(safe-area-inset-top) + 58px)", left: 2, right: 2, pointerEvents: "auto" as const, overflow: "visible", flex: "none", zIndex: 5, spacing: 0 })
+    : { flex: wide ? "0 0 auto" : 1, w: wide ? "clamp(280px, 30vw, 380px)" : "100%", overflowY: "auto" as const, overflowX: "hidden" as const, pb: 2, pr: wide ? 1 : 0, spacing: 3 };
+
   return (
     <Flex
-      direction="column" h="100dvh" w="100%" bg="#303030" color="white" overflow="hidden" position="relative" isolation="isolate"
+      direction="column" h="100dvh" w="100%" bg={immersive ? "#0a0d16" : "#303030"} color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
-      {!wide && (
+      {!wide && !immersive && (
         <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515">
           {leaveBtn}
           <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
@@ -335,37 +416,51 @@ export default function GameScreen(props: GameScreenProps) {
         </HStack>
       )}
 
-      <Flex flex={1} minH={0} direction={wide ? "row" : "column"} gap={wide ? 3 : 2} px={2} pt={wide ? 2 : 0} pb={2} w="100%" maxW="1400px" mx="auto">
+      <Flex flex={1} minH={0} direction={wide ? "row" : "column"} w="100%" mx="auto" {...mainProps}>
         {wide && (
-          <VStack flex="0 0 auto" spacing={3} align="center" pt={1} aria-label="Game controls" role="group">
-            {leaveBtn}{iconButtons}{props.headerExtra}
+          <VStack
+            ref={railRef} flex="0 0 auto" spacing={short && immersive ? 2 : 3} align="center" pt={immersive ? 0 : 1} aria-label="Game controls" role="group"
+            {...(immersive ? { position: "absolute", left: edge, top: hudTop, pointerEvents: "auto", zIndex: 5 } : {})}
+            {...(immersive && short ? { display: "flex", flexDirection: "row", flexWrap: "wrap", w: "104px", alignItems: "flex-start", sx: { "& > *": { margin: 0 } } } : {})}
+          >
+            {leaveBtn}{iconButtons}{!immersive && props.headerExtra}
           </VStack>
         )}
-        <Box
-          flex={wide ? 1 : "0 0 auto"} minH={0} minW={0} display="grid" placeItems="center" position="relative"
-          w={wide ? undefined : "min(100%, calc(100dvh - 330px))"} alignSelf={wide ? undefined : "center"}
-          sx={wide ? { containerType: "size" } : { aspectRatio: "1 / 1" }}
-        >
-          <Box position="relative" sx={wide ? { width: "min(100cqw, 100cqh)", height: "min(100cqw, 100cqh)" } : { width: "100%", height: "100%" }}>
+        <Box minH={0} minW={0} {...boardBoxProps}>
+          <Box position="relative" {...boardInnerProps}>
             <BoardView
-              renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick}
+              renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
               symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey}
+              insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />
           </Box>
         </Box>
 
-        <VStack
-          flex={wide ? "0 0 auto" : 1} minH={0} align="stretch" spacing={3} w={wide ? "clamp(280px, 30vw, 380px)" : "100%"} overflowY="auto" overflowX="hidden"
-          pb={2} pr={wide ? 1 : 0}
-        >
-          {wide && <Text fontWeight={700} fontSize="sm" noOfLines={1} color="gray.300">{props.title ?? "Ludo Sync"}</Text>}
+        <VStack ref={panelsRef} minH={0} align="stretch" {...sideProps}>
+          {wide && !immersive && <Text fontWeight={700} fontSize="sm" noOfLines={1} color="gray.300">{props.title ?? "Ludo Sync"}</Text>}
           {panels}
-          {controls}
-          {props.panelExtra}
-          {logBox}
+          {!immersive && controls}
+          {!immersive && props.panelExtra}
+          {!immersive && logBox}
         </VStack>
       </Flex>
+
+      {immersive && !wide && (
+        <HStack ref={headerRef} position="absolute" top={0} left={0} right={0} zIndex={6} px={2} pt="calc(env(safe-area-inset-top) + 6px)" pb={1.5} spacing={2} {...glass}>
+          {leaveBtn}
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.100">{props.title ?? "Ludo Sync"}</Text>
+          {props.headerExtra}
+          {iconButtons}
+        </HStack>
+      )}
+      {immersive && wide && (props.title || props.headerExtra) && (
+        <HStack position="absolute" top={hudTop} left="50%" transform="translateX(-50%)" zIndex={5} spacing={2} px={3} py={1} borderRadius="full" {...glass} pointerEvents="none">
+          <Text fontWeight={700} fontSize="xs" noOfLines={1} color="gray.100">{props.title ?? "Ludo Sync"}</Text>
+          {props.headerExtra}
+        </HStack>
+      )}
+      {bottomHud}
       {tycoonCard}
 
       <Box position="absolute" w="1px" h="1px" overflow="hidden" clipPath="inset(50%)" aria-live="polite" role="log">{announce}</Box>
@@ -378,7 +473,10 @@ export default function GameScreen(props: GameScreenProps) {
       )}
       <HowToPlay isOpen={help.isOpen} onClose={help.onClose} />
       <SettingsDrawer isOpen={prefs.isOpen} onClose={prefs.onClose} />
-      <LogDrawer isOpen={log.isOpen} onClose={log.onClose} lines={lines} />
+      <LogDrawer
+        isOpen={log.isOpen} onClose={log.onClose} lines={lines} extra={immersive ? props.panelExtra : undefined} side={immersive && wide}
+        title={immersive && props.panelExtra ? "Chat and game log" : "Game log"}
+      />
       <AlertDialog isOpen={exit.isOpen} onClose={exit.onClose} leastDestructiveRef={cancelRef} isCentered>
         <AlertDialogOverlay>
           <AlertDialogContent bg="gray.800" color="white" mx={3}>

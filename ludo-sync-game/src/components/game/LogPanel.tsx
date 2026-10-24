@@ -19,13 +19,19 @@ export const LogList = ({ lines, limit }: { lines: LogLine[]; limit?: number }) 
   );
 };
 
-export const LogDrawer = ({ isOpen, onClose, lines }: { isOpen: boolean; onClose: () => void; lines: LogLine[] }) => (
-  <Drawer isOpen={isOpen} onClose={onClose} placement="bottom">
+/** The game log, and (when given) the room chat above it. A side drawer on wide screens, a bottom sheet on phones. */
+export const LogDrawer = ({ isOpen, onClose, lines, extra, side = false, title = "Game log" }: {
+  isOpen: boolean; onClose: () => void; lines: LogLine[]; extra?: React.ReactNode; side?: boolean; title?: string;
+}) => (
+  <Drawer isOpen={isOpen} onClose={onClose} placement={side ? "left" : "bottom"} size={side ? "sm" : undefined}>
     <DrawerOverlay />
-    <DrawerContent bg="gray.800" color="white" maxH="70dvh" borderTopRadius="2xl">
+    <DrawerContent bg="gray.800" color="white" maxH={side ? "100dvh" : "78dvh"} borderTopRadius={side ? undefined : "2xl"}>
       <DrawerCloseButton />
-      <DrawerHeader>Game log</DrawerHeader>
-      <DrawerBody pb={6}><LogList lines={lines} /></DrawerBody>
+      <DrawerHeader>{title}</DrawerHeader>
+      <DrawerBody pb={6} display="flex" flexDirection="column" gap={4} minH={0}>
+        {extra}
+        <Box><Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text><LogList lines={lines} limit={extra ? 30 : undefined} /></Box>
+      </DrawerBody>
     </DrawerContent>
   </Drawer>
 );

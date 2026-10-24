@@ -46,6 +46,8 @@ export interface SceneInput {
   hold: boolean;
   /** What each piece looks like, by seat then token. */
   designs: Record<Seat, ResolvedDesign[]>;
+  /** CSS px of the canvas covered by the interface; the board is framed in the rest. */
+  insets?: { top: number; right: number; bottom: number; left: number };
 }
 
 export interface SceneOptions {
@@ -152,6 +154,7 @@ export class LudoScene {
   private lastRollKey = -1;
   private diceFadeAt = 0;
   private camMoved = false;
+  private baseFov = FOV;
   private followK = 0;
   private followObj: TokenObj | null = null;
   private followHoldUntil = 0;
@@ -733,17 +736,26 @@ export class LudoScene {
   private updateCamera(mode: "tilt" | "top" | "follow") {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     const aspect = w / h;
+    const look = !!this.input?.look;
+    // the overhead view looks from further away through a longer lens, so the city rooftops stay well below the camera
+    const fov = mode === "top" && look ? 26 : FOV;
+    this.baseFov = fov;
     this.camera.aspect = aspect;
-    this.camera.fov = FOV;
+    this.camera.fov = fov;
     const elev = THREE.MathUtils.degToRad(mode === "top" ? 89 : 60);
-    const tan = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const wide = !!this.input?.look;
-    const halfW = wide ? 8.8 : 8.0;
-    const halfH = 7.7 * Math.sin(elev) + (wide ? 2.2 : 1.3);
-    const dist = Math.max(halfW / (tan * aspect), halfH / tan);
+    const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+    const halfW = look ? 8.8 : 8.0;
+    const halfH = 7.7 * Math.sin(elev) + (look ? 2.2 : 1.3);
+    // frame the board in the part of the canvas the interface leaves uncovered, and shift the picture to its centre
+    const ins = this.input?.insets;
+    const il = ins?.left ?? 0, ir = ins?.right ?? 0, it = ins?.top ?? 0, ib = ins?.bottom ?? 0;
+    const fw = Math.max(120, w - il - ir), fh = Math.max(120, h - it - ib);
+    const dist = Math.max((halfW * w) / (fw * tan * aspect), (halfH * h) / (fh * tan));
     this.camBase.set(0, dist * Math.sin(elev), dist * Math.cos(elev));
     // while the camera is swooping, the frame loop owns its position
     if (!this.camMoved) { this.camera.position.copy(this.camBase); this.camera.lookAt(0, 0, 0); }
+    const dx = (il - ir) / 2, dy = (it - ib) / 2;
+    if (dx || dy) this.camera.setViewOffset(w, h, -dx, -dy, w, h); else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
 
@@ -932,7 +944,7 @@ export class LudoScene {
       }
       this.camera.position.set(base.x + (Math.random() - 0.5) * a, base.y + (Math.random() - 0.5) * a, base.z + (Math.random() - 0.5) * a);
       this.camera.lookAt(this.camLook);
-      this.camera.fov = FOV - 2.4 * this.kick - zoom;
+      this.camera.fov = this.baseFov - 2.4 * this.kick - zoom;
       this.camera.updateProjectionMatrix();
       this.camMoved = true;
       animating = true;
@@ -941,7 +953,7 @@ export class LudoScene {
       this.camMoved = false;
       this.camera.position.copy(this.camBase);
       this.camera.lookAt(0, 0, 0);
-      this.camera.fov = FOV;
+      this.camera.fov = this.baseFov;
       this.camera.updateProjectionMatrix();
     }
 

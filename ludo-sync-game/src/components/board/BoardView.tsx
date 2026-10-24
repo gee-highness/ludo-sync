@@ -17,8 +17,14 @@ const slowThisSession = () => { try { return sessionStorage.getItem(SLOW_KEY) ==
  * Picks the renderer. The flat board shows straight away and until the 3D one has loaded its models;
  * if 3D cannot start, loses its context, or runs too slowly, play carries on in 2D without interruption.
  */
-export default function BoardView(props: BoardProps & { renderer: "2d" | "3d" }) {
-  const { renderer, ...board } = props;
+export default function BoardView(props: BoardProps & {
+  renderer: "2d" | "3d";
+  /** Tells the screen whether the 3D board is in use (even while it is still loading), so it can lay itself out full-bleed. */
+  onUse3d?: (use3d: boolean) => void;
+  /** The screen supplies its own camera button when the board is full-bleed. */
+  hideCameraToggle?: boolean;
+}) {
+  const { renderer, onUse3d, hideCameraToggle, ...board } = props;
   const [settings] = useSettings();
   const caps = useCapabilities();
   const toast = useToast();
@@ -30,6 +36,7 @@ export default function BoardView(props: BoardProps & { renderer: "2d" | "3d" })
   useEffect(() => { setSkip(slowThisSession()); }, []);
 
   const use3d = renderer === "3d" && !failed && !skip;
+  useEffect(() => { onUse3d?.(use3d); }, [use3d, onUse3d]);
   const autoQuality = caps?.lowPower ? "low" : "high";
   const quality = lowered ? "low" : settings.quality === "auto" ? autoQuality : settings.quality;
 
@@ -51,7 +58,7 @@ export default function BoardView(props: BoardProps & { renderer: "2d" | "3d" })
           <Board3D {...board} camera={settings.camera} quality={quality} onReady={onReady} onFail={onFail} onSlow={onSlow} />
         </Box>
       )}
-      {showing3d && (
+      {showing3d && !hideCameraToggle && (
         <IconButton
           aria-label={settings.camera !== "top" ? "Switch to top-down view" : "Switch to the moving camera"} size="sm" variant="solid"
           colorScheme="whiteAlpha" bg="whiteAlpha.300" color="white" position="absolute" top={2} right={2} fontSize="md"

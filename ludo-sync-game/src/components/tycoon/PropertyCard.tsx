@@ -48,7 +48,7 @@ const Art = ({ kind, group, name }: { kind: SquareKind; group: number; name: str
 interface Props {
   state: GameState;
   act: (a: Action) => boolean;
-  /** Wide screens float the card at the bottom right; phones dock it to the bottom as a sheet. */
+  /** Wide screens float the card at the bottom centre above the status bar, as in the reference; phones dock it to the bottom as a sheet. */
   wide: boolean;
 }
 
@@ -58,7 +58,7 @@ export const PropertyCard = ({ state, act, wide }: Props) => {
   const p = t?.pending;
   const designs = useDesigns();
   const buy = useRef<HTMLButtonElement>(null);
-  const [short] = useMediaQuery("(max-height: 560px)");
+  const [short] = useMediaQuery("(max-height: 640px)");
   const tight = !wide || short; // phones and short windows: no picture, smaller rows, so the board stays in view
   useEffect(() => { buy.current?.focus({ preventScroll: true }); }, [p?.ring, p?.kind]);
   if (!t || !p) return null;
@@ -78,9 +78,9 @@ export const PropertyCard = ({ state, act, wide }: Props) => {
   return (
     <Box
       role="dialog" aria-label={`${p.kind === "buy" ? "For sale" : "Build"}: ${sq.name}`} aria-modal="false" color="#151515"
-      position="fixed" zIndex={40} bottom="calc(env(safe-area-inset-bottom) + 8px)" w="min(92vw, 360px)" maxH={wide ? "calc(100dvh - 16px)" : "56dvh"} overflowY="auto"
-      left={wide ? undefined : "50%"} right={wide ? "16px" : undefined}
-      sx={{ ...(wide ? {} : { transform: "translateX(-50%)" }), animation: "cardUp .28s ease-out", "@keyframes cardUp": { from: { opacity: 0, marginTop: "24px" }, to: { opacity: 1, marginTop: 0 } } }}
+      position="fixed" zIndex={40} bottom={wide ? "calc(env(safe-area-inset-bottom) + 84px)" : "calc(env(safe-area-inset-bottom) + 8px)"} w={wide ? "clamp(260px, calc(100vw - 600px), 340px)" : "min(92vw, 340px)"}
+      maxH={wide ? "calc(100dvh - 100px - env(safe-area-inset-bottom))" : "56dvh"} overflowY="auto" left="50%"
+      sx={{ transform: "translateX(-50%)", animation: "cardUp .28s ease-out", "@keyframes cardUp": { from: { opacity: 0, marginTop: "24px" }, to: { opacity: 1, marginTop: 0 } } }}
     >
       <Box mx="auto" w="62%" textAlign="center" bg="linear-gradient(180deg, #a3e635, #65a30d)" color="#fff" fontWeight={900} fontSize="lg" py={1} borderRadius="14px 14px 0 0"
         textShadow="0 2px 3px rgba(0,0,0,.4)" aria-hidden>{p.kind === "buy" ? "For sale" : "Build here"}</Box>
