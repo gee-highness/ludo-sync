@@ -16,7 +16,7 @@ import OnlineGame from "./OnlineGame";
 import { ScanButton } from "./ScanButton";
 
 const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
-  <Flex minH="100dvh" bg="#333333" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
+  <Flex minH="100dvh" bg="#303030" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
     <VStack w="100%" maxW="460px" spacing={4} align="stretch">
       <HStack>
         <IconButton aria-label="Back" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
@@ -42,7 +42,7 @@ function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume;
   usePieceSync(snap?.room ?? null, session ? d => session.setPieces(d) : undefined);
   usePaletteSync(snap?.room ?? null, session ? c => session.setColors(c) : undefined);
   if (!session || !snap || snap.status === "opening") {
-    return <Center minH="100dvh" bg="#333333"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
+    return <Center minH="100dvh" bg="#303030"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
   }
   if (snap.status === "error") return <Notice title="Could not open a room" text={snap.error ?? "Try again."} onBack={onExit} />;
   if (snap.status === "closed") return <Notice title="Room closed" text="This room is no longer open." onBack={onExit} />;
@@ -78,12 +78,12 @@ function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string;
   const { client, snap, quitForGood } = useGuestClient(code, name, rejoin);
   usePieceSync(snap?.room ?? null, client ? d => client.setPieces(d) : undefined);
   usePaletteSync(snap?.room ?? null, client ? c => client.setColors(c) : undefined);
-  if (!client || !snap) return <Center minH="100dvh" bg="#333333"><Spinner size="xl" color="white" /></Center>;
+  if (!client || !snap) return <Center minH="100dvh" bg="#303030"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onExit} />;
   if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the room or lost their connection." onBack={onExit} />;
   if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={onExit} />;
   if (!snap.room) {
-    return <Center minH="100dvh" bg="#333333"><VStack color="white"><Spinner size="xl" /><Text>{snap.status === "reconnecting" ? "Reconnecting…" : "Joining room…"}</Text></VStack></Center>;
+    return <Center minH="100dvh" bg="#303030"><VStack color="white"><Spinner size="xl" /><Text>{snap.status === "reconnecting" ? "Reconnecting…" : "Joining room…"}</Text></VStack></Center>;
   }
   const room = snap.room;
   if (room.phase === "playing" && snap.state) {
@@ -135,7 +135,7 @@ export default function OnlineClient() {
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 
-  if (!ready) return <Center minH="100dvh" bg="#333333"><Spinner color="white" size="xl" /></Center>;
+  if (!ready) return <Center minH="100dvh" bg="#303030"><Spinner color="white" size="xl" /></Center>;
   if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
   if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
 

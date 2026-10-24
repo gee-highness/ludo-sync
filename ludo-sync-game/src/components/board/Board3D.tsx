@@ -39,8 +39,8 @@ export default function Board3D(props: Board3DProps) {
     tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview,
-  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview]);
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, neon: settings.boardTheme === "neon",
+  }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme]);
   const inputRef = useRef(input);
   inputRef.current = input;
 

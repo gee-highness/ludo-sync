@@ -12,8 +12,8 @@ export type CameraPref = "tilt" | "top";
 /** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
 export type MovePreview = "dots" | "end" | "off";
 export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
-export type BoardTheme = "classic" | "midnight" | "forest" | "sunset" | "paper";
-export const BOARD_THEMES: readonly BoardTheme[] = ["classic", "midnight", "forest", "sunset", "paper"];
+export type BoardTheme = "neon" | "classic" | "midnight" | "forest" | "sunset" | "paper";
+export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "classic", "midnight", "forest", "sunset", "paper"];
 
 export interface Settings {
   sound: boolean;
@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   keepAwake: true,
   playerName: "",
   botLevel: "normal",
-  boardTheme: "classic",
+  boardTheme: "neon",
   palette: {},
   myColors: null,
   rules: DEFAULT_RULES,

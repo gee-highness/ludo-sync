@@ -111,7 +111,7 @@ export default function PieceMaker() {
   );
 
   return (
-    <Flex minH="100dvh" bg="#333333" color="white" justify="center" px={3} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+    <Flex minH="100dvh" bg="#303030" color="white" justify="center" px={3} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="980px" align="stretch" spacing={4}>
         <HStack>
           <IconButton as={Link} href="/" aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />

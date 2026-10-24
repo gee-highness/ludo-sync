@@ -93,3 +93,8 @@ The four standard colours are the default and can always be restored. Code: `lib
 When a token can move, the board shows where: a dot on every square it would cross and a ring (with the die number when a token has several moves)
 on the one it would land on, drawn on both the flat and the 3D board. Settings > Move preview switches between path and landing, landing only, or off.
 The track squares are drawn a little dimmer so the dots, pieces and highlights stand out. Code: `lib/client/preview.ts`.
+
+## Neon board
+The default board look is neon: dark squares with glowing outlines (a bright thin line over a faint wide one). The track is outlined in pale cyan, stars in yellow,
+and each player's start square, path, home and centre wedge in their own colours, so colour choices show up as light. It is drawn on both boards
+(`Board2D.tsx`, `components/board/neon3d.ts`). Settings > Board theme switches back to Classic and the other palettes. The page background is `#303030`.

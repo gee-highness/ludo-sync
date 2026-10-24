@@ -27,7 +27,9 @@ const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: num
 const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", spin: "tok-idle-spin", pulse: "tok-idle-pulse", wobble: "tok-idle-wobble" } as const;
 
 interface Palette { bg: string; cell: string; line: string; panel: string; inactiveCol: string }
+const NEON_TRACK = "#9fe8ff";
 const PALETTES: Record<BoardTheme, Palette> = {
+  neon: { bg: "#0e0e0e", cell: "#171717", line: NEON_TRACK, panel: "#1b1b1b", inactiveCol: "#555555" },
   classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   forest: { bg: "#14281D", cell: "#E6F4D7", line: "#8FB27A", panel: "#F1F9E6", inactiveCol: "#8FB27A" },
@@ -92,6 +94,7 @@ export default function Board2D({
   usePalette(); // seat colours are changed in place; this redraws when they are
   const [settings] = useSettings();
   const pal = PALETTES[settings.boardTheme];
+  const neon = settings.boardTheme === "neon";
   const designs = useDesigns();
   const rotation = -90 * viewSeat;
   const playing = useMemo(() => new Set(state.players.map(p => p.seat)), [state.players]);
@@ -157,7 +160,17 @@ export default function Board2D({
       const tycoonRing = state.tycoon && info.kind !== "column" ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       cells.push(
         <g key={`${row}-${col}`}>
-          <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />
+          {neon ? (() => {
+            const glow = !active ? "#666666" : info.kind === "column" ? seatInfo!.path : info.kind === "start" ? seatInfo!.main : info.kind === "star" ? "#facc15" : NEON_TRACK;
+            return (
+              <g>
+                <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={pal.cell} />
+                {(info.kind === "column" || info.kind === "start") && active && <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={glow} fillOpacity={info.kind === "start" ? 0.38 : 0.16} />}
+                <rect x={col - 0.44} y={row - 0.44} width={0.88} height={0.88} rx={0.12} fill="none" stroke={glow} strokeOpacity={0.26} strokeWidth={0.17} />
+                <rect x={col - 0.44} y={row - 0.44} width={0.88} height={0.88} rx={0.12} fill="none" stroke={glow} strokeOpacity={0.95} strokeWidth={0.05} />
+              </g>
+            );
+          })() : <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />}
           {tycoonRing >= 0 && state.tycoon && (() => {
             const sq = SQUARES[tycoonRing];
             const owner = state.tycoon!.owner[tycoonRing];
@@ -178,7 +191,7 @@ export default function Board2D({
           })()}
           {info.kind === "star" && (
             <g transform={`translate(${col} ${row}) rotate(${-rotation})`} aria-hidden>
-              <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.78} fill="#D69E2E"
+              <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.78} fill={neon ? "#fde047" : "#D69E2E"}
                 style={{ animationDelay: `${((row * 15 + col) % 7) * 0.35}s` }}>★</text>
             </g>
           )}
@@ -201,12 +214,20 @@ export default function Board2D({
     const player = state.players.find(p => p.seat === seat);
     return (
       <g key={seat}>
-        <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />
+        {neon ? (
+          <g>
+            <rect x={x0} y={y0} width={6} height={6} fill="#121212" />
+            <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} fillOpacity={0.14} />
+            <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.28} strokeWidth={0.3} />
+            <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeWidth={0.07} />
+          </g>
+        ) : <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />}
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
-        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={active ? 0.88 : 0.35} />
+        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={neon ? 0.95 : active ? 0.88 : 0.35} />
+        {neon && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.7} strokeWidth={0.04} />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
-          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={0.28} stroke={active ? info.dark : "#2B2B2B"} strokeWidth={0.06} />;
+          return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={neon ? 0.12 : 0.28} stroke={neon ? (active ? info.main : "#666") : active ? info.dark : "#2B2B2B"} strokeWidth={neon ? 0.07 : 0.06} />;
         })}
         {player && (
           <text x={x0 + 3} y={y0 + (seat === 0 || seat === 3 ? 5.58 : 0.42)} textAnchor="middle" dominantBaseline="central" fontSize={0.46} fontWeight={800}
@@ -222,7 +243,10 @@ export default function Board2D({
     const pts: Record<Seat, string> = {
       0: "5.5,8.5 8.5,8.5 7,7", 1: "5.5,5.5 5.5,8.5 7,7", 2: "5.5,5.5 8.5,5.5 7,7", 3: "8.5,5.5 8.5,8.5 7,7",
     };
-    return <polygon key={seat} points={pts[seat]} fill={playing.has(seat) ? SEAT_INFO[seat].main : INACTIVE} stroke="#fff" strokeWidth={0.05} />;
+    const on = playing.has(seat);
+    return neon
+      ? <g key={seat}><polygon points={pts[seat]} fill={on ? SEAT_INFO[seat].main : INACTIVE} fillOpacity={0.22} /><polygon points={pts[seat]} fill="none" stroke={on ? SEAT_INFO[seat].main : "#666"} strokeWidth={0.1} strokeOpacity={0.3} strokeLinejoin="round" /><polygon points={pts[seat]} fill="none" stroke={on ? SEAT_INFO[seat].main : "#666"} strokeWidth={0.05} strokeLinejoin="round" /></g>
+      : <polygon key={seat} points={pts[seat]} fill={on ? SEAT_INFO[seat].main : INACTIVE} stroke="#fff" strokeWidth={0.05} />;
   });
 
   // for every token that can move: a dot on each square it would cross and a ring on the one it would land on
@@ -242,7 +266,7 @@ export default function Board2D({
         return (
           <g key={`${token}-${o.die}`} aria-hidden opacity={strong ? 1 : 0.4}>
             {settings.movePreview === "dots" && path.dots.map((d, i) => (
-              <circle key={i} cx={d.x} cy={d.y} r={strong && preview !== null ? 0.17 : 0.13} fill={info.dark} stroke="#fff" strokeWidth={0.05} />
+              <circle key={i} cx={d.x} cy={d.y} r={strong && preview !== null ? 0.17 : 0.13} fill={neon ? info.light : info.dark} stroke={neon ? info.main : "#fff"} strokeWidth={0.05} />
             ))}
             <circle className="ghost" cx={path.end.x} cy={path.end.y} r={0.42} fill={info.main} fillOpacity={0.28} stroke="#fff" strokeWidth={0.09} />
             <circle cx={path.end.x} cy={path.end.y} r={0.42} fill="none" stroke={info.dark} strokeWidth={0.03} />

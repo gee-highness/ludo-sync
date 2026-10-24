@@ -226,7 +226,7 @@ export default function GameScreen(props: GameScreenProps) {
 
   return (
     <Flex
-      direction="column" h="100dvh" w="100%" bg="#333333" color="white" overflow="hidden" position="relative" isolation="isolate"
+      direction="column" h="100dvh" w="100%" bg="#303030" color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
       <HStack px={2} py={1.5} spacing={1} flexShrink={0} bg="#151515">

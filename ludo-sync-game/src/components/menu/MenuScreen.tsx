@@ -26,7 +26,7 @@ export default function MenuScreen() {
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
   return (
-    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #444444 0%, #333333 60%)" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
+    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #444444 0%, #303030 60%)" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
       px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="420px" spacing={4} py={6} px={4} borderRadius="2xl">
         <Image src="/icons/icon-192x192.png" alt="" w="96px" h="96px" borderRadius="22px" boxShadow="0 10px 30px rgba(0,0,0,.45)" />

@@ -7,6 +7,7 @@ import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
 import { previewPath } from "@/lib/client/preview";
+import { buildNeonBoard, type NeonBoard } from "./neon3d";
 import type { MovePreview } from "@/lib/client/settings";
 
 export interface SceneInput {
@@ -25,6 +26,8 @@ export interface SceneInput {
   hopMs: number;
   camera: "tilt" | "top";
   movePreview: MovePreview;
+  /** Dark tiles with glowing outlines instead of the pale classic look. */
+  neon: boolean;
   /** What each piece looks like, by seat then token. */
   designs: Record<Seat, ResolvedDesign[]>;
 }
@@ -123,6 +126,11 @@ export class LudoScene {
   };
   private ghosts: THREE.Mesh[] = [];
   private pathDots: THREE.Mesh[] = [];
+  private neonBoard: NeonBoard | null = null;
+  private neonOn = false;
+  private tileMats: THREE.MeshStandardMaterial[] = [];
+  private edgeMats: THREE.MeshStandardMaterial[] = [];
+  private centreEdgeMats: THREE.MeshStandardMaterial[] = [];
   private shocks: Shock[] = [];
   private particles!: {
     points: THREE.Points; pos: Float32Array; col: Float32Array; base: Float32Array; vel: Float32Array; life: Float32Array; max: Float32Array; grav: Float32Array;
@@ -296,8 +304,8 @@ export class LudoScene {
       if (!m.isMesh) return;
       (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
         const std = mat as THREE.MeshStandardMaterial;
-        if (std.name === "Material.005") { std.color.setHex(0xd6d6d6); std.roughness = 0.85; }
-        else if (std.name === "Material.007") std.color.setHex(0x9a9a9a);
+        if (std.name === "Material.005") { std.color.setHex(0xd6d6d6); std.roughness = 0.85; this.tileMats.push(std); }
+        else if (std.name === "Material.007") { std.color.setHex(0x9a9a9a); this.edgeMats.push(std); }
         else if (std.name in bySeat) this.seatMats.column[bySeat[std.name]].push(std);
         else if (std.name in startBySeat) this.seatMats.start[startBySeat[std.name]].push(std);
       });
@@ -307,7 +315,7 @@ export class LudoScene {
       if (!m.isMesh) return;
       (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
         const std = mat as THREE.MeshStandardMaterial;
-        if (std.name === "Material.007") std.color.setHex(0x2b2b2b);
+        if (std.name === "Material.007") { std.color.setHex(0x2b2b2b); this.centreEdgeMats.push(std); }
         else if (std.name in bySeat) this.seatMats.centre[bySeat[std.name]].push(std);
       });
     });
@@ -333,14 +341,21 @@ export class LudoScene {
   }
 
   private applyColours(playing: ReadonlySet<Seat>) {
+    const neon = this.neonOn;
+    // neon: the tiles go dark and the glowing outlines carry the colour
+    this.tileMats.forEach(m => m.color.setHex(neon ? 0x191919 : 0xd6d6d6));
+    this.edgeMats.forEach(m => m.color.setHex(neon ? 0x101010 : 0x9a9a9a));
+    this.centreEdgeMats.forEach(m => m.color.setHex(neon ? 0x101010 : 0x2b2b2b));
+    this.neonBoard?.setColours(playing);
+    const dim = (css: string, k: number) => hex(shade(css, k));
     SEATS.forEach(seat => {
       const on = playing.has(seat);
       const info = SEAT_INFO[seat];
-      this.seatMats.column[seat].forEach(m => m.color.setHex(on ? hex(info.path) : 0xa0a0a0));
-      this.seatMats.start[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
-      this.seatMats.centre[seat].forEach(m => m.color.setHex(on ? hex(info.main) : INACTIVE));
+      this.seatMats.column[seat].forEach(m => m.color.setHex(neon ? (on ? dim(info.path, -0.8) : 0x1e1e1e) : on ? hex(info.path) : 0xa0a0a0));
+      this.seatMats.start[seat].forEach(m => m.color.setHex(neon ? (on ? dim(info.main, -0.5) : 0x1e1e1e) : on ? hex(info.main) : INACTIVE));
+      this.seatMats.centre[seat].forEach(m => m.color.setHex(neon ? (on ? dim(info.main, -0.75) : 0x1a1a1a) : on ? hex(info.main) : INACTIVE));
       const plate = this.yardPlates[seat];
-      if (plate) (plate.material as THREE.MeshStandardMaterial).color.setHex(on ? hex(info.home) : INACTIVE);
+      if (plate) (plate.material as THREE.MeshStandardMaterial).color.setHex(neon ? (on ? dim(info.home, -0.82) : 0x1c1c1c) : on ? hex(info.home) : INACTIVE);
       const base = this.bases[seat];
       if (!base) return;
       base.traverse(c => {
@@ -349,8 +364,8 @@ export class LudoScene {
         (Array.isArray(m.material) ? m.material : [m.material]).forEach(mat => {
           const std = mat as THREE.MeshStandardMaterial;
           // the tile becomes a pale inner square, the model's frame a darker shade of the yard
-          if (std.name === "Material.007") std.color.setHex(on ? hex(shade(info.home, -0.38)) : 0x2b2b2b);
-          else std.color.setHex(on ? 0xf4e9e9 : 0x8f8f8f);
+          if (std.name === "Material.007") std.color.setHex(neon ? 0x121212 : on ? hex(shade(info.home, -0.38)) : 0x2b2b2b);
+          else std.color.setHex(neon ? 0x202020 : on ? 0xf4e9e9 : 0x8f8f8f);
         });
       });
     });
@@ -505,6 +520,16 @@ export class LudoScene {
     }
   }
 
+  /** Builds the glowing outlines the first time they are wanted, then shows or hides them. */
+  private setNeon(on: boolean) {
+    this.neonOn = on;
+    if (on && !this.neonBoard) {
+      this.neonBoard = buildNeonBoard();
+      this.world.add(this.neonBoard.group);
+    }
+    if (this.neonBoard) this.neonBoard.group.visible = on;
+  }
+
   update(input: SceneInput) {
     this.input = input;
     const now = performance.now();
@@ -512,6 +537,7 @@ export class LudoScene {
     const calm = input.reduceMotion;
     this.rotationTarget = (Math.PI / 2) * input.viewSeat;
     this.updateCamera(input.camera);
+    this.setNeon(input.neon);
     this.applyColours(input.playing);
     if (input.activeSeat !== this.lastActive) {
       if (this.lastActive !== null && !calm) this.kick = 1;
@@ -905,6 +931,7 @@ export class LudoScene {
       const mat = m.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose();
     });
+    this.neonBoard?.dispose();
     this.glyphTextures.forEach(t => t.dispose());
     this.dotTexture.dispose();
     this.renderer.dispose();
