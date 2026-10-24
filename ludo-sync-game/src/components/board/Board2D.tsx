@@ -217,13 +217,14 @@ export default function Board2D({
         <g key={`${row}-${col}`}>
           {neon ? (() => {
             const tint = !active ? null : info.kind === "column" ? seatInfo!.path : info.kind === "start" ? seatInfo!.main : null;
-            const rim = !active ? "#4a4f60" : info.kind === "start" ? seatInfo!.light : info.kind === "column" ? seatInfo!.path : "#3d5aa8";
+            const rim = !active ? "#4a4f60" : info.kind === "start" ? seatInfo!.light : info.kind === "column" ? seatInfo!.path : info.kind === "star" ? "#fde047" : "#ffffff";
             return (
               <g>
                 <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={pal.cell} />
                 {tint && <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={tint} fillOpacity={info.kind === "start" ? 0.6 : 0.3} />}
                 <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill="url(#nd-dots)" />
-                <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.07} strokeOpacity={0.9} />
+                <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.16} strokeOpacity={0.2} />
+                <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.09} strokeOpacity={1} />
                 <path d={`M${col - 0.44} ${row - 0.44}H${col + 0.44}`} stroke="#fff" strokeOpacity={0.12} strokeWidth={0.05} />
               </g>
             );

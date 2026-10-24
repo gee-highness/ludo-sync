@@ -35,7 +35,7 @@ const triFrame = (pts: [number, number][], thick: number): THREE.BufferGeometry 
 interface Layer { color: number; thick: number; geos: THREE.BufferGeometry[]; seat?: Seat; part?: "start" | "column" | "yard" | "centre" }
 
 const material = (color: number, opacity: number) =>
-  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false });
+  new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
 
 export interface NeonBoard {
   group: THREE.Group;
@@ -75,8 +75,9 @@ export const buildNeonBoard = (glow = true): NeonBoard => {
     if (SEATS.some(s => START_INDEX[s] === i)) return;
     (STAR_RING_INDEXES.includes(i) ? starCells : ringCells).push(frame(col - 7, row - 7, 0.46, 0.05));
   });
-  // the dressed navy tiles carry the track and star squares; only seat colours and home paths glow
-  [...ringCells, ...starCells].forEach(g => g.dispose());
+  // every square you can step on gets an outline: white for plain ones, gold for the special (star) squares; seat colours and home paths follow below
+  add({ color: 0xffffff, thick: 0.05, geos: ringCells });
+  add({ color: 0xffd34d, thick: 0.05, geos: starCells });
 
   for (const seat of SEATS) {
     const [sr, sc] = RING[START_INDEX[seat]];
