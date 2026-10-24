@@ -4,7 +4,7 @@ import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
 } from "@chakra-ui/react";
-import { BOARD_THEMES, DEFAULT_SETTINGS, TIMES_OF_DAY, useSettings, type Settings } from "@/lib/client/settings";
+import { BOARD_THEMES, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
 import Link from "next/link";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
@@ -51,16 +51,6 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <Row label="3D quality" hint="Lower saves battery">
               <Select w="120px" size="sm" value={s.quality} onChange={e => update({ quality: e.target.value as Settings["quality"] })} bg="gray.700">
                 <option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option>
-              </Select>
-            </Row>
-            <Row label="City scenery" hint="A lived-in city around the board and homes in the start areas">
-              <Select w="120px" size="sm" value={s.scenery} onChange={e => update({ scenery: e.target.value as Settings["scenery"] })} bg="gray.700">
-                <option value="city">On</option><option value="off">Off</option>
-              </Select>
-            </Row>
-            <Row label="Time of day">
-              <Select w="120px" size="sm" value={s.timeOfDay} onChange={e => update({ timeOfDay: e.target.value as Settings["timeOfDay"] })} bg="gray.700" isDisabled={s.scenery === "off"}>
-                {TIMES_OF_DAY.map(t => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}
               </Select>
             </Row>
             <Row label="Board theme" hint="Colours of the flat board">

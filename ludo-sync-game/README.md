@@ -62,13 +62,6 @@ Tycoon always plays on the flat board. Every number is tunable in the rules edit
   Designs are saved on your device. In online rooms each player's designs are sent to the room (validated and clamped by
   the host), so everyone sees every player's pieces the way that player made them; seats without designs use the standard pieces.
 
-## City scenery
-Switch it on in Settings (on by default). The flat board gets a skyline backdrop (`components/scenery/CityBackdrop.tsx`), street
-details on the ring and a lived-in room in every start area (`components/board/YardHome.tsx`). The 3D board gets a procedural city
-(`components/board/scenery3d.ts`): buildings with lit windows, neon signs, street lamps, trees, traffic and people, and the same rooms
-built in 3D. Time of day (dusk, night, day) changes the light, sky and windows. Scenery pauses with reduced motion and the 3D city is
-lighter on low-power devices.
-
 ## Online chat
 Rooms have text chat (`components/online/ChatPanel.tsx`): scrollable, 200 characters per message, Enter to send. The host cleans every
 message (control characters stripped, whitespace collapsed), rate-limits each member (5 messages per 5 seconds), keeps the last 50 and
@@ -76,5 +69,4 @@ sends them to anyone who joins or reconnects. Spectators can chat; removed guest
 
 ## Performance notes
 Particle bursts on the flat board expire on their own timers and are capped; the hidden flat board is not rendered while 3D shows;
-the 3D renderer caps its pixel ratio and shadow-map size and renders city animation at a lower rate; and the animated city backdrop is
-layered so only moving parts repaint and freezes itself if the real frame rate stays under 20 fps (`hooks/useSlowFrames.ts`).
+the 3D renderer caps its pixel ratio and shadow-map size and renders city animation at a lower rate; and the 3D renderer renders only when something moves.

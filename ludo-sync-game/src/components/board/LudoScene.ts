@@ -5,8 +5,6 @@ import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
-import { MOODS, buildCity, buildYardProps, skyTexture, type SceneryHandle } from "./scenery3d";
-import type { TimeOfDay } from "@/lib/client/settings";
 
 export interface SceneInput {
   tokens: PlacedToken[];
@@ -25,9 +23,6 @@ export interface SceneInput {
   camera: "tilt" | "top";
   /** What each piece looks like, by seat then token. */
   designs: Record<Seat, ResolvedDesign[]>;
-  /** A city around the board and homes in the yards. */
-  scenery: "city" | "off";
-  timeOfDay: TimeOfDay;
 }
 
 export interface SceneOptions {
@@ -146,12 +141,6 @@ export class LudoScene {
   private lastActive: Seat | null = null;
   private lastFirework = 0;
   private readonly high: boolean;
-  private hemi!: THREE.HemisphereLight;
-  private sun!: THREE.DirectionalLight;
-  private city: (SceneryHandle & { stars: THREE.Points | null }) | null = null;
-  private yardHomes: SceneryHandle[] = [];
-  private skyTex: THREE.Texture | null = null;
-  private sceneryKey = "off";
 
   constructor(private host: HTMLElement, private opts: SceneOptions) {
     const high = opts.quality === "high";
@@ -172,10 +161,8 @@ export class LudoScene {
     host.appendChild(canvas);
 
     this.scene.add(this.world);
-    this.hemi = new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7);
-    this.scene.add(this.hemi);
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8899bb, 1.7));
     const sun = new THREE.DirectionalLight(0xffffff, 1.5);
-    this.sun = sun;
     sun.position.set(5, 12, 7);
     if (high) {
       sun.castShadow = true;
@@ -504,41 +491,8 @@ export class LudoScene {
     }
   }
 
-  /** Builds, swaps or removes the city and the yard homes to match the settings. */
-  private applyScenery(input: SceneInput) {
-    const key = input.scenery === "city" ? `city:${input.timeOfDay}` : "off";
-    if (key === this.sceneryKey) return;
-    this.sceneryKey = key;
-    if (this.city) { this.scene.remove(this.city.group); this.city.dispose(); this.city = null; }
-    this.yardHomes.forEach(h => { this.world.remove(h.group); h.dispose(); });
-    this.yardHomes = [];
-    this.skyTex?.dispose(); this.skyTex = null;
-    if (input.scenery !== "city") {
-      this.scene.background = null; this.scene.fog = null;
-      this.hemi.color.setHex(0xffffff); this.hemi.groundColor.setHex(0x8899bb); this.hemi.intensity = 1.7;
-      this.sun.color.setHex(0xffffff); this.sun.intensity = 1.5;
-      this.updateCamera(input.camera);
-      return;
-    }
-    const m = MOODS[input.timeOfDay];
-    this.city = buildCity(input.timeOfDay, this.high);
-    this.scene.add(this.city.group);
-    this.skyTex = skyTexture(m);
-    this.scene.background = this.skyTex;
-    this.scene.fog = new THREE.Fog(m.fog, 26, 75);
-    this.hemi.color.setHex(m.hemiSky); this.hemi.groundColor.setHex(m.hemiGround); this.hemi.intensity = m.hemiK;
-    this.sun.color.setHex(m.sun); this.sun.intensity = m.sunK;
-    for (const seat of SEATS) {
-      const home = buildYardProps(seat, input.timeOfDay, this.high);
-      this.world.add(home.group);
-      this.yardHomes.push(home);
-    }
-    this.updateCamera(input.camera);
-  }
-
   update(input: SceneInput) {
     this.input = input;
-    this.applyScenery(input);
     const now = performance.now();
     const f = input.hopMs / 170;
     const calm = input.reduceMotion;
@@ -649,9 +603,8 @@ export class LudoScene {
     this.camera.fov = FOV;
     const elev = THREE.MathUtils.degToRad(mode === "top" ? 89 : 60);
     const tan = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const wide = this.input?.scenery === "city";
-    const halfW = wide ? 10.6 : 8.0;
-    const halfH = 7.7 * Math.sin(elev) + (wide ? 3.3 : 1.3);
+    const halfW = 8.0;
+    const halfH = 7.7 * Math.sin(elev) + 1.3;
     const dist = Math.max(halfW / (tan * aspect), halfH / tan);
     this.camBase.set(0, dist * Math.sin(elev), dist * Math.cos(elev));
     this.camera.position.copy(this.camBase);
@@ -835,10 +788,6 @@ export class LudoScene {
         plate.emissiveIntensity = on ? 0.28 + 0.22 * Math.sin(t * 3.2) : 0;
       });
     }
-    if (lively && (this.city || this.yardHomes.length)) {
-      this.city?.update(t);
-      this.yardHomes.forEach(h => h.update(t));
-    }
     const pulse = 1 + Math.sin(t * 3.8) * 0.14;
     for (const obj of this.tokens.values()) {
       if (!obj.ring || !obj.ring.visible) continue;
@@ -848,7 +797,7 @@ export class LudoScene {
     }
     for (const g of this.ghosts) if (g.visible && !calm) { g.position.y = 0.06 + Math.abs(Math.sin(t * 4)) * 0.12; ambient = true; }
 
-    const gap = this.high ? (this.city ? 45 : 33) : 66;
+    const gap = this.high ? 33 : 66;
     if (animating || now - this.lastAmbient >= gap || !ambient) {
       this.renderer.render(this.scene, this.camera);
       if (!animating) this.lastAmbient = now;
@@ -921,9 +870,6 @@ export class LudoScene {
       const mat = m.material as THREE.Material | THREE.Material[] | undefined;
       if (Array.isArray(mat)) mat.forEach(x => x.dispose()); else mat?.dispose();
     });
-    this.city?.dispose();
-    this.yardHomes.forEach(h => h.dispose());
-    this.skyTex?.dispose();
     this.glyphTextures.forEach(t => t.dispose());
     this.dotTexture.dispose();
     this.renderer.dispose();
