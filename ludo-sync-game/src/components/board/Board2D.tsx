@@ -22,6 +22,8 @@ import { placeTokens, seatTokens, tokenKey, type TokenView } from "./layout";
 
 const CELL = 1;
 const MAX_BURSTS = 16;
+/** How far the centre of the board stands above the track, and so how high a finished token sits. */
+const STEP = 0.24;
 const INACTIVE = "#555555";
 const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: number; rise: boolean; ring?: boolean }> = {
   dust: { color: "#cccccc", n: 5, d: 0.55, r: 0.07, rise: false },
@@ -73,6 +75,8 @@ const CSS = `
   .twinkle { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .yard-glow { animation: yardGlow 1.4s ease-in-out infinite; }
   .banner { animation: banner 1.6s ease-out forwards; }
+  .tok-step { animation: tokStep var(--hop) ease-out; transform-origin: 0 .3px; }
+  @keyframes tokStep { 0%{transform:translateY(0) scale(1.15,.8)} 35%{transform:translateY(-.75px) scale(.92,1.15)} 75%{transform:translateY(-.25px) scale(1.05,.95)} 100%{transform:translateY(0) scale(1,1)} }
   @keyframes tokHop { 0%{transform:translateY(0) scale(1.18,.8)} 25%{transform:translateY(-.38px) scale(.9,1.14)} 60%{transform:translateY(-.3px) scale(.96,1.06)} 85%{transform:translateY(0) scale(1.14,.86)} 100%{transform:translateY(0) scale(1,1)} }
   @keyframes tokSpin { 0%{transform:translateY(0) rotate(0) scale(1)} 50%{transform:translateY(-.9px) rotate(360deg) scale(1.15)} 100%{transform:translateY(0) rotate(720deg) scale(1)} }
   @keyframes tokBreath { 0%,100%{transform:scale(1,1)} 50%{transform:scale(1.04,.96)} }
@@ -89,7 +93,7 @@ const CSS = `
   @keyframes twinkle { 0%,100%{transform:scale(1) rotate(0);opacity:1} 50%{transform:scale(1.25) rotate(14deg);opacity:.55} }
   @keyframes yardGlow { 0%,100%{opacity:.25} 50%{opacity:.85} }
   @keyframes banner { 0%{opacity:0;transform:scale(.6)} 15%{opacity:1;transform:scale(1.05)} 25%{transform:scale(1)} 80%{opacity:1} 100%{opacity:0} }
-  .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
+  .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-step, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
   .reduce .dust-dot, .reduce .shock, .reduce .ghost, .reduce .twinkle, .reduce .yard-glow, .reduce .banner { animation: none; }
   .reduce .banner { opacity: 0; }
   .tok-btn:focus-visible .focus-ring { stroke: #fff; stroke-width: .09; }
@@ -498,14 +502,19 @@ export default function Board2D({
       <g transform={`rotate(${rotation} 7 7)`}>
         {yards}
         {cells}
-        {centre}
-        {rich && (
+        {rich ? (
           <g aria-hidden>
-            <circle cx={7} cy={7} r={0.62} fill="#2a1a0a" fillOpacity={0.25} transform="translate(0 0.06)" />
-            <circle cx={7} cy={7} r={0.58} fill="url(#sr-gem)" stroke="#fff" strokeWidth={0.07} />
-            <circle cx={6.85} cy={6.82} r={0.14} fill="#fff" fillOpacity={0.8} />
+            <rect x={5.5} y={5.9} width={3} height={3.1} rx={0.1} fill="#2a1a0a" fillOpacity={0.3} />
+            <rect x={5.5} y={5.5 + STEP} width={3} height={3} rx={0.06} fill="#6b4a2c" />
+            <rect x={5.5} y={5.5 + STEP} width={3} height={3} rx={0.06} fill="#000" fillOpacity={0.2} />
+            <g transform={`translate(0 ${-STEP})`}>
+              {centre}
+              <circle cx={7} cy={7} r={0.58} fill="url(#sr-gem)" stroke="#fff" strokeWidth={0.07} />
+              <circle cx={6.85} cy={6.82} r={0.14} fill="#fff" fillOpacity={0.8} />
+              <rect x={5.5} y={5.5} width={3} height={3} rx={0.06} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={0.05} />
+            </g>
           </g>
-        )}
+        ) : centre}
         {previews}
         {placed.map(t => {
           const isMine = t.seat === interactiveSeat;
@@ -536,8 +545,9 @@ export default function Board2D({
                 <g className={movable ? "tok-bounce" : IDLE_CLASS[design.idle]} style={{ animationDelay: `${(t.token * 0.4 + t.seat * 0.2).toFixed(1)}s` }}>
                 <g key={t.progress} className={
                   state.winner === t.seat && t.progress === FINISH ? "tok-dance"
-                    : t.progress === YARD ? "tok-spin" : "tok-hop"
+                    : t.progress === YARD ? "tok-spin" : rich && t.progress === FINISH ? "tok-step" : "tok-hop"
                 }>
+                <g transform={rich && t.progress === FINISH ? `translate(0 ${-STEP})` : undefined}>
                   {rich && <ellipse cy={0.36} rx={0.34} ry={0.1} fill="#2a1a0a" fillOpacity={0.3} />}
                   <circle className="focus-ring" r={0.44} fill="none" stroke="transparent" strokeWidth={0.06} />
                   <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} metal={neon && isDefaultDesign(designs[t.seat][t.token]) ? (t.seat % 2 === 0 ? "gold" : "silver") : undefined} /></g>
@@ -545,6 +555,7 @@ export default function Board2D({
                     <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.4} fontWeight={800} fill="#fff"
                       transform={`rotate(${-rotation})`} aria-hidden>{info.glyph}</text>
                   )}
+                </g>
                 </g>
                 </g>
               </g>
