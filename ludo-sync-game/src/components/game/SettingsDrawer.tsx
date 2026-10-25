@@ -80,6 +80,18 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <Row label="Pieces" hint="Shapes, colours, patterns, 2D and 3D">
               <Button as={Link} href="/pieces" size="sm" colorScheme="teal">Piece maker</Button>
             </Row>
+            <Row label="Scenery" hint="Sky, hills and a skyline of your islands behind the board">{toggle("scenery")}</Row>
+            <Row label="Time of day" hint="Auto follows your clock">
+              <Select w="120px" size="sm" value={s.timeOfDay} onChange={e => update({ timeOfDay: e.target.value as Settings["timeOfDay"] })} bg="gray.700">
+                <option value="auto">Auto</option><option value="day">Day</option><option value="dusk">Dusk</option><option value="night">Night</option>
+              </Select>
+            </Row>
+            <Row label="Weather">
+              <Select w="120px" size="sm" value={s.weather} onChange={e => update({ weather: e.target.value as Settings["weather"] })} bg="gray.700">
+                <option value="clear">Clear</option><option value="rain">Rain</option><option value="snow">Snow</option>
+              </Select>
+            </Row>
+            <Row label="Passing traffic">{toggle("traffic")}</Row>
             <Row label="Animation speed">
               <Select w="120px" size="sm" value={s.speed} onChange={e => update({ speed: e.target.value as Settings["speed"] })} bg="gray.700">
                 <option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option>

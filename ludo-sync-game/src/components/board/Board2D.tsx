@@ -113,7 +113,7 @@ const CSS = `
 
 /** The flat board: an SVG that scales to any screen, rotated so `viewSeat` sits at the bottom. */
 export default function Board2D({
-  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow, rollKey, rolled, insets, lastMove,
+  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow, rollKey, rolled, insets, lastMove, dim = 0,
 }: BoardProps) {
   const islands = useIslands();
   const paletteVersion = usePalette(); // seat colours are changed in place; this redraws when they are
@@ -599,6 +599,7 @@ export default function Board2D({
           </g>
         ) : centre}
         {previews}
+        {rich && dim > 0 && <rect x={-0.5} y={-0.5} width={15} height={15} fill="#0a1026" fillOpacity={dim} pointerEvents="none" aria-hidden />}
         {lastMove && !moving && state.phase !== "over" && (() => {
           const from = pointOf(lastMove.seat, lastMove.token, lastMove.from), to = pointOf(lastMove.seat, lastMove.token, lastMove.to);
           const col = SEAT_INFO[lastMove.seat].light;

@@ -27,6 +27,8 @@ import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { usePalette } from "@/lib/client/palette";
 import { setPendingThrow, type ThrowInput } from "@/lib/client/throw";
 import BoardView from "../board/BoardView";
+import Scenery from "../board/Scenery";
+import { SKIES, resolvePhase } from "@/lib/client/scenery";
 import { resetCameraView } from "@/lib/client/cameraView";
 import { Dice } from "../board/Dice";
 import { HowToPlay } from "./HowToPlay";
@@ -90,6 +92,12 @@ export default function GameScreen(props: GameScreenProps) {
   const replayRef = useRef<{ before: GameState; frame: Frame } | null>(null);
   const replaying = useRef(false);
   const shownRef = useRef<GameState>(state);
+  // the hour of the day, refreshed every few minutes, picks the sky when the time is set to auto
+  const [hour, setHour] = useState(() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; });
+  useEffect(() => {
+    const t = setInterval(() => { const d = new Date(); setHour(d.getHours() + d.getMinutes() / 60); }, 5 * 60_000);
+    return () => clearInterval(t);
+  }, []);
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [short] = useMediaQuery("(max-height: 560px)");
   const bannerKey = useRef(0);
@@ -133,6 +141,11 @@ export default function GameScreen(props: GameScreenProps) {
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
   }, [immersive, wide, short]);
+
+  const phase = resolvePhase(settings.timeOfDay, hour);
+  const showScenery = !immersive && settings.scenery;
+  const seatList = useMemo(() => state.players.map(p => p.seat), [state.players]);
+  useEffect(() => { sound.setRain(showScenery && settings.weather === "rain"); }, [showScenery, settings.weather, settings.sound]);
 
   useWakeLock(settings.keepAwake && (state.phase !== "over" || !!props.guardUnload));
 
@@ -406,7 +419,7 @@ export default function GameScreen(props: GameScreenProps) {
     </VStack>
   );
   const logBox = (
-    <Box bg="whiteAlpha.100" borderRadius="xl" p={3} maxH="200px" overflowY="auto" flexShrink={0}
+    <Box bg="rgba(10,14,24,.6)" backdropFilter="blur(3px)" borderRadius="xl" p={3} maxH="200px" overflowY="auto" flexShrink={0}
       display="none" sx={wide ? { "@media (min-height: 561px)": { display: "block" } } : { "@media (min-height: 780px)": { display: "block" } }}>
       <Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text>
       <LogList lines={lines} limit={8} />
@@ -432,7 +445,7 @@ export default function GameScreen(props: GameScreenProps) {
   );
   const mainProps = immersive
     ? { position: "absolute" as const, inset: 0, maxW: "none", px: 0, pt: 0, pb: 0, gap: 0, pointerEvents: "none" as const, zIndex: 0 }
-    : { maxW: "1400px", px: 2, pt: wide ? 2 : 0, pb: 2, gap: wide ? 3 : 2 };
+    : { maxW: "1400px", px: 2, pt: wide ? 2 : 0, pb: 2, gap: wide ? 3 : 2, position: "relative" as const, zIndex: 1 };
   const boardBoxProps = immersive
     ? { position: "absolute" as const, inset: 0, display: "block", pointerEvents: "auto" as const }
     : {
@@ -454,8 +467,9 @@ export default function GameScreen(props: GameScreenProps) {
       direction="column" h="100dvh" w="100%" bg={immersive ? "#0a0d16" : "#303030"} color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
+      {showScenery && <Scenery phase={phase} weather={settings.weather} traffic={settings.traffic} seats={seatList} reduceMotion={reduceMotion} />}
       {!wide && !immersive && (
-        <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515">
+        <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515" position="relative" zIndex={1}>
           {leaveBtn}
           <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
           {props.headerExtra}
@@ -477,7 +491,7 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              lastMove={lastMove} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
+              lastMove={lastMove} dim={showScenery ? SKIES[phase].dim : 0} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />

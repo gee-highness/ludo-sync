@@ -4,6 +4,8 @@ import type { LastMove } from "@/lib/client/lastMove";
 
 /** What every board renderer (flat or 3D) is given. */
 export interface BoardProps {
+  /** How much to darken the board for evening and night, 0 to 0.5. */
+  dim?: number;
   /** The token that moved most recently, so the board can keep marking where it came from and where it went. */
   lastMove?: LastMove | null;
   /** The state to draw, which may lag the real game while tokens are still hopping. */
