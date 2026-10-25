@@ -14,6 +14,8 @@ describe("3D vehicles", () => {
       const size = new THREE.Box3().setFromObject(b.group).getSize(new THREE.Vector3());
       expect(size.x).toBeLessThan(2.6);
       expect(size.z).toBeLessThan(2.6);
+      expect(b.wheels?.length).toBeGreaterThanOrEqual(2);
+      expect(b.wheelRadius).toBeGreaterThan(0.1);
       expect(size.y).toBeGreaterThan(0.1);
       b.dispose();
     }

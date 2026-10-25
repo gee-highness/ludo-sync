@@ -70,7 +70,7 @@ export default function Scenery({ phase, weather, traffic, seats, reduceMotion, 
           const s = p.size;
           return (
             <g key={i} transform={`translate(${p.x} ${560 - 92 * s}) scale(${s})`} opacity={phase === "night" ? 0.9 : 1}>
-              <BuildingShape style={{ ...islandFor(seat, islands, SEAT_INFO[seat].main), ground: "slab", extras: [], levels: {} }} level={p.level ?? 2} />
+              <BuildingShape style={{ ...islandFor(seat, islands, SEAT_INFO[seat].main), ground: "slab", extras: [] }} level={p.level ?? 2} />
             </g>
           );
         })}

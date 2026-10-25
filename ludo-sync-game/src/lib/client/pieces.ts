@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { SEATS, SEAT_INFO, TOKENS_PER_PLAYER, type Seat } from "../ludo/board";
+import { SEATS, SEAT_INFO, TOKENS_PER_PLAYER, setBayWaiters, type Seat } from "../ludo/board";
 import { readJSON, writeJSON } from "./storage";
 
 export const SHAPES = [
@@ -188,7 +188,11 @@ let remote: Partial<Record<Seat, PieceDesign[]>> | null = null;
 let view: SeatDesigns = current;
 let loaded = false;
 const listeners = new Set<() => void>();
-const recompute = () => { view = remote ? ({ ...current, ...remote } as SeatDesigns) : current; };
+const recompute = () => {
+  view = remote ? ({ ...current, ...remote } as SeatDesigns) : current;
+  // a piece with no vehicle waits in its own parking bay; one with a vehicle stands in the middle while the vehicle is parked
+  setBayWaiters(new Set(SEATS.flatMap(s => view[s].flatMap((d, i) => (d.vehicle === "none" ? [`${s}-${i}`] : [])))));
+};
 const ensureLoaded = () => {
   if (loaded || typeof window === "undefined") return;
   loaded = true;

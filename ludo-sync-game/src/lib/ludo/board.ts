@@ -86,10 +86,42 @@ export const SEAT_DIRECTION: Readonly<Record<Seat, Point>> = {
   0: { x: 0, y: 1 }, 1: { x: -1, y: 0 }, 2: { x: 0, y: -1 }, 3: { x: 1, y: 0 },
 };
 
-export const yardPoint = (seat: Seat, token: number): Point => ({
-  x: YARD_CENTRE[seat].x + YARD_SLOTS[token].x,
-  y: YARD_CENTRE[seat].y + YARD_SLOTS[token].y,
-});
+/**
+ * How the waiting vehicles are laid out in a yard. "nest" is the classic two by two block in the middle; "lot" puts them in a
+ * car park along the edge that touches the road, with the rest of the yard left free for the player's island.
+ */
+export type YardStyle = "nest" | "lot";
+let yardStyle: YardStyle = "nest";
+export const setYardStyle = (style: YardStyle) => { yardStyle = style; };
+let bayWaiters: ReadonlySet<string> = new Set();
+/** Tokens without a vehicle (keys "seat-token") wait in their own parking bay instead of the middle of the lot. */
+export const setBayWaiters = (keys: ReadonlySet<string>) => { bayWaiters = keys; };
+export const getYardStyle = (): YardStyle => yardStyle;
+
+/** Yards on the left of the board touch the road on their right edge; yards on the right touch it on their left. */
+export const lotOnRight = (seat: Seat): boolean => seat === 0 || seat === 1;
+/** Bay columns in the car park, measured from the yard's centre towards the road: the far column, then the near one. */
+const LOT_COLUMNS = [0.95, 2.1] as const;
+
+/** The yard's own centre, for drawing. */
+export const yardCentre = (seat: Seat): Point => YARD_CENTRE[seat];
+
+export const yardPoint = (seat: Seat, token: number): Point => {
+  if (yardStyle === "lot") {
+    const sign = lotOnRight(seat) ? 1 : -1;
+    if (bayWaiters.has(`${seat}-${token}`)) return bayPoint(seat, token);
+    // the waiting tokens stand together in the middle of the car park, among the parked vehicles
+    const mid = (LOT_COLUMNS[0] + LOT_COLUMNS[1]) / 2;
+    return { x: YARD_CENTRE[seat].x + sign * (mid + (token % 2 ? 0.3 : -0.3)), y: YARD_CENTRE[seat].y + (token < 2 ? -0.3 : 0.3) };
+  }
+  return { x: YARD_CENTRE[seat].x + YARD_SLOTS[token].x, y: YARD_CENTRE[seat].y + YARD_SLOTS[token].y };
+};
+
+/** The marked parking bay for a vehicle whose player is still waiting in the car park. */
+export const bayPoint = (seat: Seat, token: number): Point => {
+  const sign = lotOnRight(seat) ? 1 : -1;
+  return { x: YARD_CENTRE[seat].x + sign * LOT_COLUMNS[token % 2], y: YARD_CENTRE[seat].y + (token < 2 ? -YARD_SPREAD : YARD_SPREAD) };
+};
 
 export const homePoint = (seat: Seat, token: number): Point => {
   const d = SEAT_DIRECTION[seat];

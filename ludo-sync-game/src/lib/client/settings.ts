@@ -5,6 +5,7 @@ import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
 import { parseQuality, type QualityPref } from "./quality";
 import { readJSON, writeJSON } from "./storage";
 import { MOODS, type Mood } from "./soundDesign";
+import { setYardStyle } from "../ludo/board";
 import { TIME_MODES, WEATHERS, type TimeMode, type Weather } from "./scenery";
 
 export type RendererPref = "auto" | "3d" | "2d";
@@ -148,7 +149,11 @@ export const CALM_PRESET: Readonly<Partial<Settings>> = {
   sound: true, music: true, musicVolume: 0.3, mood: "relaxed", engineSounds: true, hints: true, movePreview: "dots",
 };
 
+/** The road board parks waiting vehicles in a car park by the road; every other look keeps the classic yard. */
+const syncYard = (s: Settings) => setYardStyle(s.boardTheme === "road" ? "lot" : "nest");
+
 let current: Settings = DEFAULT_SETTINGS;
+syncYard(current);
 let loaded = false;
 const listeners = new Set<() => void>();
 
@@ -165,6 +170,7 @@ const ensureLoaded = () => {
     writeJSON("road-v1", true);
     if (current.boardTheme === "serene") { current = sanitizeSettings({ ...current, boardTheme: "road" }); writeJSON("settings", current); }
   }
+  syncYard(current);
 };
 
 const subscribe = (cb: () => void) => {
@@ -180,6 +186,7 @@ export const getSettings = getSnapshot;
 export const updateSettings = (patch: Partial<Settings>) => {
   ensureLoaded();
   current = sanitizeSettings({ ...current, ...patch });
+  syncYard(current);
   writeJSON("settings", current);
   listeners.forEach(l => l());
 };

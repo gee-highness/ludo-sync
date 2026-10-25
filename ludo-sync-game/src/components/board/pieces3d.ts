@@ -14,6 +14,9 @@ export interface Built3D {
   facing: THREE.Object3D | null;
   /** Set for vehicles: turn this about the vertical axis to point the nose (towards negative z) where it is going. */
   heading: THREE.Object3D | null;
+  /** Vehicles: the wheels, which the scene rolls as the vehicle travels, and their radius in world units. */
+  wheels?: THREE.Object3D[];
+  wheelRadius?: number;
   dispose: () => void;
 }
 
@@ -170,7 +173,7 @@ export const buildPiece3D = (d: ResolvedDesign): Built3D => {
     turner.add(v.group);
     group.add(turner);
     heading = turner;
-    return { group, facing: null, heading, dispose: () => { disposables.forEach(x => x.dispose()); } };
+    return { group, facing: null, heading, wheels: v.wheels, wheelRadius: v.wheelRadius, dispose: () => { disposables.forEach(x => x.dispose()); } };
   }
 
   const revolve = shape === "disc" || shape === "cone" || shape === "pawn";

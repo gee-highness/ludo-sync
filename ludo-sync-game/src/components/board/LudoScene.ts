@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
+import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, bayPoint, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, travelDirection, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
+import { sound } from "@/lib/client/audio";
+import { DRIFT_MIN } from "@/lib/client/drift";
 import { shade } from "@/lib/client/pieces";
 import { previewPath } from "@/lib/client/preview";
 import { buildNeonBoard, type NeonBoard } from "./neon3d";
@@ -20,6 +22,8 @@ import type { MovePreview } from "@/lib/client/settings";
 import { TIER_SPECS, TierGovernor, stepUp, type Tier, type TierSpec } from "@/lib/client/quality";
 import { onCameraReset } from "@/lib/client/cameraView";
 import { ROAD_STEP, ROAD_Y, buildRoadBoard, skyGradient, type RoadBoard } from "./roadboard3d";
+import { FOG_COLOUR, buildScenery3D, type Scenery3D } from "./scenery3d";
+import { buildIslands3D, type Island3D } from "./island3d";
 import { flyDice } from "@/lib/client/diceFlight";
 import { flickFrom, isThrow, setPendingThrow, takePendingThrow, toThrow, type PointerSample, type ThrowInput } from "@/lib/client/throw";
 
@@ -41,7 +45,7 @@ export interface SceneInput {
   /** Paint the road board, as on the flat board, instead of the model's plain tiles. */
   road: boolean;
   /** The sky behind the road board, and how much to darken the light for evening and night. */
-  sky?: { top: string; bottom: string; dim: number };
+  sky?: { top: string; bottom: string; dim: number; phase?: "day" | "dusk" | "night" };
   movePreview: MovePreview;
   /** Dark tiles with glowing outlines instead of the pale classic look. */
   neon: boolean;
@@ -110,6 +114,10 @@ interface TokenObj {
   designKey: string;
   body: THREE.Object3D | null;
   built: Built3D | null;
+  /** Road theme: the person who stands in the car park until the vehicle drives out. */
+  walker: Built3D | null;
+  /** Road theme: the vehicle itself, left in its bay while its player waits. */
+  parked: { built: Built3D; holder: THREE.Group } | null;
   ownMaterials: THREE.Material[];
   /** Set for flat standing pieces, which turn to face the camera. */
   facing: THREE.Object3D | null;
@@ -118,6 +126,10 @@ interface TokenObj {
   size: number;
   /** Vehicles: the way the nose points, as an angle about the vertical axis. */
   yaw: number | null;
+  /** Vehicles: how fast the nose is swinging, and whether it is drifting round a sharp corner. */
+  yawVel: number;
+  drifting: boolean;
+  lastSmoke: number;
   /** 0..1, how squashed the token is right now (spring that settles after a landing). */
   squash: number;
   hover: number;
@@ -197,6 +209,8 @@ export class LudoScene {
   private neonBoard: NeonBoard | null = null;
   private neonOn = false;
   private roadBoard: RoadBoard | null = null;
+  private country: Scenery3D | null = null;
+  private islands3d: Island3D | null = null;
   private roadOn = false;
   private skyKey = "";
   private classicParts: THREE.Object3D[] = [];
@@ -549,12 +563,14 @@ export class LudoScene {
 
   private applyDesign(obj: TokenObj, d: ResolvedDesign) {
     const metal = this.neonOn && d.shape === "classic" && d.vehicle === "none";
-    const key = JSON.stringify(d) + (metal ? "|m" : "");
+    const key = JSON.stringify(d) + (metal ? "|m" : "") + (this.roadOn ? "|r" : "");
     if (obj.designKey === key) return;
     obj.designKey = key;
     if (obj.body) obj.holder.remove(obj.body);
     obj.built?.dispose();
     obj.built = null;
+    if (obj.walker) { obj.holder.remove(obj.walker.group); obj.walker.dispose(); obj.walker = null; }
+    if (obj.parked) { obj.root.remove(obj.parked.holder); obj.parked.built.dispose(); obj.parked = null; }
     obj.ownMaterials.forEach(m => m.dispose());
     obj.ownMaterials = [];
     obj.idle = d.idle; obj.trail = d.trail; obj.size = d.size;
@@ -630,6 +646,23 @@ export class LudoScene {
       obj.body = built.group;
       obj.built = built;
       obj.facing = built.facing;
+      if (d.vehicle !== "none" && this.roadOn) {
+        obj.walker = buildPiece3D({ ...d, vehicle: "none", accessory: "none" });
+        obj.walker.group.position.y = 0.02 / TOKEN_SCALE;
+        obj.walker.group.scale.setScalar(0.7);
+        obj.holder.add(obj.walker.group);
+        const bay = bayPoint(obj.seat, obj.token), spot = pointOf(obj.seat, obj.token, YARD), out = pointOf(obj.seat, obj.token, 0);
+        const parkedBuilt = buildPiece3D(d);
+        const ph = new THREE.Group();
+        ph.scale.setScalar(TOKEN_SCALE * d.size);
+        ph.position.set(bay.x - spot.x, 0.02, bay.y - spot.y);
+        parkedBuilt.group.position.y = 0.02 / TOKEN_SCALE;
+        if (parkedBuilt.heading) parkedBuilt.heading.rotation.y = Math.atan2(-(out.x - bay.x), -(out.y - bay.y));
+        ph.add(parkedBuilt.group);
+        ph.visible = false;
+        obj.root.add(ph);
+        obj.parked = { built: parkedBuilt, holder: ph };
+      }
     }
   }
 
@@ -652,7 +685,7 @@ export class LudoScene {
     obj = {
       root, holder, proxy, seat: p.seat, token: p.token, progress: p.progress, target, scaleTarget: p.scale, tween: null, ring: null, glyph: null,
       phase: Math.random() * TAU, squash: 0, hover: 0, cheerUntil: 0,
-      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null,
+      designKey: "", body: null, built: null, walker: null, parked: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null, yawVel: 0, drifting: false, lastSmoke: 0,
     };
     this.tokens.set(key, obj);
     return obj;
@@ -691,6 +724,10 @@ export class LudoScene {
     this.roadOn = on;
     if (on && !this.roadBoard) { this.roadBoard = buildRoadBoard(this.high); this.world.add(this.roadBoard.group); }
     if (this.roadBoard) { this.roadBoard.group.visible = on; if (on) this.roadBoard.paint(input.playing); }
+    if (on && !this.country) { this.country = buildScenery3D(this.high, 5, this.opts.quality === "lite"); this.scene.add(this.country.group); }
+    if (on && !this.islands3d && this.opts.quality !== "lite" && this.opts.quality !== "low") { this.islands3d = buildIslands3D(); this.world.add(this.islands3d.group); }
+    if (this.islands3d) { this.islands3d.group.visible = on; if (on) this.islands3d.sync(input.islands, input.playing); }
+    if (this.country) { this.country.group.visible = on; if (on) this.country.setPhase(input.sky?.phase ?? "day"); }
     const classic = !on;
     this.classicParts.forEach(o => { o.visible = classic; });
     this.yardPlates.forEach(p => { if (p) p.visible = classic; });
@@ -703,18 +740,20 @@ export class LudoScene {
         const next = skyGradient(sky.top, sky.bottom);
         if (next) { this.skyTex?.dispose(); this.skyTex = next; this.scene.background = next; this.skyKey = key; }
       }
+      if (this.country) this.scene.fog = new THREE.Fog(FOG_COLOUR[sky.phase ?? "day"], 38, 105);
       this.hemi.color.setHex(0xffffff); this.hemi.groundColor.setHex(0x8899bb);
       this.hemi.intensity = 1.7 * (1 - sky.dim * 1.1);
       this.sunLight.color.setHex(0xffffff); this.sunLight.intensity = 1.5 * (1 - sky.dim * 1.2);
     } else if (this.skyKey) {
       this.skyKey = "";
-      if (!input.look) { this.skyTex?.dispose(); this.skyTex = null; this.scene.background = null; this.hemi.intensity = 1.7; this.sunLight.intensity = 1.5; }
+      if (!input.look) { this.skyTex?.dispose(); this.skyTex = null; this.scene.background = null; this.scene.fog = null; this.hemi.intensity = 1.7; this.sunLight.intensity = 1.5; }
     }
   }
 
   /** Builds or removes the neon city, the dressed board, and the night lighting to match the look setting. */
   private applyLook(input: SceneInput) {
     this.applyRoad(input);
+    this.dice.style = input.look ? "neon" : "ivory";
     if (input.look && this.city && this.cityTheme !== input.theme) {
       this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
       this.skyTex?.dispose(); this.skyTex = null;
@@ -817,6 +856,12 @@ export class LudoScene {
         obj.target.copy(target);
       }
       obj.progress = p.progress;
+      if (obj.walker && obj.body) {
+        const waiting = p.progress === YARD;
+        obj.walker.group.visible = waiting;
+        obj.body.visible = !waiting;
+        if (obj.parked) obj.parked.holder.visible = waiting;
+      }
       obj.scaleTarget = p.scale;
       if (input.symbols && this.glyphTextures[p.seat]) {
         if (!obj.glyph) {
@@ -1053,11 +1098,28 @@ export class LudoScene {
           if (obj.yaw === null || calm) obj.yaw = want;
           else {
             const d = ((want - obj.yaw + Math.PI * 3) % TAU) - Math.PI;
-            if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
+            if (!obj.drifting && tw && Math.abs(d) > (DRIFT_MIN * Math.PI) / 180) { obj.drifting = true; sound.play("squeal"); }
+            if (obj.drifting) {
+              // an under-damped spring: the nose swings past the new heading and settles, while the car leans and the tyres smoke
+              obj.yawVel += (d * 70 - obj.yawVel * 6.5) * dt;
+              obj.yaw += obj.yawVel * dt;
+              animating = true;
+              if (Math.abs(d) < 0.02 && Math.abs(obj.yawVel) < 0.15) { obj.drifting = false; obj.yawVel = 0; obj.yaw = want; }
+              else if (Math.abs(obj.yawVel) > 1.2 && t - obj.lastSmoke > 0.07) { obj.lastSmoke = t; this.emit(obj.root.position, 3, 0xe5e7eb, { spread: 0.9, up: 0.7, life: 0.6, gravity: 0.5, y: 0.1 }); }
+            } else if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
           }
         }
         heading.rotation.y = obj.yaw ?? 0;
+        heading.rotation.z = obj.drifting ? Math.max(-0.22, Math.min(0.22, -obj.yawVel * 0.07)) : 0;
         spinY = 0;
+        // the wheels roll as far as the vehicle travels
+        const wl = obj.built?.wheels;
+        if (wl?.length && tw && tw.kind !== "slide") {
+          const speed = tw.from.distanceTo(tw.to) / Math.max(0.05, tw.dur / 1000);
+          const rad = Math.max(0.02, (obj.built?.wheelRadius ?? 0.2) * TOKEN_SCALE * obj.size);
+          const turn = (speed * dt) / rad;
+          for (const w of wl) w.rotation.x -= turn;
+        }
       }
       obj.holder.rotation.y = spinY;
       obj.holder.rotation.z = tilt;
