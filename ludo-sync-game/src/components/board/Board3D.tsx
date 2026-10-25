@@ -15,7 +15,7 @@ import { placeTokens, seatTokens } from "./layout";
 import type { BoardProps } from "./types";
 
 export interface Board3DProps extends BoardProps {
-  camera: "tilt" | "top" | "follow";
+  camera: "tilt" | "top" | "follow" | "drone";
   quality: Tier;
   onReady: () => void;
   onFail: () => void;

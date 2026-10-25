@@ -9,7 +9,7 @@ export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
 export type MotionPref = "auto" | "reduce" | "full";
 export type { QualityPref } from "./quality";
-export type CameraPref = "tilt" | "top" | "follow";
+export type CameraPref = "tilt" | "top" | "follow" | "drone";
 /** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
 export type MovePreview = "dots" | "end" | "off";
 export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
@@ -86,7 +86,7 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     haptics: bool(r.haptics, d.haptics),
     renderer: oneOf(r.renderer, ["auto", "3d", "2d"], d.renderer),
     quality: parseQuality(r.quality, d.quality),
-    camera: oneOf(r.camera, ["tilt", "top", "follow"], d.camera),
+    camera: oneOf(r.camera, ["tilt", "top", "follow", "drone"], d.camera),
     speed: oneOf(r.speed, ["normal", "fast", "instant"], d.speed),
     motion: oneOf(r.motion, ["auto", "reduce", "full"], d.motion),
     symbols: bool(r.symbols, d.symbols),

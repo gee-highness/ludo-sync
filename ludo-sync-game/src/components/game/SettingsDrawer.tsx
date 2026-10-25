@@ -49,9 +49,9 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 <option value="auto">Auto</option><option value="3d">3D</option><option value="2d">Flat</option>
               </Select>
             </Row>
-            <Row label="3D camera" hint="Moving follows the piece from behind">
+            <Row label="3D camera" hint="Drag to turn, pinch or scroll to zoom">
               <Select w="140px" size="sm" value={s.camera} onChange={e => update({ camera: e.target.value as Settings["camera"] })} bg="gray.700">
-                <option value="follow">Moving</option><option value="tilt">Tilted</option><option value="top">Top-down</option>
+                <option value="follow">Moving</option><option value="tilt">Tilted</option><option value="top">Top-down</option><option value="drone">Drone</option>
               </Select>
             </Row>
             <Row label="Graphics" hint="Auto adapts to your device">

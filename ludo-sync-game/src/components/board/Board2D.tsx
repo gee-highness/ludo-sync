@@ -504,14 +504,16 @@ export default function Board2D({
         {cells}
         {rich ? (
           <g aria-hidden>
-            <rect x={5.5} y={5.9} width={3} height={3.1} rx={0.1} fill="#2a1a0a" fillOpacity={0.3} />
-            <rect x={5.5} y={5.5 + STEP} width={3} height={3} rx={0.06} fill="#6b4a2c" />
-            <rect x={5.5} y={5.5 + STEP} width={3} height={3} rx={0.06} fill="#000" fillOpacity={0.2} />
-            <g transform={`translate(0 ${-STEP})`}>
+            {/* step one is flush with the board; step two is a smaller square standing on it */}
+            {centre}
+            <rect x={6.1} y={6.2} width={1.8} height={1.8} rx={0.08} fill="#2a1a0a" fillOpacity={0.35} />
+            <rect x={6.1} y={6.1 + STEP} width={1.8} height={1.8} rx={0.08} fill="#6b4a2c" />
+            <rect x={6.1} y={6.1 + STEP} width={1.8} height={1.8} rx={0.08} fill="#000" fillOpacity={0.2} />
+            <g transform={`translate(0 ${-STEP}) translate(7 7) scale(0.6) translate(-7 -7)`}>
               {centre}
-              <circle cx={7} cy={7} r={0.58} fill="url(#sr-gem)" stroke="#fff" strokeWidth={0.07} />
-              <circle cx={6.85} cy={6.82} r={0.14} fill="#fff" fillOpacity={0.8} />
-              <rect x={5.5} y={5.5} width={3} height={3} rx={0.06} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={0.05} />
+              <circle cx={7} cy={7} r={0.5} fill="url(#sr-gem)" stroke="#fff" strokeWidth={0.1} />
+              <circle cx={6.88} cy={6.85} r={0.12} fill="#fff" fillOpacity={0.8} />
+              <rect x={5.5} y={5.5} width={3} height={3} rx={0.06} fill="none" stroke="#fff" strokeOpacity={0.8} strokeWidth={0.08} />
             </g>
           </g>
         ) : centre}

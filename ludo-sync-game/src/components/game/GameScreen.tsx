@@ -25,6 +25,7 @@ import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { usePalette } from "@/lib/client/palette";
 import { setPendingThrow, type ThrowInput } from "@/lib/client/throw";
 import BoardView from "../board/BoardView";
+import { resetCameraView } from "@/lib/client/cameraView";
 import { Dice } from "../board/Dice";
 import { HowToPlay } from "./HowToPlay";
 import { SettingsDrawer } from "./SettingsDrawer";
@@ -311,9 +312,12 @@ export default function GameScreen(props: GameScreenProps) {
   );
   const leaveBtn = round("Leave game", <ChevronLeftIcon boxSize={6} />, exit.onOpen);
   const topCamera = settings.camera === "top";
+  const droneCamera = settings.camera === "drone";
   const iconButtons = [
     (!wide || immersive) && round(immersive && props.panelExtra ? "Chat and game log" : "Game log", immersive && props.panelExtra ? <span aria-hidden>💬</span> : <InfoIcon />, log.onOpen),
     immersive && round(topCamera ? "Switch to the moving camera" : "Switch to the top-down view", <span aria-hidden>{topCamera ? "◩" : "⬒"}</span>, () => updateSettings({ camera: topCamera ? "follow" : "top" })),
+    immersive && round("Reset camera", <span aria-hidden>⟲</span>, resetCameraView),
+    immersive && round(droneCamera ? "Leave drone camera" : "Drone camera", <span aria-hidden>🛸</span>, () => updateSettings({ camera: droneCamera ? "top" : "drone" }), droneCamera ? { bg: "#facc15" } : {}),
     round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
     canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
     round("How to play", <QuestionIcon />, help.onOpen),
