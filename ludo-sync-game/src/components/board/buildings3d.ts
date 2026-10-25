@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GROUND_COLOURS, type BuildingTheme, type IslandStyle } from "@/lib/client/islands";
+import { GROUND_COLOURS, resolveLevel, type BuildingTheme, type IslandStyle } from "@/lib/client/islands";
 
 export interface BuiltBuilding {
   /** Feet at y = 0, centred on x = z = 0, fitting inside a 0.9 x 0.9 square. */
@@ -9,6 +9,7 @@ export interface BuiltBuilding {
   update?: (t: number) => void;
 }
 
+const TAU = Math.PI * 2;
 const hasDom = typeof document !== "undefined";
 
 // ---- a small reference-counted cache, so thirty buildings share geometry, materials and textures --------------
@@ -53,15 +54,17 @@ const facade = (style: IslandStyle) => {
     const r = rng(hash(`${style.theme}${style.windows}${style.primary}${style.accent}${style.lights}`));
     const warm = style.lights ? [style.lights, mix(style.lights, "#ffffff", 0.45), style.lights] : ["#ffd27a", "#ffe9a8", style.accent];
     const cols = 4, rows = 4, cw = 128 / cols, ch = 128 / rows;
-    const paint = (x: number, y: number, w: number, h: number, on: boolean, arch: boolean) => {
+    const paint = (x: number, y: number, w: number, h: number, on: boolean, arch: boolean, circle = false) => {
       g.fillStyle = on ? warm[Math.floor(r() * 3)] : glowMap ? "#000" : "#0b1020";
       g.beginPath();
-      if (arch) { g.moveTo(x, y + h); g.lineTo(x, y + w / 2); g.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); g.lineTo(x + w, y + h); } else g.rect(x, y, w, h);
+      if (circle) g.arc(x + w / 2, y + h / 2, Math.min(w, h) / 2, 0, Math.PI * 2);
+      else if (arch) { g.moveTo(x, y + h); g.lineTo(x, y + w / 2); g.arc(x + w / 2, y + w / 2, w / 2, Math.PI, 0); g.lineTo(x + w, y + h); } else g.rect(x, y, w, h);
       g.fill();
     };
     for (let ry = 0; ry < rows; ry++) {
       if (style.windows === "stripes") paint(4, ry * ch + 9, 120, ch - 20, r() < lit + 0.1, false);
-      else for (let cx = 0; cx < cols; cx++) paint(cx * cw + 6, ry * ch + 8, cw - 12, ch - 16, r() < lit, style.windows === "arched");
+      else if (style.windows === "slit") for (let cx = 0; cx < cols * 2; cx++) paint(cx * (cw / 2) + 9, ry * ch + 6, cw / 2 - 18, ch - 12, r() < lit + 0.1, false);
+      else for (let cx = 0; cx < cols; cx++) paint(cx * cw + 6, ry * ch + 8, cw - 12, ch - 16, r() < lit, style.windows === "arched", style.windows === "round");
     }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
@@ -115,6 +118,8 @@ const textTexture = (text: string, accent: string, glow: number, big = false) =>
 const SIGNS: Record<BuildingTheme, [string, string, string]> = {
   neon: ["BAR", "DISCO", "SKY"], brownstone: ["INN", "HOTEL", "GRAND"], tropical: ["TIKI", "RESORT", "PARADISE"],
   industrial: ["FORGE", "FACTORY", "WORKS"], glass: ["CAFE", "OFFICE", "TOWER"],
+  castle: ["GATE", "KEEP", "CASTLE"], pagoda: ["TEA", "TEMPLE", "PAGODA"], cottage: ["HOME", "COTTAGE", "MANOR"],
+  hotel: ["B&B", "HOTEL", "PALACE"], shop: ["SHOP", "STORE", "MALL"],
 };
 export const defaultSign = (theme: BuildingTheme, level: 1 | 2 | 3) => SIGNS[theme][level - 1];
 
@@ -180,13 +185,19 @@ const TIERS: Record<BuildingTheme, Tier[][]> = {
   tropical: [[{ w: 0.6, d: 0.6, h: 0.5 }], [{ w: 0.72, d: 0.72, h: 0.55 }, { w: 0.52, d: 0.52, h: 0.5 }], [{ w: 0.76, d: 0.76, h: 0.6 }, { w: 0.6, d: 0.6, h: 0.55 }, { w: 0.44, d: 0.44, h: 0.55 }]],
   industrial: [[{ w: 0.7, d: 0.55, h: 0.45 }], [{ w: 0.74, d: 0.6, h: 0.75 }], [{ w: 0.78, d: 0.64, h: 0.85 }, { w: 0.5, d: 0.5, h: 0.65 }]],
   glass: [[{ w: 0.5, d: 0.5, h: 0.8 }], [{ w: 0.5, d: 0.5, h: 1.45 }], [{ w: 0.5, d: 0.5, h: 1.6 }, { w: 0.36, d: 0.36, h: 1.0 }]],
+  castle: [[{ w: 0.7, d: 0.7, h: 0.55 }], [{ w: 0.74, d: 0.74, h: 0.7 }, { w: 0.5, d: 0.5, h: 0.4 }], [{ w: 0.78, d: 0.78, h: 0.75 }, { w: 0.56, d: 0.56, h: 0.5 }, { w: 0.34, d: 0.34, h: 0.45 }]],
+  pagoda: [[{ w: 0.6, d: 0.6, h: 0.4 }], [{ w: 0.66, d: 0.66, h: 0.4 }, { w: 0.5, d: 0.5, h: 0.35 }], [{ w: 0.7, d: 0.7, h: 0.38 }, { w: 0.56, d: 0.56, h: 0.34 }, { w: 0.42, d: 0.42, h: 0.32 }]],
+  cottage: [[{ w: 0.66, d: 0.56, h: 0.38 }], [{ w: 0.7, d: 0.6, h: 0.5 }], [{ w: 0.74, d: 0.62, h: 0.5 }, { w: 0.5, d: 0.5, h: 0.35 }]],
+  hotel: [[{ w: 0.76, d: 0.6, h: 0.5 }], [{ w: 0.78, d: 0.62, h: 0.9 }], [{ w: 0.8, d: 0.64, h: 1.1 }, { w: 0.62, d: 0.5, h: 0.5 }]],
+  shop: [[{ w: 0.78, d: 0.6, h: 0.4 }], [{ w: 0.8, d: 0.62, h: 0.7 }], [{ w: 0.82, d: 0.64, h: 0.7 }, { w: 0.6, d: 0.5, h: 0.45 }]],
 };
 
 /**
  * A building for one owned square in a player's island style. `level` is how developed the square is:
  * 0 an empty owned lot with a marker, 1 a low building, 2 a mid-rise, 3 a tall landmark. Sits on y = 0 and fits a 0.9 square.
  */
-export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBuilding => {
+export const buildBuilding = (island: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBuilding => {
+  const style = resolveLevel(island, level);
   const group = new THREE.Group();
   const rel: (() => void)[] = [];
   const blinkers: THREE.MeshBasicMaterial[] = [];
@@ -228,6 +239,10 @@ export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBu
       add(cylGeo(0.012, 0.015, 0.1, 6, rel), bark, x, 0.09, z);
       add(cone, leaf, x, 0.27, z);
     }
+  }
+  if (extras.has("garden")) {
+    const hedge = plainMaterial("#2f8f46", rel, 0, 0.9);
+    for (const [x, z, w, d] of [[0, 0.37, 0.7, 0.07], [0, -0.37, 0.7, 0.07], [0.37, 0, 0.07, 0.62], [-0.37, 0, 0.07, 0.62]] as const) add(boxGeo(w, 0.1, d, rel, false), hedge, x, 0.09, z);
   }
   if (extras.has("flags")) {
     const pole = plainMaterial("#d5dbe5", rel, 0, 0.4);
@@ -288,8 +303,69 @@ export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBu
   } else if (style.theme === "glass") {
     const cap = lease("glass|cap", () => { const g = new THREE.ConeGeometry(0.26, 0.2, 4); return { v: g, free: () => g.dispose() }; }, rel);
     if (style.roof === "flat") { const m = add(cap, trim, 0, roofY + 0.1, 0); m.rotation.y = Math.PI / 4; m.scale.set(top.w / 0.5, 1, top.d / 0.5); }
-  } else if (style.roof === "flat") {
+  } else if (style.roof === "flat" && !["castle", "pagoda", "cottage", "hotel", "shop"].includes(style.theme)) {
     for (const [x, z] of [[-0.15, -0.12], [0.14, 0.1]] as const) add(boxGeo(0.14, 0.09, 0.14, rel, false), plainMaterial("#475569", rel, 0, 0.6), x * (top.w / 0.6), roofY + 0.045, z * (top.d / 0.6)); // rooftop units
+  }
+
+  // the new styles' own character: battlements, tiered eaves, a pitched roof, balconies, an awning
+  const stripeA = trim, stripeB = plainMaterial("#f8fafc", rel, 0, 0.7), darkRoof = plainMaterial(mix(style.accent, "#000000", 0.45), rel, 0, 0.75);
+  const tierTops: number[] = [];
+  { let yy = 0.04; for (const t of tiers) { yy += t.h; tierTops.push(yy); } }
+  const awning = (w: number, d: number, yy: number) => {
+    const n = 6;
+    for (let k = 0; k < n; k++) {
+      const m = add(boxGeo(w / n, 0.02, 0.15, rel, false), k % 2 ? stripeB : stripeA, -w / 2 + (w / n) * (k + 0.5), yy, d / 2 + 0.07);
+      m.rotation.x = 0.4;
+    }
+  };
+  const balconies = (t: { w: number; d: number; h: number }, yTop: number) => {
+    const yy = yTop - t.h * 0.62;
+    add(boxGeo(t.w * 0.6, 0.025, 0.1, rel, false), stone, 0, yy, t.d / 2 + 0.05);
+    add(boxGeo(t.w * 0.6, 0.05, 0.012, rel, false), trim, 0, yy + 0.04, t.d / 2 + 0.095);
+  };
+  const perimeter = (t: { w: number; d: number }, step: number): [number, number][] => {
+    const out: [number, number][] = [];
+    if (round) { const n = Math.max(8, Math.round((Math.PI * t.w) / step)); for (let k = 0; k < n; k++) out.push([Math.cos((k / n) * TAU) * (t.w / 2 - 0.02), Math.sin((k / n) * TAU) * (t.w / 2 - 0.02)]); }
+    else { const nx = Math.max(2, Math.round(t.w / step)), nz = Math.max(2, Math.round(t.d / step)); for (let k = 0; k <= nx; k++) for (const sz of [-1, 1]) out.push([-t.w / 2 + 0.03 + ((t.w - 0.06) * k) / nx, sz * (t.d / 2 - 0.03)]); for (let k = 1; k < nz; k++) for (const sx of [-1, 1]) out.push([sx * (t.w / 2 - 0.03), -t.d / 2 + 0.03 + ((t.d - 0.06) * k) / nz]); }
+    return out;
+  };
+  if (style.theme === "castle") {
+    tiers.forEach((t, i) => { for (const [x, z] of perimeter(t, 0.16)) add(boxGeo(0.07, 0.07, 0.07, rel, false), stone, x, tierTops[i] + 0.035, z); });
+    if (lv >= 2) for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+      const x = sx * (first.w / 2 - 0.02), z = sz * (first.d / 2 - 0.02);
+      add(cylGeo(0.07, 0.075, tierTops[0] + 0.12, 12, rel), stone, x, (tierTops[0] + 0.12) / 2, z);
+      const cap = add(lease("cone|turret", () => { const g = new THREE.ConeGeometry(0.095, 0.16, 12); return { v: g, free: () => g.dispose() }; }, rel), darkRoof, x, tierTops[0] + 0.12 + 0.08, z);
+      cap.rotation.y = 0;
+    }
+    add(boxGeo(0.14, 0.2, 0.03, rel, false), plainMaterial("#2b1d14", rel, 0, 0.8), 0, 0.14, first.d / 2 + 0.014); // gate
+  } else if (style.theme === "pagoda") {
+    tiers.forEach((t, i) => {
+      const slab = round ? cylGeo(t.w / 2 + 0.09, t.w / 2 + 0.09, 0.035, 28, rel) : boxGeo(t.w + 0.18, 0.035, t.d + 0.18, rel, false);
+      add(slab, darkRoof, 0, tierTops[i] + 0.012, 0);
+      if (!round) for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) add(sphGeo(0.025, false, rel), trim, sx * (t.w / 2 + 0.085), tierTops[i] + 0.04, sz * (t.d / 2 + 0.085));
+    });
+    add(cylGeo(0.01, 0.014, 0.22, 6, rel), trim, 0, tierTops[tierTops.length - 1] + 0.13, 0);
+  } else if (style.theme === "cottage") {
+    const r = Math.max(first.w, first.d) * 0.68, h = 0.22 + lv * 0.06;
+    const top = tiers[tiers.length - 1];
+    const roof = add(lease(`cone|cot|${(Math.max(top.w, top.d) * 0.68).toFixed(2)}|${h}`, () => { const g = new THREE.ConeGeometry(Math.max(top.w, top.d) * 0.68, h, 4); return { v: g, free: () => g.dispose() }; }, rel), darkRoof, 0, tierTops[tierTops.length - 1] + h / 2, 0);
+    roof.rotation.y = Math.PI / 4;
+    roof.scale.set(top.w / Math.max(top.w, top.d), 1, top.d / Math.max(top.w, top.d));
+    void r;
+    add(boxGeo(0.1, 0.2, 0.1, rel, false), stone, top.w * 0.22, tierTops[tierTops.length - 1] + h * 0.55, -top.d * 0.15);
+    add(boxGeo(0.11, 0.2, 0.03, rel, false), plainMaterial("#5b3a24", rel, 0, 0.8), 0, 0.14, first.d / 2 + 0.014); // door
+  } else if (style.theme === "hotel") {
+    tiers.forEach((t, i) => balconies(t, tierTops[i]));
+    add(boxGeo(0.26, 0.04, 0.12, rel, false), trim, 0, 0.2, first.d / 2 + 0.06); // porte-cochère
+  } else if (style.theme === "shop") {
+    awning(first.w * 0.94, first.d, first.h * 0.62 + 0.04);
+  }
+  if (extras.has("awning") && style.theme !== "shop") awning(first.w * 0.94, first.d, first.h * 0.62 + 0.04);
+  if (extras.has("balconies") && style.theme !== "hotel") tiers.forEach((t, i) => { if (t.h > 0.3) balconies(t, tierTops[i]); });
+  const upTop = tiers[tiers.length - 1];
+  if (extras.has("solar")) for (const sx of [-1, 1]) {
+    const m = add(boxGeo(upTop.w * 0.36, 0.015, upTop.d * 0.5, rel, false), plainMaterial("#1e3a8a", rel, 0.15, 0.2), sx * upTop.w * 0.22, tierTops[tierTops.length - 1] + 0.06, 0);
+    m.rotation.z = sx * -0.35;
   }
 
   // the roof the player picked
@@ -306,6 +382,19 @@ export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBu
     const mat = lease(`dome|${style.accent}`, () => { const m = new THREE.MeshStandardMaterial({ color: style.accent, emissive: style.accent, emissiveIntensity: 0.45, transparent: true, opacity: 0.62, roughness: 0.2, metalness: 0.4 }); return { v: m, free: () => m.dispose() }; }, rel);
     add(sphGeo(r, true, rel), mat, 0, mastBase, 0);
     add(cylGeo(0.012, 0.012, 0.16, 6, rel), trim, 0, mastBase + r + 0.07, 0);
+  } else if (style.roof === "pitched") {
+    const r = Math.max(top.w, top.d) * 0.7, h = 0.2 + lv * 0.06;
+    const m = add(lease(`cone|pitch|${r.toFixed(2)}|${h}`, () => { const g = new THREE.ConeGeometry(r, h, 4); return { v: g, free: () => g.dispose() }; }, rel), darkRoof, 0, mastBase + h / 2, 0);
+    m.rotation.y = Math.PI / 4;
+    m.scale.set(top.w / Math.max(top.w, top.d), 1, top.d / Math.max(top.w, top.d));
+  } else if (style.roof === "spire") {
+    const h = 0.45 + lv * 0.12;
+    add(lease(`cone|spire|${h}`, () => { const g = new THREE.ConeGeometry(0.1, h, 10); return { v: g, free: () => g.dispose() }; }, rel), trim, 0, mastBase + h / 2, 0);
+    add(sphGeo(0.025, false, rel), trim, 0, mastBase + h + 0.02, 0);
+  } else if (style.roof === "garden") {
+    add(boxGeo(top.w * 0.92, 0.05, top.d * 0.92, rel, false), plainMaterial("#3f9d52", rel, 0, 0.9), 0, mastBase + 0.025, 0);
+    const bush = plainMaterial("#2f8f46", rel, 0, 0.9);
+    for (const [x, z] of [[-0.18, -0.1], [0.12, 0.12], [0.16, -0.14]] as const) add(sphGeo(0.06, false, rel), bush, x * (top.w / 0.6), mastBase + 0.075, z * (top.d / 0.6));
   } else if (style.roof === "helipad" && hasDom) {
     const w = Math.min(top.w, top.d) * 0.92;
     add(cylGeo(w / 2, w / 2, 0.035, 20, rel), plainMaterial("#1a1f2e", rel, 0, 0.8), 0, mastBase + 0.018, 0);

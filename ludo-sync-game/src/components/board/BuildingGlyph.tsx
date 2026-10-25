@@ -2,7 +2,7 @@
 
 import type { IslandStyle } from "@/lib/client/islands";
 import { shade } from "@/lib/client/pieces";
-import { GROUND_COLOURS } from "@/lib/client/islands";
+import { GROUND_COLOURS, resolveLevel } from "@/lib/client/islands";
 import { defaultSign } from "./buildings3d";
 
 type Level = 0 | 1 | 2 | 3;
@@ -14,6 +14,11 @@ const TIERS: Record<IslandStyle["theme"], { w: number; h: number }[][]> = {
   tropical: [[{ w: 38, h: 22 }], [{ w: 44, h: 22 }, { w: 32, h: 20 }], [{ w: 46, h: 24 }, { w: 36, h: 22 }, { w: 26, h: 22 }]],
   industrial: [[{ w: 44, h: 20 }], [{ w: 46, h: 32 }], [{ w: 48, h: 36 }, { w: 30, h: 26 }]],
   glass: [[{ w: 30, h: 32 }], [{ w: 30, h: 54 }], [{ w: 30, h: 56 }, { w: 22, h: 32 }]],
+  castle: [[{ w: 44, h: 26 }], [{ w: 46, h: 28 }, { w: 32, h: 18 }], [{ w: 48, h: 28 }, { w: 36, h: 20 }, { w: 22, h: 18 }]],
+  pagoda: [[{ w: 36, h: 20 }], [{ w: 40, h: 20 }, { w: 30, h: 18 }], [{ w: 42, h: 18 }, { w: 34, h: 16 }, { w: 26, h: 16 }]],
+  cottage: [[{ w: 40, h: 22 }], [{ w: 42, h: 28 }], [{ w: 44, h: 28 }, { w: 30, h: 18 }]],
+  hotel: [[{ w: 46, h: 26 }], [{ w: 48, h: 44 }], [{ w: 50, h: 52 }, { w: 38, h: 24 }]],
+  shop: [[{ w: 46, h: 24 }], [{ w: 48, h: 38 }], [{ w: 50, h: 38 }, { w: 36, h: 24 }]],
 };
 
 const WARM = ["#ffd27a", "#ffe9a8"];
@@ -21,7 +26,8 @@ const WARM = ["#ffd27a", "#ffe9a8"];
 interface Props { style: IslandStyle; level: Level; withSign?: boolean }
 
 /** The building drawn as an SVG group in a 100 x 100 box, for the flat board and the editor. */
-export function BuildingShape({ style, level, withSign = false }: Props) {
+export function BuildingShape({ style: island, level, withSign = false }: Props) {
+  const style = resolveLevel(island, level);
   const gy = 90;
   const wallFront = style.primary;
   const wallSide = shade(style.primary, -0.35);
@@ -65,7 +71,7 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
               const w = (t.w - 4) / cols - 2.4, h = Math.max(2, t.h / rows - 4.5);
               const wx = x + 2.5 + c * ((t.w - 4) / cols), wy = yt + 2.5 + r * (t.h / rows);
               out.push(
-                <rect key={`w${r}-${c}`} x={wx} y={wy} width={w} height={h} rx={style.windows === "arched" ? w / 2 : 0.6}
+                <rect key={`w${r}-${c}`} x={wx} y={wy} width={w} height={h} rx={style.windows === "arched" || style.windows === "round" ? w / 2 : 0.6}
                   fill={on ? (style.lights || (c % 3 === 0 ? style.accent : WARM[(r + c) % 2])) : "#0b1020"} fillOpacity={on ? 0.5 + 0.5 * glow : 0.9} />,
               );
             }
@@ -83,6 +89,15 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
   if (style.theme === "brownstone") els.push(<rect key="chim" x={topX + topW - 8} y={topY - 12} width={5} height={12} fill="#3b2a22" />);
   if (style.theme === "tropical") els.push(<g key="palm" stroke="#22c55e" strokeWidth={2.2} strokeLinecap="round"><line x1={topX + 6} y1={topY} x2={topX + 6} y2={topY - 14} stroke="#92613a" /><line x1={topX + 6} y1={topY - 14} x2={topX - 1} y2={topY - 11} /><line x1={topX + 6} y1={topY - 14} x2={topX + 13} y2={topY - 11} /><line x1={topX + 6} y1={topY - 14} x2={topX + 6} y2={topY - 20} /></g>);
   if (style.theme === "glass" && style.roof === "flat") els.push(<polygon key="cap" points={`${topX},${topY} ${cx},${topY - 14} ${topX + topW + topW * 0.28},${topY - topW * 0.16}`} fill={style.accent} fillOpacity={0.85} />);
+  if (style.theme === "castle") els.push(<g key="batt" fill={wallTop}>{Array.from({ length: 5 }, (_, k) => <rect key={k} x={topX + 1 + k * (topW / 5)} y={topY - 5} width={topW / 8} height={5} />)}</g>);
+  if (style.theme === "pagoda") els.push(<polygon key="eave" points={`${topX - 5},${topY + 1} ${topX + topW * 1.14 + 5},${topY + 1} ${topX + topW * 1.14 - 2},${topY - 5} ${topX + 2},${topY - 5}`} fill={shade(style.accent, -0.4)} />);
+  if (style.theme === "cottage" || style.roof === "pitched") els.push(<polygon key="pitch" points={`${topX - 3},${topY} ${cx},${topY - 18} ${topX + topW + topW * 0.3},${topY - topW * 0.16}`} fill={shade(style.accent, -0.45)} />);
+  if (style.theme === "hotel") els.push(<g key="balc" stroke={style.accent} strokeWidth={1.2}>{tiers.map((t, i) => <line key={i} x1={50 - t.w * 0.45} y1={gy - tiers.slice(0, i + 1).reduce((a, b) => a + b.h, 0) + t.h * 0.4} x2={50 + t.w * 0.2} y2={gy - tiers.slice(0, i + 1).reduce((a, b) => a + b.h, 0) + t.h * 0.4} />)}</g>);
+  if (style.theme === "shop" || style.extras.includes("awning")) { const f = tiers[0]; els.push(<g key="awn">{Array.from({ length: 6 }, (_, k) => <rect key={k} x={50 - f.w * 0.59 + k * (f.w * 0.8 / 6)} y={gy - f.h * 0.55} width={f.w * 0.8 / 6} height={5} fill={k % 2 ? "#f8fafc" : style.accent} />)}</g>); }
+  if (style.extras.includes("solar")) els.push(<polygon key="sol" points={`${topX + 4},${topY - 1} ${topX + topW * 0.6},${topY - 1} ${topX + topW * 0.6 + 4},${topY - 6} ${topX + 8},${topY - 6}`} fill="#1e3a8a" stroke="#93c5fd" strokeWidth={0.5} />);
+  if (style.extras.includes("garden")) els.push(<g key="gar" fill="#2f8f46"><circle cx={30} cy={90} r={3} /><circle cx={70} cy={92} r={3.2} /><circle cx={50} cy={96} r={2.6} /></g>);
+  if (style.roof === "spire") els.push(<polygon key="spire" points={`${cx - 5},${topY} ${cx},${topY - 30} ${cx + 5},${topY}`} fill={style.accent} />);
+  if (style.roof === "garden") els.push(<g key="gr"><rect x={topX} y={topY - 3} width={topW * 1.14} height={3} fill="#3f9d52" /><circle cx={cx - 5} cy={topY - 5} r={3} fill="#2f8f46" /><circle cx={cx + 5} cy={topY - 5} r={2.6} fill="#2f8f46" /></g>);
   if (style.roof === "antenna") els.push(<g key="ant"><line x1={cx} y1={topY - 3} x2={cx} y2={topY - 24} stroke="#cbd5e1" strokeWidth={1.6} /><line x1={cx - 5} y1={topY - 17} x2={cx + 5} y2={topY - 17} stroke="#cbd5e1" strokeWidth={1.2} /><circle cx={cx} cy={topY - 25} r={2.2} fill="#ff3b3b" /></g>);
   if (style.roof === "dome") els.push(<path key="dome" d={`M${cx - topW * 0.36},${topY - 2} a${topW * 0.36},${topW * 0.36} 0 0 1 ${topW * 0.72},0 z`} fill={style.accent} fillOpacity={0.6} stroke={style.accent} strokeWidth={1} />);
   if (style.roof === "helipad") els.push(<g key="pad"><ellipse cx={cx} cy={topY - 2} rx={topW * 0.42} ry={topW * 0.17} fill="#1a1f2e" stroke={style.accent} strokeWidth={1.4} /><text x={cx} y={topY} textAnchor="middle" fontSize={9} fontWeight={800} fill="#fff">H</text></g>);

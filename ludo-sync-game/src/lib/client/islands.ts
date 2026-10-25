@@ -3,11 +3,11 @@ import { SEATS, type Seat } from "../ludo/board";
 import { readJSON, writeJSON } from "./storage";
 
 /** How a player's buildings look on the properties they own: their "island". */
-export const BUILDING_THEMES = ["neon", "brownstone", "tropical", "industrial", "glass"] as const;
+export const BUILDING_THEMES = ["neon", "brownstone", "tropical", "industrial", "glass", "castle", "pagoda", "cottage", "hotel", "shop"] as const;
 export type BuildingTheme = (typeof BUILDING_THEMES)[number];
-export const ROOFS = ["flat", "antenna", "dome", "helipad"] as const;
+export const ROOFS = ["flat", "antenna", "dome", "helipad", "pitched", "spire", "garden"] as const;
 export type Roof = (typeof ROOFS)[number];
-export const WINDOWS = ["grid", "stripes", "arched"] as const;
+export const WINDOWS = ["grid", "stripes", "arched", "round", "slit"] as const;
 export type WindowStyle = (typeof WINDOWS)[number];
 
 export const SHAPES = ["block", "round"] as const;
@@ -16,10 +16,15 @@ export const GROUNDS = ["slab", "grass", "sand", "marble", "water"] as const;
 export type Ground = (typeof GROUNDS)[number];
 export const FINISHES = ["auto", "matte", "glossy", "metallic"] as const;
 export type Finish = (typeof FINISHES)[number];
-export const EXTRAS = ["flags", "trees", "lamps", "fence"] as const;
+export const EXTRAS = ["flags", "trees", "lamps", "fence", "balconies", "awning", "solar", "garden"] as const;
 export type Extra = (typeof EXTRAS)[number];
 /** Colour of the pad each building stands on. */
 export const GROUND_COLOURS: Record<Ground, string> = { slab: "#0e1322", grass: "#2f6b3a", sand: "#d9c48f", marble: "#e6e2da", water: "#1c5d86" };
+
+/** What a single development stage (level 1, 2 or 3) can look different from the rest of the island. */
+export const LEVEL_KEYS = ["primary", "accent", "roof", "windows", "sign", "height", "footprint", "shape", "lights", "finish"] as const;
+export type LevelKey = (typeof LEVEL_KEYS)[number];
+export type LevelOverrides = Partial<Record<1 | 2 | 3, Partial<Pick<IslandStyle, LevelKey>>>>;
 
 export interface IslandStyle {
   theme: BuildingTheme;
@@ -46,6 +51,8 @@ export interface IslandStyle {
   finish: Finish;
   /** Colour the lit windows give off; empty means a warm white. */
   lights: string;
+  /** Stage-by-stage differences: a house that grows into a different kind of building. */
+  levels: LevelOverrides;
 }
 
 export type IslandMap = Partial<Record<Seat, IslandStyle>>;
@@ -56,9 +63,40 @@ const hex = (v: unknown, d: string) => (typeof v === "string" && HEX.test(v) ? v
 
 export const DEFAULT_ISLAND: Readonly<IslandStyle> = {
   theme: "neon", primary: "#1e2a4a", accent: "#22d3ee", roof: "antenna", windows: "grid", sign: "", glow: 0.7,
-  height: 1, footprint: 1, shape: "block", ground: "slab", extras: [], finish: "auto", lights: "",
+  height: 1, footprint: 1, shape: "block", ground: "slab", extras: [], finish: "auto", lights: "", levels: {},
 };
 const num = (v: unknown, lo: number, hi: number, d: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+
+const cleanSign = (v: unknown) => (typeof v === "string" ? v.replace(/[^\p{L}\p{N} !&'-]/gu, "").slice(0, 8).toUpperCase() : "");
+
+/** Keeps only the valid stage differences. */
+const sanitizeLevels = (raw: unknown): LevelOverrides => {
+  const out: LevelOverrides = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const lv of [1, 2, 3] as const) {
+    const o = (raw as Record<string, unknown>)[lv];
+    if (!o || typeof o !== "object") continue;
+    const r = o as Record<string, unknown>;
+    const d = DEFAULT_ISLAND;
+    const p: Partial<Pick<IslandStyle, LevelKey>> = {};
+    if (typeof r.primary === "string" && HEX.test(r.primary)) p.primary = r.primary.toLowerCase();
+    if (typeof r.accent === "string" && HEX.test(r.accent)) p.accent = r.accent.toLowerCase();
+    if (ROOFS.includes(r.roof as Roof)) p.roof = r.roof as Roof;
+    if (WINDOWS.includes(r.windows as WindowStyle)) p.windows = r.windows as WindowStyle;
+    if (typeof r.sign === "string") p.sign = cleanSign(r.sign);
+    if (typeof r.height === "number") p.height = num(r.height, 0.6, 1.5, d.height);
+    if (typeof r.footprint === "number") p.footprint = num(r.footprint, 0.7, 1.1, d.footprint);
+    if (SHAPES.includes(r.shape as Shape)) p.shape = r.shape as Shape;
+    if (typeof r.lights === "string") p.lights = r.lights === "" ? "" : hex(r.lights, "");
+    if (FINISHES.includes(r.finish as Finish)) p.finish = r.finish as Finish;
+    if (Object.keys(p).length) out[lv] = p;
+  }
+  return out;
+};
+
+/** The style a building at this development stage is actually built in: the island's, with that stage's own differences laid over it. */
+export const resolveLevel = (style: IslandStyle, level: 0 | 1 | 2 | 3): IslandStyle =>
+  level === 0 || !style.levels[level] ? style : { ...style, ...style.levels[level] };
 
 /** Cleans anything stored or received into a complete, valid island style. */
 export const sanitizeIsland = (raw: unknown): IslandStyle => {
@@ -73,6 +111,7 @@ export const sanitizeIsland = (raw: unknown): IslandStyle => {
     shape: oneOf(r.shape, SHAPES, d.shape), ground: oneOf(r.ground, GROUNDS, d.ground), finish: oneOf(r.finish, FINISHES, d.finish),
     extras: Array.isArray(r.extras) ? EXTRAS.filter(x => (r.extras as unknown[]).includes(x)) : [],
     lights: r.lights === "" ? "" : hex(r.lights, d.lights),
+    levels: sanitizeLevels(r.levels),
   };
 };
 
