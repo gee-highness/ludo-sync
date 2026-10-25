@@ -14,6 +14,30 @@ const PIPS: Record<number, [number, number][]> = {
   5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]],
 };
 
+export type DiceStyle = "neon" | "ivory";
+
+/** An ivory face with dark, softly shaded pips, to match the flat board's dice. */
+const ivoryFace = (value: number): THREE.CanvasTexture => {
+  const N = 192, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d")!;
+  const face = g.createLinearGradient(0, 0, N, N);
+  face.addColorStop(0, "#ffffff"); face.addColorStop(1, "#ebe6da");
+  g.fillStyle = face; g.fillRect(0, 0, N, N);
+  g.strokeStyle = "rgba(120,110,90,.35)"; g.lineWidth = 6; g.strokeRect(3, 3, N - 6, N - 6);
+  const step = 46, r = 14;
+  for (const [x, y] of PIPS[value]) {
+    const cx = N / 2 + x * step, cy = N / 2 + y * step;
+    const pip = g.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 1, cx, cy, r);
+    pip.addColorStop(0, value === 1 ? "#ff6b6b" : "#3b4a6b"); pip.addColorStop(1, value === 1 ? "#b91c1c" : "#10192e");
+    g.fillStyle = pip; g.beginPath(); g.arc(cx, cy, value === 1 ? r * 1.35 : r, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+};
+
 const faceTexture = (value: number, colour: string): THREE.CanvasTexture => {
   const N = 128, c = document.createElement("canvas");
   c.width = c.height = N;
@@ -46,6 +70,8 @@ export class DiceRig {
   private dice: Die[] = [];
   private geo = new RoundedBoxGeometry(SIZE, SIZE, SIZE, 3, 0.07);
   private cache = new Map<string, THREE.CanvasTexture[]>();
+  /** Glowing pips on dark glass for the neon worlds; ivory with dark pips for everything else. */
+  style: DiceStyle = "ivory";
   private fadeFrom = 0;
   private fading = false;
   private opacity = 1;
@@ -57,9 +83,18 @@ export class DiceRig {
   constructor(private parent: THREE.Object3D) {}
 
   private textures(colour: string): THREE.CanvasTexture[] {
-    let t = this.cache.get(colour);
-    if (!t) { t = FACE_VALUE.map(v => faceTexture(v, colour)); this.cache.set(colour, t); }
+    const key = `${this.style}|${this.style === "neon" ? colour : ""}`;
+    let t = this.cache.get(key);
+    if (!t) { t = FACE_VALUE.map(v => (this.style === "neon" ? faceTexture(v, colour) : ivoryFace(v))); this.cache.set(key, t); }
     return t;
+  }
+
+  private get baseOpacity() { return this.style === "neon" ? 0.88 : 1; }
+
+  private materials(tex: THREE.CanvasTexture[]): THREE.MeshStandardMaterial[] {
+    return this.style === "neon"
+      ? tex.map(map => new THREE.MeshStandardMaterial({ color: "#10131f", map, emissive: "#ffffff", emissiveMap: map, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }))
+      : tex.map(map => new THREE.MeshStandardMaterial({ color: "#ffffff", map, roughness: 0.32, metalness: 0, transparent: true, opacity: 1 }));
   }
 
   private clear() {
@@ -74,7 +109,7 @@ export class DiceRig {
     this.fading = false; this.opacity = 1;
     const tex = this.textures(colour);
     values.forEach((value, i) => {
-      const mats = tex.map(map => new THREE.MeshStandardMaterial({ color: "#10131f", map, emissive: "#ffffff", emissiveMap: map, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }));
+      const mats = this.materials(tex);
       const mesh = new THREE.Mesh(this.geo, mats);
       const n = values.length;
       const to = new THREE.Vector3((i - (n - 1) / 2) * 1.5 + (Math.random() - 0.5) * 0.4, SIZE / 2 + 0.07, (Math.random() - 0.5) * 0.8);
@@ -95,7 +130,7 @@ export class DiceRig {
   }
 
   private mesh(tex: THREE.CanvasTexture[]) {
-    const mats = tex.map(map => new THREE.MeshStandardMaterial({ color: "#10131f", map, emissive: "#ffffff", emissiveMap: map, emissiveIntensity: 1.1, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.88 }));
+    const mats = this.materials(tex);
     return { mats, mesh: new THREE.Mesh(this.geo, mats) };
   }
 
@@ -144,7 +179,7 @@ export class DiceRig {
     });
     this.flight = flight; this.flightStart = now;
     this.fading = false; this.opacity = 1;
-    for (const d of this.dice) d.mats.forEach(m => { m.opacity = 0.88; });
+    for (const d of this.dice) d.mats.forEach(m => { m.opacity = this.baseOpacity; });
   }
 
   /** Lets the dice sink away (after the move). */
@@ -209,7 +244,7 @@ export class DiceRig {
     if (this.fading) {
       const k = (now - this.fadeFrom) / 600;
       this.opacity = Math.max(0, 1 - k);
-      for (const d of this.dice) d.mats.forEach(m => { m.opacity = 0.88 * this.opacity; });
+      for (const d of this.dice) d.mats.forEach(m => { m.opacity = this.baseOpacity * this.opacity; });
       if (k >= 1) { this.clear(); this.fading = false; return false; }
       return true;
     }

@@ -44,6 +44,8 @@ export function BuildingShape({ style: island, level, withSign = false }: Props)
   }
 
   const tiers = TIERS[style.theme][level - 1].map(t => ({ w: t.w * style.footprint, h: Math.min(60, t.h * style.height) }));
+  // tall buildings shrink to fit the picture instead of running off the top
+  const fit = Math.min(1, 66 / (tiers.reduce((a, t) => a + t.h, 0) + 24));
   let yb = gy;
   let topW = tiers[0].w, topX = 0, topY = 0;
   tiers.forEach((t, i) => {
@@ -117,7 +119,7 @@ export function BuildingShape({ style: island, level, withSign = false }: Props)
       </g>,
     );
   }
-  return <g>{els}</g>;
+  return <g transform={fit < 1 ? `translate(50 90) scale(${fit.toFixed(3)}) translate(-50 -90)` : undefined}>{els}</g>;
 }
 
 /** The building as a stand-alone picture. */

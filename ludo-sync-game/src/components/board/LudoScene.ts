@@ -20,6 +20,8 @@ import type { MovePreview } from "@/lib/client/settings";
 import { TIER_SPECS, TierGovernor, stepUp, type Tier, type TierSpec } from "@/lib/client/quality";
 import { onCameraReset } from "@/lib/client/cameraView";
 import { ROAD_STEP, ROAD_Y, buildRoadBoard, skyGradient, type RoadBoard } from "./roadboard3d";
+import { FOG_COLOUR, buildScenery3D, type Scenery3D } from "./scenery3d";
+import { buildIslands3D, type Island3D } from "./island3d";
 import { flyDice } from "@/lib/client/diceFlight";
 import { flickFrom, isThrow, setPendingThrow, takePendingThrow, toThrow, type PointerSample, type ThrowInput } from "@/lib/client/throw";
 
@@ -41,7 +43,7 @@ export interface SceneInput {
   /** Paint the road board, as on the flat board, instead of the model's plain tiles. */
   road: boolean;
   /** The sky behind the road board, and how much to darken the light for evening and night. */
-  sky?: { top: string; bottom: string; dim: number };
+  sky?: { top: string; bottom: string; dim: number; phase?: "day" | "dusk" | "night" };
   movePreview: MovePreview;
   /** Dark tiles with glowing outlines instead of the pale classic look. */
   neon: boolean;
@@ -197,6 +199,8 @@ export class LudoScene {
   private neonBoard: NeonBoard | null = null;
   private neonOn = false;
   private roadBoard: RoadBoard | null = null;
+  private country: Scenery3D | null = null;
+  private islands3d: Island3D | null = null;
   private roadOn = false;
   private skyKey = "";
   private classicParts: THREE.Object3D[] = [];
@@ -691,6 +695,10 @@ export class LudoScene {
     this.roadOn = on;
     if (on && !this.roadBoard) { this.roadBoard = buildRoadBoard(this.high); this.world.add(this.roadBoard.group); }
     if (this.roadBoard) { this.roadBoard.group.visible = on; if (on) this.roadBoard.paint(input.playing); }
+    if (on && !this.country) { this.country = buildScenery3D(this.high, 5, this.opts.quality === "lite"); this.scene.add(this.country.group); }
+    if (on && !this.islands3d && this.opts.quality !== "lite" && this.opts.quality !== "low") { this.islands3d = buildIslands3D(); this.world.add(this.islands3d.group); }
+    if (this.islands3d) { this.islands3d.group.visible = on; if (on) this.islands3d.sync(input.islands, input.playing); }
+    if (this.country) { this.country.group.visible = on; if (on) this.country.setPhase(input.sky?.phase ?? "day"); }
     const classic = !on;
     this.classicParts.forEach(o => { o.visible = classic; });
     this.yardPlates.forEach(p => { if (p) p.visible = classic; });
@@ -703,18 +711,20 @@ export class LudoScene {
         const next = skyGradient(sky.top, sky.bottom);
         if (next) { this.skyTex?.dispose(); this.skyTex = next; this.scene.background = next; this.skyKey = key; }
       }
+      if (this.country) this.scene.fog = new THREE.Fog(FOG_COLOUR[sky.phase ?? "day"], 38, 105);
       this.hemi.color.setHex(0xffffff); this.hemi.groundColor.setHex(0x8899bb);
       this.hemi.intensity = 1.7 * (1 - sky.dim * 1.1);
       this.sunLight.color.setHex(0xffffff); this.sunLight.intensity = 1.5 * (1 - sky.dim * 1.2);
     } else if (this.skyKey) {
       this.skyKey = "";
-      if (!input.look) { this.skyTex?.dispose(); this.skyTex = null; this.scene.background = null; this.hemi.intensity = 1.7; this.sunLight.intensity = 1.5; }
+      if (!input.look) { this.skyTex?.dispose(); this.skyTex = null; this.scene.background = null; this.scene.fog = null; this.hemi.intensity = 1.7; this.sunLight.intensity = 1.5; }
     }
   }
 
   /** Builds or removes the neon city, the dressed board, and the night lighting to match the look setting. */
   private applyLook(input: SceneInput) {
     this.applyRoad(input);
+    this.dice.style = input.look ? "neon" : "ivory";
     if (input.look && this.city && this.cityTheme !== input.theme) {
       this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
       this.skyTex?.dispose(); this.skyTex = null;
@@ -1058,6 +1068,14 @@ export class LudoScene {
         }
         heading.rotation.y = obj.yaw ?? 0;
         spinY = 0;
+        // the wheels roll as far as the vehicle travels
+        const wl = obj.built?.wheels;
+        if (wl?.length && tw && tw.kind !== "slide") {
+          const speed = tw.from.distanceTo(tw.to) / Math.max(0.05, tw.dur / 1000);
+          const rad = Math.max(0.02, (obj.built?.wheelRadius ?? 0.2) * TOKEN_SCALE * obj.size);
+          const turn = (speed * dt) / rad;
+          for (const w of wl) w.rotation.x -= turn;
+        }
       }
       obj.holder.rotation.y = spinY;
       obj.holder.rotation.z = tilt;

@@ -49,7 +49,7 @@ export default function Board3D(props: Board3DProps) {
     tokens: placeTokens(seatTokens(state), moving),
     playing: new Set(state.players.map(p => p.seat)),
     activeSeat: state.phase === "over" ? null : state.players[state.turn].seat, winnerSeat: state.winner,
-    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, road: settings.boardTheme === "road", sky: { top: SKIES[phase].top, bottom: SKIES[phase].bottom, dim: SKIES[phase].dim }, neon: isWorld(settings.boardTheme), look: isWorld(settings.boardTheme), theme: settings.boardTheme, tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
+    interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, designs: resolved, movePreview: settings.movePreview, road: settings.boardTheme === "road", sky: { top: SKIES[phase].top, bottom: SKIES[phase].bottom, dim: SKIES[phase].dim, phase }, neon: isWorld(settings.boardTheme), look: isWorld(settings.boardTheme), theme: settings.boardTheme, tycoon: state.tycoon ?? null, islands, enterBonus: tuningOf(state.rules).enterBonus,
     rollKey, rollable: !!props.rollable, rolled: state.rolled, rollMs: Math.round(hopMs * 1100 / 170), hold: state.phase === "decide", insets: { top: insTop, right: insRight, bottom: insBottom, left: insLeft },
   }), [state, interactiveSeat, options, viewSeat, symbols, hints, reduceMotion, hopMs, camera, resolved, moving, settings.movePreview, settings.boardTheme, islands, rollKey, props.rollable, phase, insTop, insRight, insBottom, insLeft]);
   const inputRef = useRef(input);

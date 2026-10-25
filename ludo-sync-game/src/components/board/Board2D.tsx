@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { GROUP_COLORS, SQUARES } from "@/lib/ludo/tycoon";
 import {
-  FINISH, RING, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat,
+  FINISH, RING, SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, lotOnRight, pointOf, yardCentre, type Seat,
 } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { previewPath } from "@/lib/client/preview";
@@ -367,6 +367,53 @@ export default function Board2D({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tycoon, playing, rotation, neon, rich, road, paletteVersion, islands, pal]);
 
+  /**
+   * A road-board yard: the player's island (their own buildings on a lawn) on the far side, and a car park along the edge that
+   * touches the road, where their vehicles wait until they are driven out.
+   */
+  const roadYard = (seat: Seat, x0: number, y0: number, active: boolean) => {
+    const right = lotOnRight(seat);
+    const c = yardCentre(seat);
+    const lotX0 = right ? c.x + 0.3 : c.x - 2.75;
+    const lawnX0 = right ? x0 + 0.3 : c.x - 0.15;
+    const lawnW = right ? lotX0 - 0.15 - lawnX0 : x0 + 5.6 - lawnX0;
+    const style = islandFor(seat, islands, SEAT_INFO[seat].main);
+    const levels: (1 | 2 | 3)[] = [3, 2, 1, 3];
+    const mid = lawnX0 + lawnW / 2;
+    // a tidy two by two block with room between the buildings, a path down the middle and trees at the edges
+    const spots = [0, 1, 2, 3].map(i => ({ x: mid + (i % 2 ? 0.78 : -0.78), y: y0 + (i < 2 ? 2.35 : 4.55), level: levels[i] }));
+    const trees = [[mid, y0 + 0.85], [mid, y0 + 3.2], [mid, y0 + 5.2], [lawnX0 + 0.25, y0 + 3.3], [lawnX0 + lawnW - 0.25, y0 + 3.3]];
+    return (
+      <g>
+        <rect x={lawnX0} y={y0 + 0.3} width={lawnW} height={5.3} rx={0.45} fill={active ? "url(#rd-lawn)" : "#bdb4a6"} stroke={active ? SEAT_INFO[seat].home : "#000"} strokeOpacity={active ? 0.55 : 0.18} strokeWidth={active ? 0.09 : 0.04} />
+        {active && (
+          <g aria-hidden>
+            <path d={`M ${mid} ${y0 + 0.55} L ${mid} ${y0 + 5.4}`} stroke="#e9dfc4" strokeOpacity={0.6} strokeWidth={0.2} strokeLinecap="round" />
+            {trees.map(([tx, ty], i) => (
+              <g key={`t${i}`}>
+                <ellipse cx={tx} cy={ty + 0.2} rx={0.26} ry={0.1} fill="#000" fillOpacity={0.2} />
+                <rect x={tx - 0.035} y={ty} width={0.07} height={0.22} fill="#6b4a2b" />
+                <circle cx={tx} cy={ty - 0.1} r={0.25} fill="#2f7d3a" />
+                <circle cx={tx - 0.07} cy={ty - 0.17} r={0.13} fill="#4aa857" />
+              </g>
+            ))}
+            {spots.map((sp, i) => (
+              <g key={`b${i}`} transform={`translate(${sp.x} ${sp.y}) rotate(${-rotation}) scale(0.0195) translate(-50 -90)`}>
+                <BuildingShape style={style} level={sp.level} />
+              </g>
+            ))}
+          </g>
+        )}
+        <rect x={lotX0} y={c.y - 1.78} width={2.45} height={3.56} rx={0.22} fill={active ? "url(#rd-asphalt)" : "#8b8f98"} stroke="#fff" strokeOpacity={active ? 0.85 : 0.3} strokeWidth={0.07} />
+        <rect x={right ? lotX0 + 2.45 - 0.07 : lotX0} y={c.y - 1.78} width={0.07} height={3.56} fill="#f8fafc" fillOpacity={0.9} />
+        <g transform={`translate(${right ? lotX0 + 1.22 : lotX0 + 1.22} ${c.y}) rotate(${-rotation})`} aria-hidden>
+          <rect x={-0.17} y={-0.17} width={0.34} height={0.34} rx={0.06} fill="#1d4ed8" stroke="#fff" strokeWidth={0.03} />
+          <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.26} fontWeight={900} fill="#fff">P</text>
+        </g>
+      </g>
+    );
+  };
+
   const yards = SEATS.map(seat => {
     const info = SEAT_INFO[seat];
     const x0 = seat === 1 || seat === 0 ? -0.5 : 8.5;
@@ -390,8 +437,9 @@ export default function Board2D({
           </g>
         ) : <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />}
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
-        {rich && <rect x={x0 + 0.85} y={y0 + 0.95} width={4.2} height={4.2} rx={0.7} fill="#2a1a0a" fillOpacity={0.22} />}
-        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={rich ? 0.7 : 0.5} fill={road ? "url(#rd-asphalt)" : rich ? "url(#sr-nest)" : pal.panel} fillOpacity={neon ? 0.95 : rich ? (active ? 1 : 0.6) : active ? 0.88 : 0.35} />
+        {road && roadYard(seat, x0, y0, active)}
+        {rich && !road && <rect x={x0 + 0.85} y={y0 + 0.95} width={4.2} height={4.2} rx={0.7} fill="#2a1a0a" fillOpacity={0.22} />}
+        {!road && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={rich ? 0.7 : 0.5} fill={rich ? "url(#sr-nest)" : pal.panel} fillOpacity={neon ? 0.95 : rich ? (active ? 1 : 0.6) : active ? 0.88 : 0.35} />}
         {neon && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.7} strokeWidth={0.04} />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
@@ -544,6 +592,7 @@ export default function Board2D({
           <>
             <linearGradient id="rd-asphalt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#4a4f59" /><stop offset="1" stopColor="#383c44" /></linearGradient>
             <linearGradient id="rd-frame" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#9aa1ab" /><stop offset="0.5" stopColor="#c5cad2" /><stop offset="1" stopColor="#7d848e" /></linearGradient>
+            <linearGradient id="rd-lawn" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#8fd18f" /><stop offset="1" stopColor="#5fa95f" /></linearGradient>
             <radialGradient id="rd-grass" cx="0.5" cy="0.45" r="0.8"><stop offset="0" stopColor="#8fd18f" /><stop offset="1" stopColor="#5aa05a" /></radialGradient>
           </>
         )}

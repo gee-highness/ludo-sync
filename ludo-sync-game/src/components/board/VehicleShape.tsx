@@ -26,6 +26,9 @@ interface Spec {
   rider?: { y: number; handlebar: number };
   /** How far the nose reaches, for the headlight beam. */
   nose: number;
+  /** Wing mirrors: how far out they stand and where, and a crease down the bonnet from this y to the nose. */
+  mirrors?: { x: number; y: number };
+  hood?: number;
 }
 
 const SPECS: Record<Exclude<VehicleId, "none">, Spec> = {
@@ -34,49 +37,49 @@ const SPECS: Record<Exclude<VehicleId, "none">, Spec> = {
     wheels: [[-0.225, -0.24, 0.07, 0.17], [0.225, -0.24, 0.07, 0.17], [-0.225, 0.22, 0.07, 0.17], [0.225, 0.22, 0.07, 0.17]],
     glass: [poly([-0.15, -0.15], [0.15, -0.15], [0.12, -0.04], [-0.12, -0.04]), poly([-0.12, 0.2], [0.12, 0.2], [0.15, 0.3], [-0.15, 0.3])],
     panels: [{ d: rr(-0.13, -0.03, 0.26, 0.22, 0.05), tone: "light", alpha: 0.28 }],
-    roof: [0, 0.08], front: -0.355, rear: 0.355, lx: 0.13, nose: -0.38,
+    roof: [0, 0.08], front: -0.355, rear: 0.355, lx: 0.13, nose: -0.38, mirrors: { x: 0.2, y: -0.12 }, hood: -0.15,
   },
   sports: {
     body: rr(-0.19, -0.41, 0.38, 0.82, 0.18),
     wheels: [[-0.215, -0.26, 0.07, 0.16], [0.215, -0.26, 0.07, 0.16], [-0.22, 0.24, 0.08, 0.19], [0.22, 0.24, 0.08, 0.19]],
     glass: [poly([-0.12, -0.13], [0.12, -0.13], [0.09, -0.03], [-0.09, -0.03]), poly([-0.1, 0.14], [0.1, 0.14], [0.12, 0.2], [-0.12, 0.2])],
     panels: [{ d: rr(-0.035, -0.41, 0.07, 0.82, 0.03), tone: "light", alpha: 0.55 }, { d: rr(-0.1, -0.02, 0.2, 0.15, 0.04), tone: "light", alpha: 0.2 }],
-    roof: [0, 0.05], front: -0.385, rear: 0.385, lx: 0.12, nose: -0.41,
+    roof: [0, 0.05], front: -0.385, rear: 0.385, lx: 0.12, nose: -0.41, mirrors: { x: 0.19, y: -0.1 }, hood: -0.13,
   },
   taxi: {
     body: rr(-0.2, -0.38, 0.4, 0.76, 0.12),
     wheels: [[-0.225, -0.24, 0.07, 0.17], [0.225, -0.24, 0.07, 0.17], [-0.225, 0.22, 0.07, 0.17], [0.225, 0.22, 0.07, 0.17]],
     glass: [poly([-0.15, -0.15], [0.15, -0.15], [0.12, -0.04], [-0.12, -0.04]), poly([-0.12, 0.2], [0.12, 0.2], [0.15, 0.3], [-0.15, 0.3])],
     panels: [{ d: rr(-0.13, -0.03, 0.26, 0.22, 0.05), tone: "light", alpha: 0.3 }, { d: rr(-0.07, 0.03, 0.14, 0.07, 0.02), tone: "light", alpha: 0.95 }],
-    roof: [0, 0.08], front: -0.355, rear: 0.355, lx: 0.13, nose: -0.38,
+    roof: [0, 0.08], front: -0.355, rear: 0.355, lx: 0.13, nose: -0.38, mirrors: { x: 0.2, y: -0.12 }, hood: -0.15,
   },
   suv: {
     body: rr(-0.23, -0.38, 0.46, 0.76, 0.1),
     wheels: [[-0.255, -0.25, 0.08, 0.19], [0.255, -0.25, 0.08, 0.19], [-0.255, 0.22, 0.08, 0.19], [0.255, 0.22, 0.08, 0.19]],
     glass: [poly([-0.17, -0.17], [0.17, -0.17], [0.15, -0.07], [-0.15, -0.07]), poly([-0.15, 0.27], [0.15, 0.27], [0.17, 0.33], [-0.17, 0.33])],
     panels: [{ d: rr(-0.16, -0.05, 0.32, 0.3, 0.04), tone: "light", alpha: 0.22 }],
-    roof: [0, 0.1], front: -0.355, rear: 0.355, lx: 0.15, nose: -0.38,
+    roof: [0, 0.1], front: -0.355, rear: 0.355, lx: 0.15, nose: -0.38, mirrors: { x: 0.23, y: -0.16 }, hood: -0.17,
   },
   van: {
     body: rr(-0.22, -0.4, 0.44, 0.8, 0.08),
     wheels: [[-0.245, -0.25, 0.07, 0.17], [0.245, -0.25, 0.07, 0.17], [-0.245, 0.24, 0.07, 0.17], [0.245, 0.24, 0.07, 0.17]],
     glass: [poly([-0.17, -0.31], [0.17, -0.31], [0.15, -0.16], [-0.15, -0.16])],
     panels: [{ d: rr(-0.17, -0.1, 0.34, 0.46, 0.03), tone: "light", alpha: 0.18 }, { d: rr(-0.005, -0.1, 0.01, 0.46, 0), tone: "dark", alpha: 0.35 }],
-    roof: [0, 0.1], front: -0.375, rear: 0.375, lx: 0.15, nose: -0.4,
+    roof: [0, 0.1], front: -0.375, rear: 0.375, lx: 0.15, nose: -0.4, mirrors: { x: 0.22, y: -0.3 },
   },
   truck: {
     body: `${rr(-0.2, -0.42, 0.4, 0.3, 0.09)}${rr(-0.23, -0.1, 0.46, 0.52, 0.04)}`,
     wheels: [[-0.25, -0.3, 0.07, 0.16], [0.25, -0.3, 0.07, 0.16], [-0.26, 0.12, 0.08, 0.16], [0.26, 0.12, 0.08, 0.16], [-0.26, 0.31, 0.08, 0.16], [0.26, 0.31, 0.08, 0.16]],
     glass: [poly([-0.15, -0.34], [0.15, -0.34], [0.13, -0.22], [-0.13, -0.22])],
     panels: [{ d: rr(-0.18, -0.07, 0.36, 0.46, 0.03), tone: "dark", alpha: 0.16 }, { d: rr(-0.18, -0.07, 0.36, 0.06, 0.02), tone: "light", alpha: 0.3 }],
-    roof: [0, -0.2], front: -0.395, rear: 0.4, lx: 0.14, nose: -0.42,
+    roof: [0, -0.2], front: -0.395, rear: 0.4, lx: 0.14, nose: -0.42, mirrors: { x: 0.21, y: -0.3 },
   },
   bus: {
     body: rr(-0.2, -0.43, 0.4, 0.86, 0.07),
     wheels: [[-0.225, -0.28, 0.07, 0.17], [0.225, -0.28, 0.07, 0.17], [-0.225, 0.26, 0.07, 0.17], [0.225, 0.26, 0.07, 0.17]],
     glass: [poly([-0.16, -0.38], [0.16, -0.38], [0.15, -0.3], [-0.15, -0.3])],
     panels: [{ d: rr(-0.13, -0.2, 0.26, 0.14, 0.03), tone: "light", alpha: 0.35 }, { d: rr(-0.13, 0.02, 0.26, 0.14, 0.03), tone: "light", alpha: 0.35 }, { d: rr(-0.13, 0.24, 0.26, 0.14, 0.03), tone: "light", alpha: 0.35 }],
-    roof: [0, 0], front: -0.405, rear: 0.405, lx: 0.14, nose: -0.43,
+    roof: [0, 0], front: -0.405, rear: 0.405, lx: 0.14, nose: -0.43, mirrors: { x: 0.2, y: -0.36 },
   },
   motorbike: {
     body: `${rr(-0.065, -0.3, 0.13, 0.62, 0.065)}${rr(-0.2, -0.2, 0.4, 0.05, 0.02)}`,
@@ -144,6 +147,8 @@ export function VehicleShape({ design, id }: { design: ResolvedDesign; id: strin
   const fill = d.pattern === "gradient" ? `url(#vg-${id})` : d.primary;
   const stripe = d.pattern === "stripes";
   const rider = spec.rider;
+  const halfW = Math.max(...spec.wheels.map(w => Math.abs(w[0]) + w[2] / 2), rider ? 0.2 : 0.18);
+  const halfL = Math.max(...spec.wheels.map(w => Math.abs(w[1]) + w[3] / 2));
   return (
     <g aria-hidden>
       <defs>
@@ -151,6 +156,7 @@ export function VehicleShape({ design, id }: { design: ResolvedDesign; id: strin
           <stop offset="0" stopColor={dark} /><stop offset="0.35" stopColor={light} /><stop offset="0.55" stopColor={d.primary} /><stop offset="1" stopColor={dark} />
         </linearGradient>
         <clipPath id={`vc-${id}`}><path d={spec.body} /></clipPath>
+        {spec.glass.map((g, i) => <clipPath key={i} id={`vc-${id}-g${i}`}><path d={g} /></clipPath>)}
         <linearGradient id={`vb-${id}`} x1="0" y1="1" x2="0" y2="0"><stop offset="0" stopColor="#fff7c2" stopOpacity={0} /><stop offset="1" stopColor="#fff7c2" stopOpacity={0.55} /></linearGradient>
         {d.glow && <radialGradient id={`vh-${id}`}><stop offset="0.3" stopColor={d.glow} stopOpacity={0.9 * d.glowStrength} /><stop offset="1" stopColor={d.glow} stopOpacity={0} /></radialGradient>}
       </defs>
@@ -166,7 +172,7 @@ export function VehicleShape({ design, id }: { design: ResolvedDesign; id: strin
           ) : <path d={poly([0, spec.front], [-0.14, spec.nose - 0.36], [0.14, spec.nose - 0.36])} fill={`url(#vb-${id})`} />}
         </g>
       )}
-      {d.base === "shadow" && <ellipse cx={0.04} cy={0.05} rx={0.27} ry={0.42} fill="#000" fillOpacity={0.22} />}
+      {d.base === "shadow" && <ellipse cx={0.025} cy={0.035} rx={halfW - 0.025} ry={halfL - 0.02} fill="#000" fillOpacity={0.22} />}
       {d.base === "ring" && <ellipse rx={0.4} ry={0.5} fill="none" stroke={d.secondary} strokeWidth={0.05} strokeOpacity={0.9} />}
       {d.base === "plate" && <rect x={-0.34} y={-0.46} width={0.68} height={0.92} rx={0.12} fill={d.secondary} fillOpacity={0.55} stroke={dark} strokeWidth={0.02} />}
       {/* wheels */}
@@ -191,13 +197,34 @@ export function VehicleShape({ design, id }: { design: ResolvedDesign; id: strin
         </g>
         {strokeW > 0 && <path d={spec.body} fill="none" stroke={outline} strokeOpacity={0.9} strokeWidth={strokeW} strokeLinejoin="round" />}
       </g>
-      {spec.glass.map((g, i) => <g key={i}><path d={g} fill="#0e1a2b" fillOpacity={0.92} /><path d={g} fill="#bfe3ff" fillOpacity={0.22} /></g>)}
+      {spec.glass.map((g, i) => (
+        <g key={i}>
+          <path d={g} fill="#10223a" fillOpacity={0.94} />
+          <path d={g} fill="#bfe3ff" fillOpacity={0.2} />
+          <path d={g} fill="none" stroke="#e6f4ff" strokeOpacity={0.5} strokeWidth={0.012} strokeLinejoin="round" />
+          <path d={g} fill="#fff" fillOpacity={0.14} clipPath={`url(#vc-${id}-g${i})`} />
+        </g>
+      ))}
+      {spec.mirrors && [-1, 1].map(s => (
+        <g key={`m${s}`}>
+          <ellipse cx={s * spec.mirrors!.x} cy={spec.mirrors!.y} rx={0.034} ry={0.022} fill={dark} stroke="#00000066" strokeWidth={0.01} transform={`rotate(${s * 18} ${s * spec.mirrors!.x} ${spec.mirrors!.y})`} />
+          <ellipse cx={s * (spec.mirrors!.x + 0.006)} cy={spec.mirrors!.y - 0.004} rx={0.016} ry={0.009} fill="#cfe8ff" fillOpacity={0.55} />
+        </g>
+      ))}
+      {spec.hood !== undefined && [-1, 1].map(s => <line key={`h${s}`} x1={s * 0.075} y1={spec.hood} x2={s * 0.085} y2={spec.nose + 0.04} stroke="#000" strokeOpacity={0.22} strokeWidth={0.012} strokeLinecap="round" />)}
       {rider && (
         <g>
+          {/* arms to the bars, shoulders, then the helmet with its visor and a stripe */}
+          {[-1, 1].map(sx => <path key={`a${sx}`} d={`M${sx * 0.075} ${rider.y + 0.035}Q${sx * 0.15} ${(rider.y + rider.handlebar) / 2} ${sx * 0.18} ${rider.handlebar}`} fill="none" stroke={dark} strokeWidth={0.05} strokeLinecap="round" />)}
+          {[-1, 1].map(sx => <circle key={`g${sx}`} cx={sx * 0.185} cy={rider.handlebar} r={0.024} fill="#1f2937" />)}
           <rect x={-0.2} y={rider.handlebar - 0.02} width={0.4} height={0.04} rx={0.02} fill="#1f2937" />
-          <ellipse cx={0} cy={rider.y + 0.06} rx={0.15} ry={0.085} fill={dark} stroke="#00000055" strokeWidth={0.015} />
-          <circle cx={0} cy={rider.y} r={0.085} fill={d.secondary} stroke="#00000066" strokeWidth={0.02} />
-          <ellipse cx={-0.022} cy={rider.y - 0.03} rx={0.025} ry={0.015} fill="#fff" fillOpacity={0.6} />
+          {[-1, 1].map(sx => <rect key={`l${sx}`} x={sx * 0.11 - 0.025} y={rider.y + 0.02} width={0.05} height={0.15} rx={0.025} fill={dark} stroke="#00000044" strokeWidth={0.01} />)}
+          <ellipse cx={0} cy={rider.y + 0.06} rx={0.15} ry={0.09} fill={dark} stroke="#00000066" strokeWidth={0.015} />
+          <ellipse cx={0} cy={rider.y + 0.04} rx={0.09} ry={0.05} fill="#fff" fillOpacity={0.1} />
+          <circle cx={0} cy={rider.y} r={0.088} fill={d.secondary} stroke="#00000077" strokeWidth={0.02} />
+          <path d={`M-0.06 ${rider.y - 0.03}Q0 ${rider.y - 0.075} 0.06 ${rider.y - 0.03}Q0 ${rider.y - 0.012} -0.06 ${rider.y - 0.03}Z`} fill="#10223a" fillOpacity={0.9} />
+          <rect x={-0.012} y={rider.y - 0.085} width={0.024} height={0.17} rx={0.008} fill="#fff" fillOpacity={0.35} />
+          <ellipse cx={-0.03} cy={rider.y + 0.025} rx={0.026} ry={0.014} fill="#fff" fillOpacity={0.5} />
         </g>
       )}
       {d.accessory !== "none" && <Accessory kind={d.accessory} at={spec.roof} d={d} spec={spec} />}

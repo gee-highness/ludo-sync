@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, pointOf, type Seat } from "@/lib/ludo/board";
+import { SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, lotOnRight, pointOf, yardCentre, type Seat } from "@/lib/ludo/board";
 
 /** How far the middle of the board stands above the road, and so how high a finished vehicle sits. */
 export const ROAD_STEP = 0.24;
@@ -57,12 +57,26 @@ export const paintRoadBoard = (g: CanvasRenderingContext2D, size: number, playin
     } else g.fillStyle = INACTIVE_YARD;
     rr(g, x0, y0, 5.9, 5.9, 0.55); g.fill();
     g.strokeStyle = "rgba(255,255,255,.45)"; g.lineWidth = 0.07; rr(g, x0 + 0.08, y0 + 0.08, 5.74, 5.74, 0.48); g.stroke();
-    const lot = g.createLinearGradient(0, y0 + 0.9, 0, y0 + 5.1);
+    // the player's island: a lawn for their buildings, and a car park along the edge that touches the road
+    const right = lotOnRight(seat), c = yardCentre(seat);
+    const lotX0 = right ? c.x + 0.3 : c.x - 2.75;
+    const lawnX0 = right ? x0 + 0.3 : c.x - 0.15;
+    const lawnW = right ? lotX0 - 0.15 - lawnX0 : x0 + 5.6 - lawnX0;
+    const lawn = g.createLinearGradient(0, y0 + 0.3, 0, y0 + 5.6);
+    lawn.addColorStop(0, on ? "#8fd18f" : "#c8c0b2"); lawn.addColorStop(1, on ? "#5fa95f" : "#b3aa9b");
+    g.fillStyle = lawn; rr(g, lawnX0, y0 + 0.3, lawnW, 5.3, 0.35); g.fill();
+    g.strokeStyle = "rgba(0,0,0,.18)"; g.lineWidth = 0.04; g.stroke();
+    const lot = g.createLinearGradient(0, c.y - 1.78, 0, c.y + 1.78);
     lot.addColorStop(0, on ? "#4a4f59" : "#6b6f78"); lot.addColorStop(1, on ? "#383c44" : "#555962");
-    g.fillStyle = lot; rr(g, x0 + 0.9, y0 + 0.9, 4.2, 4.2, 0.7); g.fill();
+    g.fillStyle = lot; rr(g, lotX0, c.y - 1.78, 2.45, 3.56, 0.22); g.fill();
+    g.strokeStyle = `rgba(255,255,255,${on ? 0.85 : 0.3})`; g.lineWidth = 0.07; g.stroke();
+    g.fillStyle = "rgba(248,250,252,.9)"; g.fillRect(right ? lotX0 + 2.45 - 0.07 : lotX0, c.y - 1.78, 0.07, 3.56);
     g.strokeStyle = `rgba(255,255,255,${on ? 0.75 : 0.3})`; g.lineWidth = 0.05; g.setLineDash([0.18, 0.1]);
     for (let i = 0; i < 4; i++) { const p = pointOf(seat, i, YARD); rr(g, p.x - 0.5, p.y - 0.58, 1, 1.16, 0.08); g.stroke(); }
     g.setLineDash([]);
+    g.fillStyle = "#1d4ed8"; rr(g, lotX0 + 1.05, c.y - 0.17, 0.34, 0.34, 0.06); g.fill();
+    g.strokeStyle = "#fff"; g.lineWidth = 0.03; g.stroke();
+    g.fillStyle = "#fff"; g.font = "900 0.26px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("P", lotX0 + 1.22, c.y + 0.02);
   }
 
   // the road: every square of the track and the coloured lane up to the middle

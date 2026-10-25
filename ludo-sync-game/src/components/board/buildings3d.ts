@@ -103,7 +103,12 @@ const textTexture = (text: string, accent: string, glow: number, big = false) =>
   const c = document.createElement("canvas");
   c.width = 256; c.height = big ? 256 : 96;
   const g = c.getContext("2d")!;
-  g.font = `800 ${big ? 150 : 58}px system-ui, sans-serif`;
+  let px = big ? 150 : 58;
+  g.font = `800 ${px}px system-ui, sans-serif`;
+  // long names shrink to fit inside the sign's frame
+  const room = c.width - 34;
+  const wide = g.measureText(text).width;
+  if (wide > room) { px = Math.floor((px * room) / wide); g.font = `800 ${px}px system-ui, sans-serif`; }
   g.textAlign = "center"; g.textBaseline = "middle";
   g.fillStyle = "rgba(6,10,24,.82)"; g.fillRect(0, 0, c.width, c.height);
   g.strokeStyle = accent; g.lineWidth = 6; g.strokeRect(5, 5, c.width - 10, c.height - 10);
