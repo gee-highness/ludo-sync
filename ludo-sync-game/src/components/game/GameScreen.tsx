@@ -3,7 +3,7 @@
 import { isWorld } from "@/lib/client/themes";
 import {
   AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, HStack,
-  IconButton, Text, VStack, useDisclosure, useMediaQuery,
+  IconButton, Text, VStack, useDisclosure, useMediaQuery, useToast,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, QuestionIcon, SettingsIcon, InfoIcon } from "@chakra-ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -18,14 +18,21 @@ import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { useSettings, updateSettings } from "@/lib/client/settings";
 import { getDesigns } from "@/lib/client/pieces";
+import { describeLastMove, lastMoveOf, nextSeat, type LastMove } from "@/lib/client/lastMove";
 import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/device";
-import { recordGame } from "@/lib/client/stats";
+import { loadStats, recordGame } from "@/lib/client/stats";
+import { newlyUnlocked } from "@/lib/client/achievements";
+import { sharePhoto } from "@/lib/client/photo";
+import { dateKey, recordDaily } from "@/lib/client/daily";
+import { FloatingReactions, type FloatingReaction } from "./FloatingReactions";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
 import { useLeaveGuard } from "@/hooks/useLeaveGuard";
 import { usePalette } from "@/lib/client/palette";
 import { setPendingThrow, type ThrowInput } from "@/lib/client/throw";
 import BoardView from "../board/BoardView";
+import Scenery from "../board/Scenery";
+import { SKIES, resolvePhase } from "@/lib/client/scenery";
 import { resetCameraView } from "@/lib/client/cameraView";
 import { Dice } from "../board/Dice";
 import { HowToPlay } from "./HowToPlay";
@@ -64,6 +71,10 @@ export interface GameScreenProps {
   viewSeat?: Seat;
   /** Shown in the header, such as a room code. */
   title?: string;
+  /** Reactions from other players, floated over the board for a moment. */
+  reactions?: FloatingReaction[];
+  /** Marks the game as today's daily challenge when it finishes. */
+  daily?: boolean;
 }
 
 const MAX_LOG = 120;
@@ -84,6 +95,19 @@ export default function GameScreen(props: GameScreenProps) {
   const [choice, setChoice] = useState<number | null>(null);
   const [bonus, setBonus] = useState<string | null>(null);
   const [banner, setBanner] = useState<BannerInfo | null>(null);
+  const [lastMove, setLastMove] = useState<LastMove | null>(null);
+  const [canReplay, setCanReplay] = useState(false);
+  const replayRef = useRef<{ before: GameState; frame: Frame } | null>(null);
+  const replaying = useRef(false);
+  const shownRef = useRef<GameState>(state);
+  const toast = useToast();
+  const [streak, setStreak] = useState(0);
+  // the hour of the day, refreshed every few minutes, picks the sky when the time is set to auto
+  const [hour, setHour] = useState(() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; });
+  useEffect(() => {
+    const t = setInterval(() => { const d = new Date(); setHour(d.getHours() + d.getMinutes() / 60); }, 5 * 60_000);
+    return () => clearInterval(t);
+  }, []);
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [short] = useMediaQuery("(max-height: 560px)");
   const bannerKey = useRef(0);
@@ -127,6 +151,11 @@ export default function GameScreen(props: GameScreenProps) {
     window.addEventListener("resize", measure);
     return () => { ro.disconnect(); window.removeEventListener("resize", measure); };
   }, [immersive, wide, short]);
+
+  const phase = resolvePhase(settings.timeOfDay, hour);
+  const showScenery = !immersive && settings.scenery;
+  const seatList = useMemo(() => state.players.map(p => p.seat), [state.players]);
+  useEffect(() => { sound.setRain(showScenery && settings.weather === "rain"); }, [showScenery, settings.weather, settings.sound]);
 
   useWakeLock(settings.keepAwake && (state.phase !== "over" || !!props.guardUnload));
 
@@ -186,7 +215,10 @@ export default function GameScreen(props: GameScreenProps) {
   }, [later]);
 
   const onFrameStart = useCallback((frame: Frame) => {
-    setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
+    const again = replaying.current;
+    if (!again) setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
+    if (frame.events.some(e => e.type === "move")) { if (!again) replayRef.current = { before: shownRef.current, frame }; setLastMove(null); setCanReplay(false); }
+    if (frame.events.some(e => e.type === "roll")) setLastMove(null);
     frame.events.forEach((e: GameEvent) => {
       switch (e.type) {
         case "roll": sound.play("dice"); buzz("tap"); setBonus(null); break;
@@ -205,7 +237,10 @@ export default function GameScreen(props: GameScreenProps) {
           if (e.other !== undefined) addFloater(e.other, `${e.amount < 0 ? "+" : "-"}$${Math.abs(e.amount)}`, e.amount < 0 ? "gain" : "loss");
           break;
         }
-        case "capture": if (mine.current.includes(e.seat)) captures.current += 1; break;
+        case "capture":
+          if (mine.current.includes(e.seat)) captures.current += 1;
+          showBanner(`${frame.state.players.find(p => p.seat === e.victim)?.name ?? "A token"} was sent home`, "capture");
+          break;
       }
     });
     if (frame.state.seq === 0) {
@@ -230,6 +265,9 @@ export default function GameScreen(props: GameScreenProps) {
     else { sound.play("capture"); if (driving) { sound.play("squeal"); sound.play("crash"); } sound.duck(1.4); buzz("capture"); }
   }, []);
   const onFrameEnd = useCallback((frame: Frame) => {
+    const mv = lastMoveOf(frame.events);
+    if (mv) { setLastMove(mv); setCanReplay(!!replayRef.current); }
+    replaying.current = false;
     if (frame.events.some(e => e.type === "win")) {
       const won = frame.state.winner !== null && mine.current.includes(frame.state.winner);
       sound.duck(3.5);
@@ -238,13 +276,31 @@ export default function GameScreen(props: GameScreenProps) {
       if (recordStats && !recorded.current) {
         recorded.current = true;
         const bot = frame.state.players.find(p => p.kind === "bot");
-        recordGame({ won, captures: captures.current, botLevel: bot?.level });
+        const before = loadStats();
+        const vehicles = mine.current.flatMap(seat => getDesigns()[seat]?.map(d => d.vehicle) ?? []).filter(v => v !== "none");
+        const after = recordGame({ won, captures: captures.current, botLevel: bot?.level, vehicles, daily: props.daily });
+        setStreak(after.streak);
+        if (props.daily) {
+          const day = recordDaily(dateKey(), won);
+          toast({ title: won ? "📅 Daily challenge won" : "📅 Daily challenge finished", description: won ? `${day.streakDays} day${day.streakDays === 1 ? "" : "s"} in a row` : "Come back tomorrow for a new one", status: won ? "success" : "info", duration: 6000, isClosable: true, position: "top" });
+        }
+        for (const a of newlyUnlocked(before, after)) toast({ title: `${a.icon} ${a.title}`, description: a.blurb, status: "success", duration: 6000, isClosable: true, position: "top" });
       }
     }
-  }, [recordStats]);
+  }, [recordStats, props.daily, toast]);
 
   const anim = useAnimatedGame(bus, state, { speed, longRoll: renderer === "3d", onFrameStart, onStep, onFrameEnd });
   const { shown, busy } = anim;
+  shownRef.current = shown;
+
+  // plays the last move again: the board steps back to how it was, then the same frame runs once more
+  const replay = useCallback(() => {
+    const r = replayRef.current;
+    if (!r || busy) return;
+    replaying.current = true;
+    bus.push({ ...r.before, seq: -1 }, []);
+    bus.push(r.frame.state, r.frame.events);
+  }, [bus, busy]);
   useBotDriver(state, busy, act, speed, !runBots);
 
   const me = currentPlayer(shown);
@@ -326,6 +382,11 @@ export default function GameScreen(props: GameScreenProps) {
     immersive && round(topCamera ? "Switch to the moving camera" : "Switch to the top-down view", <span aria-hidden>{topCamera ? "◩" : "⬒"}</span>, () => updateSettings({ camera: topCamera ? "follow" : "top" })),
     immersive && round("Reset camera", <span aria-hidden>⟲</span>, resetCameraView),
     immersive && round(droneCamera ? "Leave drone camera" : "Drone camera", <span aria-hidden>🛸</span>, () => updateSettings({ camera: droneCamera ? "top" : "drone" }), droneCamera ? { bg: "#facc15" } : {}),
+    canReplay && !busy && shown.phase !== "over" && round("Replay the last move", <span aria-hidden>↺</span>, replay),
+    round("Take a photo of the board", <span aria-hidden>📷</span>, async () => {
+      const r = await sharePhoto();
+      toast({ title: r === "failed" ? "Could not take a photo" : r === "saved" ? "Photo saved" : "Photo shared", status: r === "failed" ? "error" : "success", duration: 2500, position: "top" });
+    }),
     round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
     canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
     round("How to play", <QuestionIcon />, help.onOpen),
@@ -335,7 +396,7 @@ export default function GameScreen(props: GameScreenProps) {
   const panels = (
     <PlayerPanels
       players={shown.players} currentSeat={shown.phase !== "over" ? me.seat : null} mySeats={mySeats} cash={shown.tycoon?.cash} away={props.away} tags={props.tags}
-      compact={compact} twoColumns={!wide} floaters={floaters}
+      compact={compact} twoColumns={!wide} floaters={floaters} next={nextSeat(shown)}
     />
   );
   const tycoonCard = iAct && shown.phase === "decide" ? <PropertyCard state={shown} act={act} wide={wide} /> : null;
@@ -358,7 +419,12 @@ export default function GameScreen(props: GameScreenProps) {
   const statusBar = (
     <StatusBar
       text={status} tone={canRoll && bonus ? "bonus" : undefined}
-      extra={shown.sixes > 0 && shown.phase !== "over" ? <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text> : undefined}
+      extra={
+        <>
+          {shown.sixes > 0 && shown.phase !== "over" && <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text>}
+          {lastMove && !busy && shown.phase !== "over" && <Text fontSize="xs" color="whiteAlpha.800">{describeLastMove(lastMove, shown)}</Text>}
+        </>
+      }
     />
   );
   const controls = (
@@ -375,7 +441,7 @@ export default function GameScreen(props: GameScreenProps) {
     </VStack>
   );
   const logBox = (
-    <Box bg="whiteAlpha.100" borderRadius="xl" p={3} maxH="200px" overflowY="auto" flexShrink={0}
+    <Box bg="rgba(10,14,24,.6)" backdropFilter="blur(3px)" borderRadius="xl" p={3} maxH="200px" overflowY="auto" flexShrink={0}
       display="none" sx={wide ? { "@media (min-height: 561px)": { display: "block" } } : { "@media (min-height: 780px)": { display: "block" } }}>
       <Text fontSize="xs" textTransform="uppercase" color="gray.400" mb={1}>Game log</Text>
       <LogList lines={lines} limit={8} />
@@ -401,7 +467,7 @@ export default function GameScreen(props: GameScreenProps) {
   );
   const mainProps = immersive
     ? { position: "absolute" as const, inset: 0, maxW: "none", px: 0, pt: 0, pb: 0, gap: 0, pointerEvents: "none" as const, zIndex: 0 }
-    : { maxW: "1400px", px: 2, pt: wide ? 2 : 0, pb: 2, gap: wide ? 3 : 2 };
+    : { maxW: "1400px", px: 2, pt: wide ? 2 : 0, pb: 2, gap: wide ? 3 : 2, position: "relative" as const, zIndex: 1 };
   const boardBoxProps = immersive
     ? { position: "absolute" as const, inset: 0, display: "block", pointerEvents: "auto" as const }
     : {
@@ -423,10 +489,11 @@ export default function GameScreen(props: GameScreenProps) {
       direction="column" h="100dvh" w="100%" bg={immersive ? "#0a0d16" : "#303030"} color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
+      {showScenery && <Scenery phase={phase} weather={settings.weather} traffic={settings.traffic} seats={seatList} reduceMotion={reduceMotion} />}
       {!wide && !immersive && (
-        <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515">
+        <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515" position="relative" zIndex={1}>
           {leaveBtn}
-          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} minW={0} color="gray.200" visibility={{ base: "hidden", sm: "visible" }}>{props.title ?? "Ludo Sync"}</Text>
           {props.headerExtra}
           {iconButtons}
         </HStack>
@@ -446,10 +513,11 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
+              lastMove={lastMove} dim={showScenery ? SKIES[phase].dim : 0} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />
+            <FloatingReactions items={props.reactions ?? []} reduceMotion={reduceMotion} />
           </Box>
         </Box>
 
@@ -465,7 +533,7 @@ export default function GameScreen(props: GameScreenProps) {
       {immersive && !wide && (
         <HStack ref={headerRef} position="absolute" top={0} left={0} right={0} zIndex={6} px={2} pt="calc(env(safe-area-inset-top) + 6px)" pb={1.5} spacing={2} {...glass}>
           {leaveBtn}
-          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.100">{props.title ?? "Ludo Sync"}</Text>
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} minW={0} color="gray.100" visibility={{ base: "hidden", sm: "visible" }}>{props.title ?? "Ludo Sync"}</Text>
           {props.headerExtra}
           {iconButtons}
         </HStack>
@@ -484,7 +552,7 @@ export default function GameScreen(props: GameScreenProps) {
       {shown.phase === "over" && !busy && (
         <WinnerOverlay
           state={shown} reduceMotion={reduceMotion} onRematch={props.onRematch} rematchLabel={props.rematchLabel}
-          waitingText={props.waitingText} onExit={onExit}
+          waitingText={props.waitingText} onExit={onExit} streak={streak}
         />
       )}
       <HowToPlay isOpen={help.isOpen} onClose={help.onClose} />

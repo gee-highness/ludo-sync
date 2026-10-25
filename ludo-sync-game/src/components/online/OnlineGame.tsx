@@ -51,7 +51,7 @@ export default function OnlineGame({ room, state, bus, act, isHost, onReaction, 
       guardUnload
       onRematch={onRematch} rematchLabel="Rematch" waitingText="Waiting for the host to start a rematch…"
       title={`${title ?? `Room ${formatRoomCode(room.code)}`}${mySeats.length === 0 ? " · watching" : ""}`}
-      tags={tags} away={away}
+      tags={tags} away={away} reactions={reactions}
       headerExtra={note || headerAction ? <>{note && <Badge colorScheme="orange">{note}</Badge>}{headerAction}</> : undefined}
       panelExtra={
         <Box bg="whiteAlpha.100" borderRadius="xl" p={2} flexShrink={0}>

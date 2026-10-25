@@ -5,6 +5,7 @@ import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
 import { parseQuality, type QualityPref } from "./quality";
 import { readJSON, writeJSON } from "./storage";
 import { MOODS, type Mood } from "./soundDesign";
+import { TIME_MODES, WEATHERS, type TimeMode, type Weather } from "./scenery";
 
 export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
@@ -27,6 +28,11 @@ export interface Settings {
   mood: Mood;
   /** Engines, horns and tyres. */
   engineSounds: boolean;
+  /** The world behind the flat board. */
+  scenery: boolean;
+  timeOfDay: TimeMode;
+  weather: Weather;
+  traffic: boolean;
   haptics: boolean;
   renderer: RendererPref;
   quality: QualityPref;
@@ -62,6 +68,10 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   musicVolume: 0.35,
   mood: "relaxed",
   engineSounds: true,
+  scenery: true,
+  timeOfDay: "auto",
+  weather: "clear",
+  traffic: true,
   haptics: true,
   renderer: "2d",
   quality: "auto",
@@ -98,6 +108,10 @@ export const sanitizeSettings = (raw: unknown): Settings => {
     musicVolume: typeof r.musicVolume === "number" && r.musicVolume >= 0 && r.musicVolume <= 1 ? r.musicVolume : d.musicVolume,
     mood: oneOf(r.mood, MOODS, d.mood),
     engineSounds: bool(r.engineSounds, d.engineSounds),
+    scenery: bool(r.scenery, d.scenery),
+    timeOfDay: oneOf(r.timeOfDay, TIME_MODES, d.timeOfDay),
+    weather: oneOf(r.weather, WEATHERS, d.weather),
+    traffic: bool(r.traffic, d.traffic),
     haptics: bool(r.haptics, d.haptics),
     renderer: oneOf(r.renderer, ["auto", "3d", "2d"], d.renderer),
     quality: parseQuality(r.quality, d.quality),
@@ -126,6 +140,12 @@ export const sanitizeSettings = (raw: unknown): Settings => {
       ...(parseTuning(rr.tuning) ? { tuning: parseTuning(rr.tuning)! } : {}),
     },
   };
+};
+
+/** One tap to a relaxed game: the flat road board and its world, an unhurried pace, quiet music, and nothing that flashes. */
+export const CALM_PRESET: Readonly<Partial<Settings>> = {
+  renderer: "2d", camera: "top", boardTheme: "road", speed: "normal", motion: "auto", scenery: true, timeOfDay: "auto", weather: "clear", traffic: true,
+  sound: true, music: true, musicVolume: 0.3, mood: "relaxed", engineSounds: true, hints: true, movePreview: "dots",
 };
 
 let current: Settings = DEFAULT_SETTINGS;

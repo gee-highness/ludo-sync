@@ -114,6 +114,7 @@ class SoundEngine {
     const s = getSettings();
     const want = s.sound && s.music;
     if (!this.ctx || !this.musicBus || this.ctx.state !== "running") return;
+    this.applyRain();
     this.musicBus.gain.setTargetAtTime(want ? s.musicVolume * 0.9 : 0, this.ctx.currentTime, 0.4);
     if (!want) {
       if (this.musicTimer) { clearInterval(this.musicTimer); this.musicTimer = null; this.musicMood = null; }
@@ -142,12 +143,15 @@ class SoundEngine {
     g.setTargetAtTime(level, t + seconds, 0.6);
   }
 
-  /** Soft rain behind everything. */
-  setRain(on: boolean) {
+  private rainWanted = false;
+  /** Soft rain behind everything. Remembered, so it starts once sound is allowed to play. */
+  setRain(on: boolean) { this.rainWanted = on; this.applyRain(); }
+
+  private applyRain() {
     const s = getSettings();
     const ctx = this.ctx;
     if (!ctx || ctx.state !== "running") return;
-    const wanted = on && s.sound;
+    const wanted = this.rainWanted && s.sound;
     if (!wanted) {
       if (this.rain) { const r = this.rain; r.gain.gain.setTargetAtTime(0, ctx.currentTime, 0.3); setTimeout(() => { try { r.src.stop(); } catch { /* already stopped */ } }, 1200); this.rain = null; }
       return;
@@ -169,7 +173,8 @@ class SoundEngine {
   stopAmbience() {
     if (this.musicTimer) { clearInterval(this.musicTimer); this.musicTimer = null; this.musicMood = null; }
     if (this.musicBus && this.ctx) this.musicBus.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2);
-    this.setRain(false);
+    this.rainWanted = false;
+    this.applyRain();
   }
 
   private tone(freq: number, at: number, dur: number, type: Wave, gain: number, slideTo?: number) {

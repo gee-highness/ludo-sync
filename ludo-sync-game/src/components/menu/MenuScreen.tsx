@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { loadGame, type SavedGame } from "@/lib/client/save";
 import { loadStats, type Stats } from "@/lib/client/stats";
+import { dailyChallenge, dailyDone, dateKey, loadDailyRecord, type DailyRecord } from "@/lib/client/daily";
 import { sound } from "@/lib/client/audio";
 import { clearRoomRecord, loadRoomRecord, type RoomRecord } from "@/lib/client/rooms";
 import { HowToPlay } from "@/components/game/HowToPlay";
@@ -20,8 +21,13 @@ export default function MenuScreen() {
   const [saved, setSaved] = useState<SavedGame | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [room, setRoom] = useState<RoomRecord | null>(null);
+  const [today, setToday] = useState<{ title: string; blurb: string; rec: DailyRecord; done: boolean } | null>(null);
 
-  useEffect(() => { setSaved(loadGame()); setStats(loadStats()); setRoom(loadRoomRecord()); }, []);
+  useEffect(() => {
+    setSaved(loadGame()); setStats(loadStats()); setRoom(loadRoomRecord());
+    const key = dateKey(), rec = loadDailyRecord(), day = dailyChallenge(key);
+    setToday({ title: day.title, blurb: day.blurb, rec, done: dailyDone(rec, key) });
+  }, []);
 
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
@@ -55,6 +61,14 @@ export default function MenuScreen() {
             </HStack>
           )}
           <Button colorScheme="teal" size="lg" w="100%" onClick={go("/play?preset=bot")}>Play vs bots</Button>
+          {today && (
+            <Button colorScheme="orange" variant="outline" color="white" borderColor="orange.300" size="lg" w="100%" h="auto" py={3} onClick={go("/play?daily=1")}>
+              <VStack spacing={0}>
+                <Text>Daily challenge: {today.title}</Text>
+                <Text fontSize="xs" fontWeight={400}>{today.done ? (today.rec.won ? `Won today ✓ · ${today.rec.streakDays} day${today.rec.streakDays === 1 ? "" : "s"} in a row` : "Played today. Try again for fun") : today.blurb}</Text>
+              </VStack>
+            </Button>
+          )}
           <Button colorScheme="purple" size="lg" w="100%" onClick={go("/play?preset=local")}>Pass and play</Button>
           <Button colorScheme="blue" size="lg" w="100%" onClick={go("/online")}>Play with friends online</Button>
           <Button colorScheme="cyan" size="lg" w="100%" h="auto" py={3} onClick={go("/nearby")}>
@@ -64,6 +78,7 @@ export default function MenuScreen() {
             <Button variant="outline" color="white" flex={1} onClick={go("/pieces")}>Piece maker</Button>
             <Button variant="outline" color="white" flex={1} onClick={go("/island")}>Island maker</Button>
           </HStack>
+          <Button variant="outline" color="white" w="100%" onClick={go("/garage")}>Garage and achievements</Button>
           <InstallButton />
           <HStack w="100%" spacing={3}>
             <Button variant="outline" color="white" flex={1} onClick={help.onOpen}>How to play</Button>
@@ -73,12 +88,12 @@ export default function MenuScreen() {
 
         {stats && stats.played > 0 && (
           <Text fontSize="sm" color="gray.400" textAlign="center">
-            {stats.played} played · {stats.won} won · {stats.captures} captures
+            {stats.played} played · {stats.won} won · {stats.captures} sent home{stats.streak > 1 ? ` · 🔥 ${stats.streak} in a row` : ""}
           </Text>
         )}
         <Box pt={4}>
           <Text fontSize="sm" color="gray.500">
-            Made by <Link href="https://synapse-digital.vercel.app" style={{ fontWeight: 700 }}>Synapse Digital</Link>
+            Made by <Link href="https://synapse-digital.vercel.app" style={{ fontWeight: 700, display: "inline-block", padding: "10px 4px" }}>Synapse Digital</Link>
           </Text>
         </Box>
       </VStack>

@@ -20,6 +20,8 @@ interface PanelProps {
   cash?: number;
   away?: boolean;
   tag?: string;
+  /** Plays after the current player. */
+  next?: boolean;
   floaters: Floater[];
 }
 
@@ -38,7 +40,7 @@ const Avatar = ({ seat, size }: { seat: Seat; size: number }) => {
 };
 
 /** One player: a round avatar, a pointed ribbon in their colour with the name, and a white capsule with money or points. */
-export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, floaters }: PanelProps) => {
+export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, next, floaters }: PanelProps) => {
   const info = SEAT_INFO[player.seat];
   const home = tokensHome(player);
   const points = pointsOf(player);
@@ -72,9 +74,9 @@ export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, f
             {player.tokens.map((t, i) => <Box key={i} as="span" w="7px" h="7px" borderRadius="full" bg={t === 57 ? "#eab308" : t === -1 ? "#d4d4d4" : info.main} />)}
           </Box>
         </Box>
-        {!compact && (bot || tag || away) && (
+        {!compact && (bot || tag || away || next) && (
           <Text fontSize="2xs" color="whiteAlpha.800" ml="18px" mt="2px" textShadow="0 1px 2px #000">
-            {[bot ? `Bot · ${LEVEL[player.level ?? "normal"]}` : null, tag, away ? "Away" : null].filter(Boolean).join(" · ")}
+            {[bot ? `Bot · ${LEVEL[player.level ?? "normal"]}` : null, tag, away ? "Away" : null, next ? "Next" : null].filter(Boolean).join(" · ")}
           </Text>
         )}
       </Box>
@@ -100,11 +102,12 @@ interface Props {
   compact: boolean;
   /** Phones in portrait lay the panels out two across. */
   twoColumns?: boolean;
+  next?: Seat | null;
   floaters: Floater[];
 }
 
 /** The players, as in the reference: a stack down the right of a wide screen, or two columns on a phone. */
-export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, compact, twoColumns, floaters }: Props) => (
+export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, compact, twoColumns, next, floaters }: Props) => (
   <Box
     as="ul" m={0} p={0} role="list" aria-label="Players" display="grid" gap={compact ? 2 : 3}
     gridTemplateColumns={twoColumns ? "repeat(2, minmax(0, 1fr))" : "1fr"} pl={compact ? 0 : "24px"}
@@ -112,7 +115,7 @@ export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, 
     {players.map(p => (
       <PlayerPanel
         key={p.seat} player={p} current={p.seat === currentSeat} isMe={mySeats.length === 1 && mySeats[0] === p.seat} compact={compact}
-        cash={cash?.[p.seat]} away={away?.has(p.seat)} tag={tags?.[p.seat]} floaters={floaters}
+        cash={cash?.[p.seat]} away={away?.has(p.seat)} tag={tags?.[p.seat]} next={p.seat === next && p.seat !== currentSeat} floaters={floaters}
       />
     ))}
   </Box>

@@ -67,3 +67,17 @@ scenery is SVG/CSS, so nothing is downloaded or cached.
 
 ## Order and risk
 1 -> 2 -> 3 -> 4 -> 5 -> 6. Phase 3 is the largest; it is built so the flat board works without it (a setting turns scenery off). 3D scenery is out of scope: the 3D board keeps its own city.
+
+## Status
+All six phases are built, tested and merged.
+
+| Phase | Result | Where |
+|---|---|---|
+| 1. Sound and music | Per-vehicle engines and horns, tyre squeal and crash, generated music (3 moods), rain ambience, settings | `lib/client/soundDesign.ts`, `audio.ts` |
+| 2. Easy-to-follow turns | Last-move rings and sentence, calm turn pill (the full-width ribbon is gone), "Next" tag, crash shake and "sent home" notice, replay last move | `lib/client/lastMove.ts`, `hud/`, `Board2D.tsx` |
+| 3. Living road world | Sky for the time of day, skyline from the players' islands, trees, lamps, passing traffic, rain and snow, night dimming; settings for each | `lib/client/scenery.ts`, `board/Scenery.tsx` |
+| 4. Moments of delight | Photo mode (flat and 3D), podium, floating reactions, 15 achievements, streaks, Garage page | `lib/client/photo.ts`, `achievements.ts`, `garage/` |
+| 5. Sharing and replayability | Photo with a result line, "waiting for friends" note, daily challenge with a different rule twist each day and the same dice for everyone | `lib/client/daily.ts` |
+| 6. Polish | Calm preset in Settings, layout sweep on five screen sizes with no horizontal overflow, small tap targets fixed, `/garage` and `/nearby` cached for offline | `settings.ts`, `sw.js/route.ts` |
+
+Known limits: scenery, last-move rings and the crash shake are on the flat board only; the 3D board keeps its own city. Sounds were not listened to on a device.

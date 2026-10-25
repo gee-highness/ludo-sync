@@ -5,7 +5,7 @@ import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
 } from "@chakra-ui/react";
-import { BOARD_THEMES, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
+import { BOARD_THEMES, CALM_PRESET, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
 import Link from "next/link";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
@@ -34,6 +34,7 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
         <DrawerHeader>Settings</DrawerHeader>
         <DrawerBody pb={8}>
           <VStack align="stretch" spacing={4}>
+            <Button colorScheme="teal" variant="outline" color="white" onClick={() => { sound.unlock(); update(CALM_PRESET); }}>Relax: use the calm settings</Button>
             <Heading size="xs" color="teal.200" textTransform="uppercase">Sound and feel</Heading>
             <Row label="Sound effects">{toggle("sound")}</Row>
             <Row label="Volume">
@@ -80,6 +81,18 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
             <Row label="Pieces" hint="Shapes, colours, patterns, 2D and 3D">
               <Button as={Link} href="/pieces" size="sm" colorScheme="teal">Piece maker</Button>
             </Row>
+            <Row label="Scenery" hint="Sky, hills and a skyline of your islands behind the board">{toggle("scenery")}</Row>
+            <Row label="Time of day" hint="Auto follows your clock">
+              <Select w="120px" size="sm" value={s.timeOfDay} onChange={e => update({ timeOfDay: e.target.value as Settings["timeOfDay"] })} bg="gray.700">
+                <option value="auto">Auto</option><option value="day">Day</option><option value="dusk">Dusk</option><option value="night">Night</option>
+              </Select>
+            </Row>
+            <Row label="Weather">
+              <Select w="120px" size="sm" value={s.weather} onChange={e => update({ weather: e.target.value as Settings["weather"] })} bg="gray.700">
+                <option value="clear">Clear</option><option value="rain">Rain</option><option value="snow">Snow</option>
+              </Select>
+            </Row>
+            <Row label="Passing traffic">{toggle("traffic")}</Row>
             <Row label="Animation speed">
               <Select w="120px" size="sm" value={s.speed} onChange={e => update({ speed: e.target.value as Settings["speed"] })} bg="gray.700">
                 <option value="normal">Normal</option><option value="fast">Fast</option><option value="instant">Instant</option>

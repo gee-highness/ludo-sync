@@ -103,12 +103,17 @@ const CSS = `
   .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-step, .reduce .tok-drive, .reduce .siren-glow, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
   .reduce .dust-dot, .reduce .shock, .reduce .ghost, .reduce .twinkle, .reduce .yard-glow, .reduce .banner { animation: none; }
   .reduce .banner { opacity: 0; }
+  .crash { animation: crashShake .42s linear; }
+  @keyframes crashShake { 0%,100%{transform:translate(0,0)} 15%{transform:translate(-5px,2px)} 30%{transform:translate(4px,-3px)} 45%{transform:translate(-3px,-2px)} 60%{transform:translate(3px,2px)} 80%{transform:translate(-1px,1px)} }
+  .last-ring { animation: lastRing 2.4s ease-in-out infinite; }
+  @keyframes lastRing { 0%,100%{opacity:.95} 50%{opacity:.45} }
+  .reduce .crash, .reduce .last-ring { animation: none; }
   .tok-btn:focus-visible .focus-ring { stroke: #fff; stroke-width: .09; }
 `;
 
 /** The flat board: an SVG that scales to any screen, rotated so `viewSeat` sits at the bottom. */
 export default function Board2D({
-  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow, rollKey, rolled, insets,
+  state, viewSeat, options, onPick, symbols, hints, reduceMotion, hopMs, moving, rollable, onThrow, rollKey, rolled, insets, lastMove, dim = 0,
 }: BoardProps) {
   const islands = useIslands();
   const paletteVersion = usePalette(); // seat colours are changed in place; this redraws when they are
@@ -209,6 +214,8 @@ export default function Board2D({
       if (before >= 0 && before < FINISH && t.progress === YARD) {
         const p = pointOf(t.seat, t.token, before);
         fresh.push({ id: ++burstId.current, x: p.x, y: p.y, color: "#FACC15", kind: "capture" });
+        const el = svgRef.current;
+        if (el && !reduceMotion) { el.classList.remove("crash"); void el.getBoundingClientRect(); el.classList.add("crash"); setTimeout(() => el.classList.remove("crash"), 480); }
       } else if (before < FINISH && t.progress === FINISH) {
         fresh.push({ id: ++burstId.current, x: t.point.x, y: t.point.y, color: SEAT_INFO[t.seat].light, kind: "home" });
       } else if (t.progress !== before && t.progress >= 0 && t.progress < FINISH) {
@@ -223,7 +230,7 @@ export default function Board2D({
     const ids = new Set(fresh.map(f => f.id));
     const timer = setTimeout(() => { timers.current.delete(timer); setBursts(b => b.filter(x => !ids.has(x.id))); }, 1000);
     timers.current.add(timer);
-  }, [tokens, designs]);
+  }, [tokens, designs, reduceMotion]);
   useEffect(() => {
     const live = timers.current;
     return () => { live.forEach(clearTimeout); live.clear(); };
@@ -592,6 +599,19 @@ export default function Board2D({
           </g>
         ) : centre}
         {previews}
+        {rich && dim > 0 && <rect x={-0.5} y={-0.5} width={15} height={15} fill="#0a1026" fillOpacity={dim} pointerEvents="none" aria-hidden />}
+        {lastMove && !moving && state.phase !== "over" && (() => {
+          const from = pointOf(lastMove.seat, lastMove.token, lastMove.from), to = pointOf(lastMove.seat, lastMove.token, lastMove.to);
+          const col = SEAT_INFO[lastMove.seat].light;
+          return (
+            <g aria-hidden pointerEvents="none">
+              {lastMove.from !== YARD && <circle cx={from.x} cy={from.y} r={0.44} fill="none" stroke={col} strokeWidth={0.09} strokeDasharray="0.18 0.14" strokeOpacity={0.9} />}
+              {lastMove.from !== YARD && <circle cx={from.x} cy={from.y} r={0.44} fill="none" stroke="#000" strokeWidth={0.02} strokeOpacity={0.25} />}
+              <circle className="last-ring" cx={to.x} cy={to.y} r={0.52} fill="none" stroke="#fff" strokeWidth={0.13} />
+              <circle className="last-ring" cx={to.x} cy={to.y} r={0.52} fill="none" stroke={col} strokeWidth={0.07} />
+            </g>
+          );
+        })()}
         {placed.map(t => {
           const isMine = t.seat === interactiveSeat;
           const opts = isMine ? byToken.get(t.token) : undefined;

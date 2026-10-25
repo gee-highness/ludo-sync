@@ -43,7 +43,7 @@ const ColourField = ({ label, value, fallback, onChange, allowNone, noneLabel }:
     <HStack spacing={2}>
       <input type="color" aria-label={label} value={value ?? fallback} onChange={e => onChange(e.target.value)}
         style={{ width: 40, height: 30, border: "none", background: "none", padding: 0 }} />
-      {allowNone && <Button size="xs" variant={value === null ? "solid" : "outline"} onClick={() => onChange(null)}>{noneLabel ?? "Seat colour"}</Button>}
+      {allowNone && <Button size="sm" variant={value === null ? "solid" : "outline"} onClick={() => onChange(null)}>{noneLabel ?? "Seat colour"}</Button>}
     </HStack>
   </Row>
 );
@@ -207,7 +207,7 @@ export default function PieceMaker() {
                   <Row label="Glow">
                     <HStack>
                       <input type="color" aria-label="Glow colour" value={design.glow ?? "#ffffff"} onChange={e => edit({ glow: e.target.value })} style={{ width: 40, height: 30, border: "none", background: "none", padding: 0 }} />
-                      <Button size="xs" variant={design.glow === null ? "solid" : "outline"} onClick={() => edit({ glow: null })}>Off</Button>
+                      <Button size="sm" variant={design.glow === null ? "solid" : "outline"} onClick={() => edit({ glow: null })}>Off</Button>
                     </HStack>
                   </Row>
                   {design.glow && <Row label="Glow strength"><Range value={design.glowStrength} min={0} max={1} step={0.05} label="Glow strength" onChange={v => edit({ glowStrength: v })} /></Row>}

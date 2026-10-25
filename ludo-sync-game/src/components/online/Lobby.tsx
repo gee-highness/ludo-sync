@@ -172,6 +172,9 @@ export const Lobby = ({ room, host, onClaim, check, chat, invite }: Props) => {
         </VStack>
       )}
 
+      {host && !room.slots.some(s => s.kind === "human" && !s.host) && room.phase === "lobby" && (
+        <Text textAlign="center" color="gray.300" fontSize="sm" role="status">Waiting for friends to join. You can start with bots if you like.</Text>
+      )}
       {host ? (
         <Button colorScheme="teal" size="lg" isDisabled={!host.canStart} onClick={host.start}>
           {host.canStart ? "Start game" : "Add a friend or a bot to start"}
