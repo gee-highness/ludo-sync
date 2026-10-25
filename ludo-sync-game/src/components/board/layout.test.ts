@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGame } from "@/lib/ludo/engine";
 import { DEFAULT_RULES } from "@/lib/ludo/types";
-import { placeTokens, seatTokens } from "./layout";
+import { FINISHED_SCALE, placeTokens, seatTokens } from "./layout";
 
 const game = () => {
   const g = createGame([{ seat: 0, name: "A", kind: "human" }, { seat: 1, name: "B", kind: "human" }], DEFAULT_RULES, 1);
@@ -10,6 +10,17 @@ const game = () => {
 };
 
 describe("token placement", () => {
+  it("shrinks vehicles that have made it home to three quarters", () => {
+    expect(FINISHED_SCALE).toBe(0.75);
+    const g = game();
+    const home = { ...g, players: g.players.map(p => (p.seat === 1 ? { ...p, tokens: [57, 57, 5, -1] } : p)) };
+    const placed = placeTokens(seatTokens(home));
+    for (const t of placed.filter(t => t.seat === 1 && t.progress === 57)) expect(t.scale).toBe(0.75);
+    expect(placed.find(t => t.seat === 1 && t.token === 2)!.scale).toBe(1);
+    const arriving = placeTokens(seatTokens(home), { seat: 1, token: 0 }).find(t => t.seat === 1 && t.token === 0)!;
+    expect(arriving.scale).toBe(0.75);
+  });
+
   it("fans out tokens that share a square", () => {
     const placed = placeTokens(seatTokens(game()));
     const a = placed.find(t => t.seat === 1 && t.token === 0)!;

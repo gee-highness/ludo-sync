@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createGame } from "@/lib/ludo/engine";
 import { freshSeed } from "@/lib/ludo/rng";
+import { spreadTwo } from "@/lib/ludo/seats";
 import type { GameState, PlayerSetup, Rules } from "@/lib/ludo/types";
 import type { Seat } from "@/lib/ludo/board";
 import { clearSavedGame, loadGame } from "@/lib/client/save";
@@ -72,7 +73,9 @@ export default function PlayClient() {
     setReady(true);
   }, [wantsResume, wantsQuick, wantsDaily, preset, router]);
 
-  const onStart = useCallback((setups: PlayerSetup[], rules: Rules) => {
+  const onStart = useCallback((chosen: PlayerSetup[], rules: Rules) => {
+    // two players always face each other across the board
+    const setups = spreadTwo(chosen);
     clearSavedGame();
     setStarted({ state: createGame(setups, rules, freshSeed()), humans: humansOf(setups), palette: getSettings().palette });
   }, []);
