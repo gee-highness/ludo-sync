@@ -4,6 +4,7 @@ import { SEAT_INFO, SEATS, type Seat } from "../ludo/board";
 import { autoAction } from "../ludo/bot";
 import { applyAction, createGame, currentPlayer } from "../ludo/engine";
 import { freshSeed } from "../ludo/rng";
+import { adjacent, nextFreeSeat, opposite } from "../ludo/seats";
 import { DEFAULT_RULES, type Action, type BotLevel, type GameEvent, type GameState, type PlayerSetup, type Rules } from "../ludo/types";
 import { FrameBus } from "../client/frames";
 import { newRoomCode } from "./crypto";
@@ -258,8 +259,10 @@ export class HostSession {
       m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, pieces: null, colors: null, chatAt: [] };
       this.members.set(msg.id, m);
       if (this.seatsOpen()) {
-        const free = this.slots.findIndex(s => s.kind === "empty");
-        if (free >= 0) this.slots[free] = { kind: "human", id: m.id };
+        // the second person sits across from the host, then the sides fill in
+        const taken = new Set(this.slots.flatMap((s, i) => (s.kind === "empty" ? [] : [i as Seat])));
+        const free = nextFreeSeat(taken);
+        if (free !== null) this.slots[free] = { kind: "human", id: m.id };
       }
     }
     m.check = chan.check;
@@ -416,9 +419,22 @@ export class HostSession {
     return (this.phase === "lobby" || this.state?.phase === "over") && this.slots.filter(s => s.kind !== "empty").length >= 2;
   }
 
+  /** With exactly two players, makes sure they face each other: the host keeps their seat, the other moves across. */
+  private faceEachOther() {
+    const seated = this.slots.flatMap((s, i) => (s.kind === "empty" ? [] : [{ seat: i as Seat, slot: s }]));
+    if (seated.length !== 2 || !adjacent(seated[0].seat, seated[1].seat)) return;
+    const hostSeat = this.seatOf(HOST_ID);
+    const mover = seated.find(p => p.seat !== hostSeat) ?? seated[1];
+    const stay = seated.find(p => p !== mover)!;
+    const to = opposite(stay.seat);
+    this.slots[mover.seat] = { kind: "empty" };
+    this.slots[to] = mover.slot.kind === "bot" ? { ...mover.slot, name: `${SEAT_INFO[to].name} bot` } : mover.slot;
+  }
+
   /** Starts the first game, or a rematch once one has finished. */
   start(): boolean {
     if (!this.canStart()) return false;
+    this.faceEachOther();
     this.state = createGame(this.setups(), this.rules, freshSeed());
     this.phase = "playing";
     this.gameId += 1;

@@ -132,9 +132,9 @@ describe("nearby pairing", () => {
     const { host, addGuest } = await setup();
     const { g } = await addGuest("Guest1");
     const member = host.getSnapshot().members.find(m => !m.host)!;
-    expect(member.seat).toBe(1);
+    expect(member.seat).toBe(2);
     expect(g.getSnapshot().check).toBe(member.check);
-    expect(g.getSnapshot().room?.you.seat).toBe(1);
+    expect(g.getSnapshot().room?.you.seat).toBe(2);
   });
 
   it("seats a second guest from a second invite", async () => {
@@ -178,7 +178,7 @@ describe("nearby pairing", () => {
     expect(net.desk.getSnapshot().guest.lost).toBe(true);
     expect((await pair(hostNet, net)).ok).toBe(true);
     await until(() => g.getSnapshot().status === "connected" && !!g.getSnapshot().state, "guest back");
-    expect(g.getSnapshot().room?.you.seat).toBe(1);
+    expect(g.getSnapshot().room?.you.seat).toBe(2);
     expect(host.getSnapshot().members.filter(m => !m.host)).toHaveLength(1);
   });
 });

@@ -19,6 +19,7 @@ import type { TycoonState } from "@/lib/ludo/types";
 import type { MovePreview } from "@/lib/client/settings";
 import { TIER_SPECS, TierGovernor, stepUp, type Tier, type TierSpec } from "@/lib/client/quality";
 import { onCameraReset } from "@/lib/client/cameraView";
+import { ROAD_STEP, ROAD_Y, buildRoadBoard, skyGradient, type RoadBoard } from "./roadboard3d";
 import { flyDice } from "@/lib/client/diceFlight";
 import { flickFrom, isThrow, setPendingThrow, takePendingThrow, toThrow, type PointerSample, type ThrowInput } from "@/lib/client/throw";
 
@@ -37,6 +38,10 @@ export interface SceneInput {
   reduceMotion: boolean;
   hopMs: number;
   camera: "tilt" | "top" | "follow" | "drone";
+  /** Paint the road board, as on the flat board, instead of the model's plain tiles. */
+  road: boolean;
+  /** The sky behind the road board, and how much to darken the light for evening and night. */
+  sky?: { top: string; bottom: string; dim: number };
   movePreview: MovePreview;
   /** Dark tiles with glowing outlines instead of the pale classic look. */
   neon: boolean;
@@ -191,6 +196,10 @@ export class LudoScene {
   private camLook = new THREE.Vector3();
   private neonBoard: NeonBoard | null = null;
   private neonOn = false;
+  private roadBoard: RoadBoard | null = null;
+  private roadOn = false;
+  private skyKey = "";
+  private classicParts: THREE.Object3D[] = [];
   private tileMats: THREE.MeshStandardMaterial[] = [];
   private edgeMats: THREE.MeshStandardMaterial[] = [];
   private centreEdgeMats: THREE.MeshStandardMaterial[] = [];
@@ -324,6 +333,7 @@ export class LudoScene {
     shade(grid.scene); shade(center.scene);
     matte(grid.scene); matte(center.scene);
     this.world.add(grid.scene, center.scene);
+    this.classicParts.push(grid.scene, center.scene);
     this.styleBoard(grid.scene, center.scene);
 
     SEATS.forEach(seat => {
@@ -636,7 +646,7 @@ export class LudoScene {
     const proxy = new THREE.Mesh(new THREE.SphereGeometry(0.78, 8, 8), new THREE.MeshBasicMaterial({ visible: false }));
     proxy.position.y = 0.55;
     root.add(proxy);
-    const target = toWorld(p.at);
+    const target = toWorld(p.at, this.groundAt(p));
     root.position.copy(target);
     this.world.add(root);
     obj = {
@@ -670,8 +680,41 @@ export class LudoScene {
     if (this.neonBoard) this.neonBoard.group.visible = on;
   }
 
+  /** How high a token stands: on the ground, or on the road (and on the raised middle once it is home). */
+  private groundAt(p: PlacedToken): number {
+    return this.roadOn ? ROAD_Y + (p.progress === FINISH ? ROAD_STEP : 0) : 0;
+  }
+
+  /** Shows the painted road board (and its sky) in place of the model's tiles, or puts the model back. */
+  private applyRoad(input: SceneInput) {
+    const on = input.road && !input.look;
+    this.roadOn = on;
+    if (on && !this.roadBoard) { this.roadBoard = buildRoadBoard(this.high); this.world.add(this.roadBoard.group); }
+    if (this.roadBoard) { this.roadBoard.group.visible = on; if (on) this.roadBoard.paint(input.playing); }
+    const classic = !on;
+    this.classicParts.forEach(o => { o.visible = classic; });
+    this.yardPlates.forEach(p => { if (p) p.visible = classic; });
+    this.bases.forEach(b => { if (b) b.visible = classic; });
+    this.stars.forEach(s => { s.visible = classic; });
+    if (on) {
+      const sky = input.sky ?? { top: "#4b8dbb", bottom: "#2f6f8f", dim: 0 };
+      const key = `${sky.top}|${sky.bottom}`;
+      if (key !== this.skyKey) {
+        const next = skyGradient(sky.top, sky.bottom);
+        if (next) { this.skyTex?.dispose(); this.skyTex = next; this.scene.background = next; this.skyKey = key; }
+      }
+      this.hemi.color.setHex(0xffffff); this.hemi.groundColor.setHex(0x8899bb);
+      this.hemi.intensity = 1.7 * (1 - sky.dim * 1.1);
+      this.sunLight.color.setHex(0xffffff); this.sunLight.intensity = 1.5 * (1 - sky.dim * 1.2);
+    } else if (this.skyKey) {
+      this.skyKey = "";
+      if (!input.look) { this.skyTex?.dispose(); this.skyTex = null; this.scene.background = null; this.hemi.intensity = 1.7; this.sunLight.intensity = 1.5; }
+    }
+  }
+
   /** Builds or removes the neon city, the dressed board, and the night lighting to match the look setting. */
   private applyLook(input: SceneInput) {
+    this.applyRoad(input);
     if (input.look && this.city && this.cityTheme !== input.theme) {
       this.scene.remove(this.city.group); this.city.dispose(); this.city = null;
       this.skyTex?.dispose(); this.skyTex = null;
@@ -743,7 +786,7 @@ export class LudoScene {
       if (!obj) continue;
       this.applyDesign(obj, input.designs[p.seat][p.token]);
       seen.add(tokenKey(p.seat, p.token));
-      const target = toWorld(p.at);
+      const target = toWorld(p.at, this.groundAt(p));
       if (!obj.target.equals(target)) {
         const prev = obj.progress;
         let kind: TweenKind = "hop";

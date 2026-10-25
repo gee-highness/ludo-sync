@@ -30,6 +30,9 @@ export const stackOffset = (index: number, count: number): Point => {
   return { x: Math.cos(a) * 0.28, y: Math.sin(a) * 0.28 };
 };
 
+/** Vehicles that have made it home shrink a little, so the middle stays tidy. */
+export const FINISHED_SCALE = 0.75;
+
 export const stackScale = (count: number) => (count === 1 ? 1 : count <= 2 ? 0.72 : count <= 4 ? 0.62 : 0.5);
 
 export const tokenKey = (seat: Seat, token: number) => `${seat}-${token}`;
@@ -48,7 +51,7 @@ export const placeTokens = (tokens: TokenView[], moving?: { seat: Seat; token: n
   for (const t of tokens) {
     // a token passing through is drawn exactly on its square, so the tokens it passes do not shuffle aside and back
     if (moving && t.seat === moving.seat && t.token === moving.token) {
-      travelling.push({ ...t, at: { ...t.point }, scale: 1 });
+      travelling.push({ ...t, at: { ...t.point }, scale: t.progress === FINISH ? FINISHED_SCALE : 1 });
       continue;
     }
     const key = `${t.point.x.toFixed(2)},${t.point.y.toFixed(2)}`;
@@ -59,7 +62,7 @@ export const placeTokens = (tokens: TokenView[], moving?: { seat: Seat; token: n
     group.forEach((t, i) => {
       const fixed = t.progress === YARD || t.progress === FINISH;
       const off = fixed ? { x: 0, y: 0 } : stackOffset(i, group.length);
-      out.push({ ...t, at: { x: t.point.x + off.x, y: t.point.y + off.y }, scale: fixed ? 1 : stackScale(group.length) });
+      out.push({ ...t, at: { x: t.point.x + off.x, y: t.point.y + off.y }, scale: t.progress === FINISH ? FINISHED_SCALE : fixed ? 1 : stackScale(group.length) });
     });
   }
   return [...out, ...travelling];

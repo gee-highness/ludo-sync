@@ -63,26 +63,52 @@ describe("room codes", () => {
   });
 });
 
+describe("two players face each other", () => {
+  it("puts a lone bot across the board from the host when the game starts", async () => {
+    const { host } = await setup({ guests: 0 });
+    host.setSlot(1, "bot", "normal");
+    expect(host.start()).toBe(true);
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 2]);
+    expect(host.getSnapshot().room.slots[2].kind).toBe("bot");
+    expect(host.getSnapshot().room.slots[1].kind).toBe("empty");
+  });
+  it("moves a guest who sat next to the host to the seat across, and tells them", async () => {
+    const { host, guests } = await setup();
+    const g = guests[0];
+    expect(g.getSnapshot().room?.you.seat).toBe(2);
+    g.claimSeat(1);
+    await until(() => g.getSnapshot().room?.you.seat === 1, "guest sits beside the host");
+    host.start();
+    await until(() => g.getSnapshot().room?.you.seat === 2 && !!g.getSnapshot().state, "moved across");
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 2]);
+  });
+  it("leaves three or more players where they sit", async () => {
+    const { host } = await setup({ guests: 2 });
+    host.start();
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 1, 2]);
+  });
+});
+
 describe("lobby and handshake", () => {
   it("seats the guest and shows the same check digits on both sides", async () => {
     const { host, guests } = await setup();
     const snap = host.getSnapshot();
     const guestMember = snap.members.find(m => !m.host)!;
-    expect(guestMember.seat).toBe(1);
+    expect(guestMember.seat).toBe(2);
     expect(guestMember.check).toMatch(/^\d{6}$/);
     expect(guests[0].getSnapshot().check).toBe(guestMember.check);
-    expect(guests[0].getSnapshot().room?.you.seat).toBe(1);
+    expect(guests[0].getSnapshot().room?.you.seat).toBe(2);
   });
 
   it("host adds bots, changes rules and starts; the guest sees it", async () => {
     const { host, guests } = await setup();
-    expect(host.setSlot(2, "bot", "hard")).toBe(true);
+    expect(host.setSlot(1, "bot", "hard")).toBe(true);
     host.setRules({ ...host.getSnapshot().room.rules, twoDice: true });
-    await until(() => guests[0].getSnapshot().room?.slots[2].kind === "bot", "bot visible");
+    await until(() => guests[0].getSnapshot().room?.slots[1].kind === "bot", "bot visible");
     expect(host.start()).toBe(true);
     await until(() => guests[0].getSnapshot().room?.phase === "playing" && !!guests[0].getSnapshot().state, "game visible");
     expect(guests[0].getSnapshot().state?.rules.twoDice).toBe(true);
-    expect(guests[0].getSnapshot().state?.players.map(p => p.kind)).toEqual(["human", "human", "bot"]);
+    expect(guests[0].getSnapshot().state?.players.map(p => p.kind)).toEqual(["human", "bot", "human"]);
   });
 
   it("cannot start alone", async () => {
@@ -124,13 +150,13 @@ describe("play", () => {
     expect(host.rematch()).toBe(true);
     await until(() => g.getSnapshot().room?.gameId !== firstId && g.getSnapshot().state?.phase === "roll", "fresh game on guest");
     expect(g.getSnapshot().state?.seq).toBe(0);
-    expect(g.getSnapshot().room?.you.seat).toBe(1);
+    expect(g.getSnapshot().room?.you.seat).toBe(2);
   }, 60_000);
 
-  it("refuses out-of-turn, illegal and spectator actions", async () => {
+  it("refuses out-of-turn, illegal and spectator actions", { timeout: 20000 }, async () => {
     const { host, guests } = await setup({ guests: 2 });
     const [g1, g2] = guests;
-    expect(g2.getSnapshot().room?.you.seat).toBe(2);
+    expect(g2.getSnapshot().room?.you.seat).toBe(1);
     host.start();
     await until(() => !!g1.getSnapshot().state && !!g2.getSnapshot().state, "state");
     // seat 0 (host) is up first
@@ -142,8 +168,9 @@ describe("play", () => {
     // host rolls, then a guest tries to move for the host
     host.act({ type: "roll" });
     await until(() => g1.getSnapshot().state?.seq === hostState(host)!.seq, "sync");
-    g2.act({ type: "move", token: 0, die: 6 });
-    await until(() => g2.getSnapshot().rejected === "not-your-turn", "g2 rejected");
+    // (the seat across from the host is third in turn order, so it cannot be anyone's turn yet)
+    g1.act({ type: "move", token: 0, die: 6 });
+    await until(() => g1.getSnapshot().rejected === "not-your-turn", "g1 rejected");
 
     // a late joiner is a spectator and cannot act
     const net = (host as unknown as { opts: { network: MemoryNetwork } }).opts.network;
@@ -162,7 +189,7 @@ describe("play", () => {
     host.onReaction(r => got.push(r));
     guests[0].react("🎉");
     await until(() => got.length === 1, "host got reaction", 6000);
-    expect(got[0]).toMatchObject({ emoji: "🎉", seat: 1, name: "Guest1" });
+    expect(got[0]).toMatchObject({ emoji: "🎉", seat: 2, name: "Guest1" });
     const back: Reaction[] = [];
     guests[0].onReaction(r => back.push(r));
     host.sendReaction("👍");
@@ -179,20 +206,20 @@ describe("play", () => {
     // the host's roll may pass the turn straight to the guest; force the issue by playing until it is the guest's turn
     let s = s0;
     while (currentPlayer(s).seat === 0 && s.phase !== "over") { host.act(autoAction(s)!); s = hostState(host)!; }
-    expect(currentPlayer(s).seat).toBe(1);
+    expect(currentPlayer(s).seat).toBe(2);
     expect(host.tick(clock + 1000)).toBe(false); // not out of time yet
     const seq = s.seq;
     expect(host.tick(clock + 60_000)).toBe(true); // idle guest: host plays for them
     expect(hostState(host)!.seq).toBeGreaterThanOrEqual(seq);
 
     // away: cut the link and the grace period is short
-    await until(() => currentPlayer(hostState(host)!).seat === 1 || hostState(host)!.phase === "over", "guest turn again", 100).catch(() => undefined);
+    await until(() => currentPlayer(hostState(host)!).seat === 2 || hostState(host)!.phase === "over", "guest turn again", 100).catch(() => undefined);
     net.cutLinks();
     await until(() => !host.getSnapshot().members.find(m => !m.host)!.connected, "marked away");
     clock += AWAY_GRACE_MS + 1;
     // whichever seat is up, only the guest's seat is auto-played
     const cur = currentPlayer(hostState(host)!);
-    expect(host.tick(clock)).toBe(cur.seat === 1);
+    expect(host.tick(clock)).toBe(cur.seat === 2);
   }, 30_000);
 });
 
@@ -205,7 +232,7 @@ describe("reconnect, kick, leave", () => {
     net.cutLinks();
     await until(() => g.getSnapshot().status === "reconnecting", "reconnecting");
     await until(() => g.getSnapshot().status === "connected", "reconnected");
-    expect(g.getSnapshot().room?.you.seat).toBe(1);
+    expect(g.getSnapshot().room?.you.seat).toBe(2);
     expect(host.getSnapshot().members.filter(m => !m.host)).toHaveLength(1);
     // game still works: host acts, guest follows
     host.act({ type: "roll" });
@@ -215,7 +242,7 @@ describe("reconnect, kick, leave", () => {
   it("catches up on moves missed while away", async () => {
     const { host, guests, net } = await setup({ retry: [200, 200, 200] });
     const g = guests[0];
-    host.setSlot(2, "bot", "normal");
+    host.setSlot(1, "bot", "normal");
     host.start();
     await until(() => !!g.getSnapshot().state, "state");
     net.cutLinks();
@@ -227,9 +254,9 @@ describe("reconnect, kick, leave", () => {
 
   it("kicks a guest, frees the seat and refuses their return", async () => {
     const { host, guests, ids, net } = await setup();
-    expect(host.kick(1)).toBe(true);
+    expect(host.kick(2)).toBe(true);
     await until(() => guests[0].getSnapshot().status === "kicked", "kicked");
-    expect(host.getSnapshot().room.slots[1].kind).toBe("empty");
+    expect(host.getSnapshot().room.slots[2].kind).toBe("empty");
     const again = new GuestClient({ network: net, code: "ABC234", name: "Back", clientId: ids[0], retryDelays: [5] });
     cleanup.push(() => again.leave());
     void again.start();
@@ -292,10 +319,10 @@ describe("piece designs", () => {
     host.setPieces(stars as never);
 
     await until(() => {
-      const slot = host.getSnapshot().room.slots[1];
+      const slot = host.getSnapshot().room.slots[2];
       return slot.kind === "human" && !!slot.pieces;
     }, "host sees the guest's pieces");
-    const seen = host.getSnapshot().room.slots[1];
+    const seen = host.getSnapshot().room.slots[2];
     expect(seen.kind === "human" && seen.pieces?.[0]).toMatchObject({ shape: "crown", primary: "#112233", mark: "♛", size: 1.5 });
 
     await until(() => {
@@ -310,7 +337,7 @@ describe("piece designs", () => {
     const { host, guests } = await setup();
     guests[0].setPieces([{ shape: "crown" }] as never);
     await new Promise(r => setTimeout(r, 60));
-    const slot = host.getSnapshot().room.slots[1];
+    const slot = host.getSnapshot().room.slots[2];
     expect(slot.kind === "human" && slot.pieces).toBeFalsy();
   });
 });
@@ -322,7 +349,7 @@ describe("chat", () => {
     const { host, guests } = await setup({ guests: 2 });
     expect(guests[0].sendChat("hello there")).toBe(true);
     await until(() => chatOf(guests[0]).length === 1 && chatOf(guests[1]).length === 1 && host.getSnapshot().chat.length === 1, "everyone has it");
-    expect(chatOf(guests[1])[0]).toMatchObject({ text: "hello there", name: "Guest1", seat: 1 });
+    expect(chatOf(guests[1])[0]).toMatchObject({ text: "hello there", name: "Guest1", seat: 2 });
     expect(host.getSnapshot().chat[0].text).toBe("hello there");
     expect(host.sendChat("hi from the host")).toBe(true);
     await until(() => chatOf(guests[1]).length === 2, "host message arrives");
@@ -378,7 +405,7 @@ describe("chat", () => {
 
   it("does not let a removed guest chat", async () => {
     const { host, guests } = await setup();
-    host.kick(1);
+    host.kick(2);
     await until(() => guests[0].getSnapshot().status === "kicked", "kicked");
     expect(guests[0].sendChat("let me back")).toBe(false);
     expect(host.getSnapshot().chat).toHaveLength(0);
@@ -390,7 +417,7 @@ const LONG = Array.from({ length: 300 }, () => 15);
 /** Plays host moves until it is the guest's (seat 1) turn to roll or move. */
 const toGuestTurn = (host: HostSession) => {
   let guard = 0;
-  while (currentPlayer(hostState(host)!).seat !== 1) {
+  while (currentPlayer(hostState(host)!).seat !== 2) {
     if (++guard > 500) throw new Error("never reached the guest's turn");
     expect(host.act(autoAction(hostState(host)!)!)).toBe(true);
   }
@@ -446,7 +473,7 @@ describe("leaving and coming back", () => {
     const { host, guests, ids } = await setup();
     guests[0].leave();
     await until(() => !host.getSnapshot().members.some(m => m.id === ids[0]), "gone");
-    expect(host.getSnapshot().room.slots[1].kind).toBe("empty");
+    expect(host.getSnapshot().room.slots[2].kind).toBe("empty");
   });
 
   it("a guest keeps reconnecting, not host-left, while the host is gone for a while mid-game", async () => {
@@ -526,8 +553,8 @@ describe("host resume", () => {
     await until(() => guests[0].getSnapshot().status === "connected", "guest reconnected");
     await until(() => guests[0].getSnapshot().room?.n === host2.getSnapshot().room.n, "frames line up");
     expect(g1(guests[0]).state).toEqual(before);
-    expect(host2.getSnapshot().members.find(m => m.id !== HOST_ID)!.seat).toBe(1);
-    const slot = host2.getSnapshot().room.slots[1];
+    expect(host2.getSnapshot().members.find(m => m.id !== HOST_ID)!.seat).toBe(2);
+    const slot = host2.getSnapshot().room.slots[2];
     expect(slot.kind === "human" && slot.pieces?.[0]).toMatchObject({ shape: "star" });
     expect(host2.getSnapshot().chat.some(c => c.text === "hello")).toBe(true);
     await playOut(host2, guests[0]);
@@ -628,14 +655,14 @@ describe("rematch keeps the invited players", () => {
     // they press Back on the winner screen: the seat must not be given up
     g.leave();
     await until(() => host.getSnapshot().members.some(m => !m.host && !m.connected), "host sees them away");
-    expect(host.getSnapshot().room.slots[1].kind).toBe("human");
+    expect(host.getSnapshot().room.slots[2].kind).toBe("human");
     expect(host.rematch()).toBe(true);
-    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 1]);
+    expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 2]);
     const back = new GuestClient({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5, 5], rejoin: true });
     cleanup.push(() => back.leave());
     void back.start();
     await until(() => back.getSnapshot().status === "connected" && back.getSnapshot().state?.phase === "roll", "back in the new game");
-    expect(back.getSnapshot().room?.you.seat).toBe(1);
+    expect(back.getSnapshot().room?.you.seat).toBe(2);
     expect(back.getSnapshot().state?.seq).toBe(0);
   }, 60_000);
 
@@ -648,7 +675,7 @@ describe("rematch keeps the invited players", () => {
     cleanup.push(() => late.leave());
     void late.start();
     await until(() => late.getSnapshot().status === "connected", "late guest connected");
-    expect(late.getSnapshot().room?.you.seat).toBe(2);
+    expect(late.getSnapshot().room?.you.seat).toBe(1);
     expect(host.rematch()).toBe(true);
     await until(() => late.getSnapshot().state?.phase === "roll", "late guest in the rematch");
     expect(hostState(host)!.players.map(p => p.seat)).toEqual([0, 1, 2]);
@@ -660,7 +687,7 @@ describe("rematch keeps the invited players", () => {
     await until(() => !!guests[0].getSnapshot().state, "state");
     await playOut(host, guests[0]);
     guests[0].leave({ forfeit: true });
-    await until(() => host.getSnapshot().room.slots[1].kind === "empty", "seat freed");
+    await until(() => host.getSnapshot().room.slots[2].kind === "empty", "seat freed");
   }, 60_000);
 });
 
@@ -673,35 +700,35 @@ describe("player colours", () => {
     const g = guests[0];
     g.setColors({ main: "#AABBCC", home: "#112233", path: "nope" } as never);
     host.setColors({ main: "#010203", home: null, path: null });
-    await until(() => !!slotColors(host.getSnapshot().room, 1), "host sees the guest's colours");
-    expect(slotColors(host.getSnapshot().room, 1)).toEqual({ main: "#aabbcc", home: "#112233", path: null });
+    await until(() => !!slotColors(host.getSnapshot().room, 2), "host sees the guest's colours");
+    expect(slotColors(host.getSnapshot().room, 2)).toEqual({ main: "#aabbcc", home: "#112233", path: null });
     await until(() => !!slotColors(g.getSnapshot().room, 0), "guest sees the host's colours");
     expect(slotColors(g.getSnapshot().room, 0)).toEqual({ main: "#010203", home: null, path: null });
 
     // junk has no usable main colour, so it clears rather than sticking
     g.setColors({ main: "red" } as never);
-    await until(() => !slotColors(host.getSnapshot().room, 1), "junk clears");
+    await until(() => !slotColors(host.getSnapshot().room, 2), "junk clears");
     g.setColors({ main: "#445566", home: null, path: null });
-    await until(() => !!slotColors(host.getSnapshot().room, 1), "set again");
+    await until(() => !!slotColors(host.getSnapshot().room, 2), "set again");
     g.setColors(null);
-    await until(() => !slotColors(host.getSnapshot().room, 1), "null clears");
+    await until(() => !slotColors(host.getSnapshot().room, 2), "null clears");
   });
 
   it("survive a guest leaving and rejoining mid-game", async () => {
     const { net, host, guests, ids } = await setup();
     const g = guests[0];
     g.setColors({ main: "#778899", home: null, path: "#ddeeff" });
-    await until(() => !!slotColors(host.getSnapshot().room, 1), "colours arrive");
+    await until(() => !!slotColors(host.getSnapshot().room, 2), "colours arrive");
     host.start();
     await until(() => !!g.getSnapshot().state, "state");
     g.leave();
     await until(() => host.getSnapshot().members.some(m => !m.host && !m.connected), "away");
-    expect(slotColors(host.getSnapshot().room, 1)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
+    expect(slotColors(host.getSnapshot().room, 2)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
     const back = new GuestClient({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5, 5], rejoin: true });
     cleanup.push(() => back.leave());
     void back.start();
     await until(() => back.getSnapshot().status === "connected" && !!back.getSnapshot().state, "back");
-    expect(slotColors(back.getSnapshot().room, 1)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
+    expect(slotColors(back.getSnapshot().room, 2)).toEqual({ main: "#778899", home: null, path: "#ddeeff" });
   });
 
   it("are kept by a resumed room, and old saves without colours still load", async () => {

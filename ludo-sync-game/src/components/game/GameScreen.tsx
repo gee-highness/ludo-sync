@@ -513,7 +513,7 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              lastMove={lastMove} dim={showScenery ? SKIES[phase].dim : 0} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
+              lastMove={lastMove} phase={phase} dim={showScenery ? SKIES[phase].dim : 0} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />
