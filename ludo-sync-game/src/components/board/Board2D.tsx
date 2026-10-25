@@ -31,6 +31,8 @@ const TRAIL_STYLE: Record<TrailId, { color: string; n: number; d: number; r: num
   sparkle: { color: "#FACC15", n: 7, d: 0.85, r: 0.06, rise: false },
   ember: { color: "#FB923C", n: 6, d: 0.7, r: 0.07, rise: true },
   bubbles: { color: "#7DD3FC", n: 4, d: 0.7, r: 0.1, rise: true, ring: true },
+  smoke: { color: "#b8bcc4", n: 5, d: 0.7, r: 0.1, rise: true },
+  skid: { color: "#1f2227", n: 6, d: 0.5, r: 0.05, rise: false },
 };
 const IDLE_CLASS = { breathe: "tok-idle", none: "", bounce: "tok-idle-bounce", spin: "tok-idle-spin", pulse: "tok-idle-pulse", wobble: "tok-idle-wobble" } as const;
 
@@ -43,6 +45,7 @@ const PALETTES: Record<BoardTheme, Palette> = {
   classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
+  road: { bg: "#4b5563", cell: "#3e434c", line: "#ffffff", panel: "#2f333a", inactiveCol: "#555b66" },
   serene: { bg: "#7a5333", cell: "#FFFEFA", line: "#D8CEC0", panel: "#FFFDF8", inactiveCol: "#CFC6BA" },
   paper: { bg: "#E5E5E5", cell: "#FFFFFF", line: "#CCCCCC", panel: "#fff", inactiveCol: "#CCCCCC" },
 };
@@ -75,6 +78,10 @@ const CSS = `
   .twinkle { animation: twinkle 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
   .yard-glow { animation: yardGlow 1.4s ease-in-out infinite; }
   .banner { animation: banner 1.6s ease-out forwards; }
+  .tok-drive { animation: tokDrive var(--hop) ease-in-out; transform-origin: 0 0; }
+  @keyframes tokDrive { 0%{transform:scale(1,1)} 50%{transform:scale(1.07,1.07)} 100%{transform:scale(1,1)} }
+  .siren-glow { animation: sirenFlash .5s steps(1) infinite; }
+  @keyframes sirenFlash { 0%{fill:#ef4444} 50%{fill:#3b82f6} }
   .tok-step { animation: tokStep var(--hop) ease-out; transform-origin: 0 .3px; }
   @keyframes tokStep { 0%{transform:translateY(0) scale(1.15,.8)} 35%{transform:translateY(-.75px) scale(.92,1.15)} 75%{transform:translateY(-.25px) scale(1.05,.95)} 100%{transform:translateY(0) scale(1,1)} }
   @keyframes tokHop { 0%{transform:translateY(0) scale(1.18,.8)} 25%{transform:translateY(-.38px) scale(.9,1.14)} 60%{transform:translateY(-.3px) scale(.96,1.06)} 85%{transform:translateY(0) scale(1.14,.86)} 100%{transform:translateY(0) scale(1,1)} }
@@ -93,7 +100,7 @@ const CSS = `
   @keyframes twinkle { 0%,100%{transform:scale(1) rotate(0);opacity:1} 50%{transform:scale(1.25) rotate(14deg);opacity:.55} }
   @keyframes yardGlow { 0%,100%{opacity:.25} 50%{opacity:.85} }
   @keyframes banner { 0%{opacity:0;transform:scale(.6)} 15%{opacity:1;transform:scale(1.05)} 25%{transform:scale(1)} 80%{opacity:1} 100%{opacity:0} }
-  .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-step, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
+  .reduce .tok-idle-bounce, .reduce .tok-idle-spin, .reduce .tok-idle-pulse, .reduce .tok-idle-wobble, .reduce .tok-hop, .reduce .tok-step, .reduce .tok-drive, .reduce .siren-glow, .reduce .tok-spin, .reduce .tok-idle, .reduce .tok-bounce, .reduce .tok-dance, .reduce .tok-pulse, .reduce .burst-dot,
   .reduce .dust-dot, .reduce .shock, .reduce .ghost, .reduce .twinkle, .reduce .yard-glow, .reduce .banner { animation: none; }
   .reduce .banner { opacity: 0; }
   .tok-btn:focus-visible .focus-ring { stroke: #fff; stroke-width: .09; }
@@ -153,7 +160,8 @@ export default function Board2D({
   const [settings] = useSettings();
   const world = worldOf(settings.boardTheme);
   const neon = isWorld(settings.boardTheme);
-  const rich = settings.boardTheme === "serene";
+  const road = settings.boardTheme === "road";
+  const rich = settings.boardTheme === "serene" || road;
   const pal = useMemo(() => neon ? { ...PALETTES[settings.boardTheme], bg: world.bg, cell: world.cell, line: world.accent } : PALETTES[settings.boardTheme], [neon, world, settings.boardTheme]);
   const designs = useDesigns();
   const rotation = -90 * viewSeat;
@@ -165,6 +173,25 @@ export default function Board2D({
   const prev = useRef<Map<string, number>>(new Map());
   const burstId = useRef(0);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
+  // which way each vehicle faces, kept as a running angle so turning corners never spins the long way round
+  const headings = useRef(new Map<string, number>());
+  const headingOf = (t: TokenView): number => {
+    const to = pointOf(t.seat, t.token, t.progress);
+    if (t.progress === YARD) { const out = pointOf(t.seat, t.token, 0); return turn(t, out.x - to.x, out.y - to.y); }
+    if (t.progress >= FINISH) return turn(t, 7 - to.x, 7 - to.y);
+    if (t.progress === 0) { const nx = pointOf(t.seat, t.token, 1); return turn(t, nx.x - to.x, nx.y - to.y); }
+    const from = pointOf(t.seat, t.token, t.progress - 1);
+    return turn(t, to.x - from.x, to.y - from.y);
+  };
+  const turn = (t: TokenView, dx: number, dy: number): number => {
+    const key = tokenKey(t.seat, t.token);
+    const prev = headings.current.get(key);
+    if (!dx && !dy) return prev ?? 0;
+    const target = (Math.atan2(dx, -dy) * 180) / Math.PI;
+    const next = prev === undefined ? target : prev + ((((target - prev) % 360) + 540) % 360) - 180;
+    headings.current.set(key, next);
+    return next;
+  };
 
   const tokens = useMemo(() => seatTokens(state), [state]);
   const turnSeat = state.phase === "over" ? null : state.players[state.turn].seat;
@@ -234,6 +261,39 @@ export default function Board2D({
                 <path d={`M${col - 0.44} ${row - 0.44}H${col + 0.44}`} stroke="#fff" strokeOpacity={0.12} strokeWidth={0.05} />
               </g>
             );
+          })() : road ? (() => {
+            const x = col - 0.5, y = row - 0.5;
+            const vArm = col >= 6 && col <= 8 && (row < 6 || row > 8), hArm = row >= 6 && row <= 8 && (col < 6 || col > 8);
+            const track = info.kind !== "column" && info.kind !== "start";
+            const kerb: [number, number, number, number][] = [];
+            if (info.kind !== "column") {
+              if (vArm && col === 6) kerb.push([x, y, 0.09, 1]);
+              if (vArm && col === 8) kerb.push([x + 0.91, y, 0.09, 1]);
+              if (hArm && row === 6) kerb.push([x, y, 1, 0.09]);
+              if (hArm && row === 8) kerb.push([x, y + 0.91, 1, 0.09]);
+              if (row === 0) kerb.push([x, y, 1, 0.09]);
+              if (row === 14) kerb.push([x, y + 0.91, 1, 0.09]);
+              if (col === 0) kerb.push([x, y, 0.09, 1]);
+              if (col === 14) kerb.push([x + 0.91, y, 0.09, 1]);
+            }
+            const vertical = info.kind === "start" ? SEAT_DIRECTION[info.seat!].y !== 0 : vArm;
+            const ang = info.seat !== undefined ? Math.atan2(SEAT_DIRECTION[info.seat].x, -SEAT_DIRECTION[info.seat].y) * (180 / Math.PI) + 180 : 0;
+            return (
+              <g>
+                <rect x={x} y={y} width={1} height={1} fill={info.kind === "column" ? (active ? seatInfo!.path : "#8a8f98") : info.kind === "start" ? (active ? seatInfo!.main : "#6b7078") : "url(#rd-asphalt)"} />
+                <rect x={x} y={y} width={1} height={1} fill="none" stroke="#fff" strokeOpacity={track ? 0.07 : 0.16} strokeWidth={0.03} />
+                {track && <rect x={vertical ? col - 0.025 : col - 0.17} y={vertical ? row - 0.17 : row - 0.025} width={vertical ? 0.05 : 0.34} height={vertical ? 0.34 : 0.05} fill="#fff" fillOpacity={0.2} />}
+                {kerb.map((k, i) => <rect key={i} x={k[0]} y={k[1]} width={k[2]} height={k[3]} fill="#f8fafc" fillOpacity={0.92} />)}
+                {info.kind === "column" && (
+                  <g transform={`translate(${col} ${row}) rotate(${ang})`} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={0.07} strokeLinecap="round" strokeLinejoin="round"><path d="M-0.2 0.1L0 -0.12L0.2 0.1" /></g>
+                )}
+                {info.kind === "start" && (
+                  <g fill="#fff" fillOpacity={0.9}>
+                    {[-0.33, -0.11, 0.11, 0.33].map(o => <rect key={o} x={vertical ? col + o - 0.05 : col - 0.4} y={vertical ? row - 0.4 : row + o - 0.05} width={vertical ? 0.1 : 0.8} height={vertical ? 0.8 : 0.1} rx={0.02} />)}
+                  </g>
+                )}
+              </g>
+            );
           })() : rich ? (() => {
             const x = col - 0.45, y = row - 0.45, w = 0.9;
             const solid = info.kind === "column" || info.kind === "start";
@@ -277,6 +337,8 @@ export default function Board2D({
                 <g fill="none" stroke="#fde047" strokeWidth={0.11} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M-0.24 0.02L0 -0.2L0.24 0.02" /><path d="M-0.24 0.28L0 0.06L0.24 0.28" opacity={0.6} />
                 </g>
+              ) : road ? (
+                <g><rect x={-0.3} y={-0.3} width={0.6} height={0.6} rx={0.1} fill="#1d4ed8" stroke="#fff" strokeWidth={0.04} /><text y={0.03} textAnchor="middle" dominantBaseline="central" fontSize={0.46} fontWeight={900} fill="#fff">P</text></g>
               ) : (
                 <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={rich ? 0.7 : 0.78} fill={rich ? "#E3A72F" : "#D69E2E"} stroke={rich ? "#8a5a08" : undefined} strokeWidth={rich ? 0.03 : undefined}
                   style={{ animationDelay: `${((row * 15 + col) % 7) * 0.35}s` }}>★</text>
@@ -296,7 +358,7 @@ export default function Board2D({
   return cells;
   // the board squares only change with the game state, rotation, theme and colours
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tycoon, playing, rotation, neon, rich, paletteVersion, islands, pal]);
+  }, [state.tycoon, playing, rotation, neon, rich, road, paletteVersion, islands, pal]);
 
   const yards = SEATS.map(seat => {
     const info = SEAT_INFO[seat];
@@ -322,10 +384,15 @@ export default function Board2D({
         ) : <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />}
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
         {rich && <rect x={x0 + 0.85} y={y0 + 0.95} width={4.2} height={4.2} rx={0.7} fill="#2a1a0a" fillOpacity={0.22} />}
-        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={rich ? 0.7 : 0.5} fill={rich ? "url(#sr-nest)" : pal.panel} fillOpacity={neon ? 0.95 : rich ? (active ? 1 : 0.6) : active ? 0.88 : 0.35} />
+        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={rich ? 0.7 : 0.5} fill={road ? "url(#rd-asphalt)" : rich ? "url(#sr-nest)" : pal.panel} fillOpacity={neon ? 0.95 : rich ? (active ? 1 : 0.6) : active ? 0.88 : 0.35} />
         {neon && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.7} strokeWidth={0.04} />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
+          if (road) return (
+            <g key={i}>
+              <rect x={p.x - 0.5} y={p.y - 0.58} width={1} height={1.16} rx={0.08} fill="none" stroke="#fff" strokeOpacity={active ? 0.75 : 0.3} strokeWidth={0.05} strokeDasharray="0.18 0.1" />
+            </g>
+          );
           if (rich) return (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r={0.52} fill={active ? info.main : "#bdb3a5"} fillOpacity={0.22} />
@@ -466,6 +533,13 @@ export default function Board2D({
             </radialGradient>
           );
         })}
+        {road && (
+          <>
+            <linearGradient id="rd-asphalt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#4a4f59" /><stop offset="1" stopColor="#383c44" /></linearGradient>
+            <linearGradient id="rd-frame" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#9aa1ab" /><stop offset="0.5" stopColor="#c5cad2" /><stop offset="1" stopColor="#7d848e" /></linearGradient>
+            <radialGradient id="rd-grass" cx="0.5" cy="0.45" r="0.8"><stop offset="0" stopColor="#8fd18f" /><stop offset="1" stopColor="#5aa05a" /></radialGradient>
+          </>
+        )}
         {rich && (
           <>
             <linearGradient id="sr-cell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffdf7" /><stop offset="1" stopColor="#efe6d6" /></linearGradient>
@@ -494,9 +568,9 @@ export default function Board2D({
       </defs>
       {rich ? (
         <>
-          <rect x={-1} y={-1} width={16} height={16} rx={1} fill="url(#sr-frame)" />
-          <rect x={-0.95} y={-0.95} width={15.9} height={15.9} rx={0.95} fill="none" stroke="#e8c98a" strokeOpacity={0.55} strokeWidth={0.06} />
-          <rect x={-0.55} y={-0.55} width={15.1} height={15.1} rx={0.62} fill="url(#sr-felt)" stroke="#2a1a0a" strokeOpacity={0.5} strokeWidth={0.08} />
+          <rect x={-1} y={-1} width={16} height={16} rx={1} fill={road ? "url(#rd-frame)" : "url(#sr-frame)"} />
+          <rect x={-0.95} y={-0.95} width={15.9} height={15.9} rx={0.95} fill="none" stroke={road ? "#ffffff" : "#e8c98a"} strokeOpacity={road ? 0.7 : 0.55} strokeWidth={0.06} />
+          <rect x={-0.55} y={-0.55} width={15.1} height={15.1} rx={0.62} fill={road ? "url(#rd-grass)" : "url(#sr-felt)"} stroke={road ? "#1f3d1f" : "#2a1a0a"} strokeOpacity={0.5} strokeWidth={0.08} />
         </>
       ) : <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={neon && immersive ? world.bg : pal.bg} />}
       <g transform={`rotate(${rotation} 7 7)`}>
@@ -547,12 +621,13 @@ export default function Board2D({
                 <g className={movable ? "tok-bounce" : IDLE_CLASS[design.idle]} style={{ animationDelay: `${(t.token * 0.4 + t.seat * 0.2).toFixed(1)}s` }}>
                 <g key={t.progress} className={
                   state.winner === t.seat && t.progress === FINISH ? "tok-dance"
+                    : design.vehicle !== "none" ? (t.progress === FINISH ? "tok-step" : "tok-drive")
                     : t.progress === YARD ? "tok-spin" : rich && t.progress === FINISH ? "tok-step" : "tok-hop"
                 }>
                 <g transform={rich && t.progress === FINISH ? `translate(0 ${-STEP})` : undefined}>
                   {rich && <ellipse cy={0.36} rx={0.34} ry={0.1} fill="#2a1a0a" fillOpacity={0.3} />}
                   <circle className="focus-ring" r={0.44} fill="none" stroke="transparent" strokeWidth={0.06} />
-                  <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} metal={neon && isDefaultDesign(designs[t.seat][t.token]) ? (t.seat % 2 === 0 ? "gold" : "silver") : undefined} /></g>
+                  <g transform={`scale(${design.size})`}><g style={design.vehicle !== "none" ? { transform: `rotate(${headingOf(t)}deg)`, transition: reduceMotion ? "none" : `transform ${Math.round(hopMs * 0.9)}ms ease-out`, transformOrigin: "0px 0px" } : undefined}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} metal={neon && isDefaultDesign(designs[t.seat][t.token]) ? (t.seat % 2 === 0 ? "gold" : "silver") : undefined} /></g></g>
                   {symbols && (
                     <text y={0.02} textAnchor="middle" dominantBaseline="central" fontSize={0.4} fontWeight={800} fill="#fff"
                       transform={`rotate(${-rotation})`} aria-hidden>{info.glyph}</text>

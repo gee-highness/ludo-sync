@@ -57,7 +57,7 @@ export default function PiecePreview3D({ design, seat, height = 220 }: { design:
       if (k === key) return;
       key = k;
       clear();
-      if (d.shape === "classic") {
+      if (d.shape === "classic" && d.vehicle === "none") {
         loader.loadAsync(`/models/player${s + 1}.glb`).then(gltf => {
           if (disposed || key !== k) return;
           const tpl = (gltf.scene.children[0] ?? gltf.scene).clone(true);

@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
-import { tokenKey, type PlacedToken } from "./layout";
+import { tokenKey, travelDirection, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
@@ -111,6 +111,8 @@ interface TokenObj {
   idle: IdleId;
   trail: TrailId;
   size: number;
+  /** Vehicles: the way the nose points, as an angle about the vertical axis. */
+  yaw: number | null;
   /** 0..1, how squashed the token is right now (spring that settles after a landing). */
   squash: number;
   hover: number;
@@ -536,7 +538,7 @@ export class LudoScene {
   }
 
   private applyDesign(obj: TokenObj, d: ResolvedDesign) {
-    const metal = this.neonOn && d.shape === "classic";
+    const metal = this.neonOn && d.shape === "classic" && d.vehicle === "none";
     const key = JSON.stringify(d) + (metal ? "|m" : "");
     if (obj.designKey === key) return;
     obj.designKey = key;
@@ -546,7 +548,7 @@ export class LudoScene {
     obj.ownMaterials.forEach(m => m.dispose());
     obj.ownMaterials = [];
     obj.idle = d.idle; obj.trail = d.trail; obj.size = d.size;
-    if (d.shape === "classic") {
+    if (d.shape === "classic" && d.vehicle === "none") {
       const tpl = this.templates[obj.seat];
       if (!tpl) return;
       const body = tpl.clone(true);
@@ -640,7 +642,7 @@ export class LudoScene {
     obj = {
       root, holder, proxy, seat: p.seat, token: p.token, progress: p.progress, target, scaleTarget: p.scale, tween: null, ring: null, glyph: null,
       phase: Math.random() * TAU, squash: 0, hover: 0, cheerUntil: 0,
-      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1,
+      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null,
     };
     this.tokens.set(key, obj);
     return obj;
@@ -652,6 +654,8 @@ export class LudoScene {
       case "sparkle": this.emit(at, 2, Math.random() < 0.5 ? 0xfacc15 : 0xffffff, { spread: 0.8, up: 0.6, life: 0.6, gravity: 0.5, y: 0.3 }); break;
       case "ember": this.emit(at, 2, 0xfb923c, { spread: 0.4, up: 1.4, life: 0.7, gravity: -0.4, y: 0.2 }); break;
       case "bubbles": this.emit(at, 1, 0x7dd3fc, { spread: 0.5, up: 1.1, life: 0.9, gravity: -0.3, y: 0.3 }); break;
+      case "smoke": this.emit(at, 1, 0xb8bcc4, { spread: 0.35, up: 0.9, life: 0.9, gravity: -0.4, y: 0.25 }); break;
+      case "skid": this.emit(at, 2, 0x23262c, { spread: 0.25, up: 0.05, life: 0.8, gravity: 0, y: 0.03 }); break;
       default: this.emit(at, 1, hex(SEAT_INFO[obj.seat].light), { spread: 0.5, up: 0.4, life: 0.45, gravity: 1, y: 0.15 });
     }
   }
@@ -990,6 +994,23 @@ export class LudoScene {
       const sxz = 1 + 0.24 * sq - stretch * 0.45 - breathe * 0.5;
       const k = TOKEN_SCALE * obj.size * grow;
       obj.holder.scale.set(k * sxz, k * sy, k * sxz);
+      const heading = obj.built?.heading;
+      if (heading) {
+        // a vehicle drives nose first: it turns to face the square it is heading for
+        let dx = 0, dz = 0;
+        if (tw && (tw.to.x !== tw.from.x || tw.to.z !== tw.from.z)) { dx = tw.to.x - tw.from.x; dz = tw.to.z - tw.from.z; }
+        else { const v = travelDirection(obj.seat, obj.token, obj.progress); dx = v.x; dz = v.y; }
+        if (dx || dz) {
+          const want = Math.atan2(-dx, -dz);
+          if (obj.yaw === null || calm) obj.yaw = want;
+          else {
+            const d = ((want - obj.yaw + Math.PI * 3) % TAU) - Math.PI;
+            if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
+          }
+        }
+        heading.rotation.y = obj.yaw ?? 0;
+        spinY = 0;
+      }
       obj.holder.rotation.y = spinY;
       obj.holder.rotation.z = tilt;
       obj.holder.position.y = lift + bounce;

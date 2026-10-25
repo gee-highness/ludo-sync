@@ -13,9 +13,9 @@ export type CameraPref = "tilt" | "top" | "follow" | "drone";
 /** What to show on the board for a token that can move: its whole path as dots plus the landing square, just the landing square, or nothing. */
 export type MovePreview = "dots" | "end" | "off";
 export const MOVE_PREVIEWS: readonly MovePreview[] = ["dots", "end", "off"];
-export type BoardTheme = "neon" | "atlantic" | "forest" | "atlantis" | "transylvania" | "tokyo" | "la" | "london" | "paris" | "snow" | "park" | "classic" | "midnight" | "sunset" | "paper" | "serene";
+export type BoardTheme = "neon" | "atlantic" | "forest" | "atlantis" | "transylvania" | "tokyo" | "la" | "london" | "paris" | "snow" | "park" | "classic" | "midnight" | "sunset" | "paper" | "serene" | "road";
 /** World themes (full city look) first, then the flat boards. */
-export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "atlantic", "forest", "atlantis", "transylvania", "tokyo", "la", "london", "paris", "snow", "park", "classic", "midnight", "sunset", "paper", "serene"];
+export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "atlantic", "forest", "atlantis", "transylvania", "tokyo", "la", "london", "paris", "snow", "park", "classic", "midnight", "sunset", "paper", "serene", "road"];
 
 export interface Settings {
   sound: boolean;
@@ -65,7 +65,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   keepAwake: true,
   playerName: "",
   botLevel: "normal",
-  boardTheme: "serene",
+  boardTheme: "road",
   palette: {},
   myColors: null,
   rules: DEFAULT_RULES,
@@ -125,6 +125,11 @@ const ensureLoaded = () => {
   const calm = readJSON("calm-v1", false);
   current = sanitizeSettings(calm || !stored ? stored : { ...(stored as object), renderer: "2d", boardTheme: "serene", camera: "top" });
   if (!calm) { writeJSON("calm-v1", true); writeJSON("settings", current); }
+  // one-off: the track becomes a road
+  if (!readJSON("road-v1", false)) {
+    writeJSON("road-v1", true);
+    if (current.boardTheme === "serene") { current = sanitizeSettings({ ...current, boardTheme: "road" }); writeJSON("settings", current); }
+  }
 };
 
 const subscribe = (cb: () => void) => {

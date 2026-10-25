@@ -8,13 +8,17 @@ export const SHAPES = [
 ] as const;
 export type ShapeId = (typeof SHAPES)[number];
 
+export const VEHICLES = ["none", "car", "sports", "taxi", "suv", "van", "truck", "bus", "motorbike", "scooter", "bicycle", "tuktuk"] as const;
+export type VehicleId = (typeof VEHICLES)[number];
+export const ACCESSORIES = ["none", "siren", "spoiler", "rack", "flag", "box"] as const;
+export type AccessoryId = (typeof ACCESSORIES)[number];
 export const PATTERNS = ["gradient", "solid", "stripes", "dots", "checks", "rings", "split", "zigzag"] as const;
 export type PatternId = (typeof PATTERNS)[number];
 export const BASES = ["shadow", "ring", "plate", "none"] as const;
 export type BaseId = (typeof BASES)[number];
 export const IDLES = ["breathe", "none", "bounce", "spin", "pulse", "wobble"] as const;
 export type IdleId = (typeof IDLES)[number];
-export const TRAILS = ["dust", "none", "sparkle", "ember", "bubbles"] as const;
+export const TRAILS = ["dust", "none", "sparkle", "ember", "bubbles", "smoke", "skid"] as const;
 export type TrailId = (typeof TRAILS)[number];
 export const FINISHES = ["glossy", "matte", "metal", "glass"] as const;
 export type FinishId = (typeof FINISHES)[number];
@@ -46,12 +50,17 @@ export interface PieceDesign {
   base: BaseId;
   idle: IdleId;
   trail: TrailId;
+  /** Ride a vehicle instead of standing as a shape: it drives along the road, nose first. */
+  vehicle: VehicleId;
+  /** Lit headlights shine ahead of the vehicle. */
+  headlights: boolean;
+  accessory: AccessoryId;
 }
 
 export const DEFAULT_DESIGN: Readonly<PieceDesign> = {
   shape: "classic", primary: null, secondary: null, pattern: "gradient", patternStrength: 0.6, outline: null, outlineWidth: 0.4,
   glow: null, glowStrength: 0.5, mark: "", markColor: "#ffffff", markSize: 1, size: 1, depth: 1, finish: "glossy", shine: true,
-  base: "shadow", idle: "breathe", trail: "dust",
+  base: "shadow", idle: "breathe", trail: "dust", vehicle: "none", headlights: true, accessory: "none",
 };
 
 export type SeatDesigns = Record<Seat, PieceDesign[]>;
@@ -86,6 +95,9 @@ export const sanitizeDesign = (raw: unknown): PieceDesign => {
     base: oneOf(r.base, BASES, d.base),
     idle: oneOf(r.idle, IDLES, d.idle),
     trail: oneOf(r.trail, TRAILS, d.trail),
+    vehicle: oneOf(r.vehicle, VEHICLES, d.vehicle),
+    headlights: typeof r.headlights === "boolean" ? r.headlights : d.headlights,
+    accessory: oneOf(r.accessory, ACCESSORIES, d.accessory),
   };
 };
 
@@ -118,7 +130,7 @@ export const resolveDesign = (d: PieceDesign, seat: Seat): ResolvedDesign => ({
 export const designKey = (d: PieceDesign, seat: Seat): string => JSON.stringify(resolveDesign(d, seat));
 
 /** Does any piece use something the shipped 3D model cannot show? Used to decide whether the model or procedural pieces are built. */
-export const usesCustomShape = (d: PieceDesign) => d.shape !== "classic";
+export const usesCustomShape = (d: PieceDesign) => d.shape !== "classic" || d.vehicle !== "none";
 
 // ---- ready-made packs -----------------------------------------------------------------------------
 
@@ -127,6 +139,11 @@ export interface PiecePack { id: string; name: string; blurb: string; designs: (
 const pick = <T,>(list: readonly T[], i: number) => list[i % list.length];
 
 export const PACKS: readonly PiecePack[] = [
+  { id: "roadtrip", name: "Road trip", blurb: "A car, a motorbike, a truck and a bicycle", designs: i => ({ vehicle: pick(["car", "motorbike", "truck", "bicycle"], i), pattern: "gradient", trail: pick(["smoke", "skid", "smoke", "dust"], i), idle: "none" }) },
+  { id: "city", name: "City traffic", blurb: "Taxi, bus, van and tuk-tuk", designs: i => ({ vehicle: pick(["taxi", "bus", "van", "tuktuk"], i), pattern: "solid", trail: "smoke", idle: "none" }) },
+  { id: "bikes", name: "Two wheels", blurb: "Motorbikes, scooters and bicycles", designs: i => ({ vehicle: pick(["motorbike", "scooter", "bicycle", "motorbike"], i), pattern: "solid", trail: pick(["skid", "dust", "dust", "skid"], i), idle: "none" }) },
+  { id: "racers", name: "Racers", blurb: "Sports cars with spoilers and stripes", designs: i => ({ vehicle: "sports", accessory: "spoiler", pattern: pick(["stripes", "solid", "split", "stripes"], i), finish: "metal", trail: "skid", idle: "none" }) },
+  { id: "rescue", name: "Emergency", blurb: "Sirens on every roof", designs: i => ({ vehicle: pick(["suv", "van", "car", "truck"], i), accessory: "siren", pattern: "solid", primary: pick(["#f8fafc", "#ef4444", "#2563eb", "#facc15"], i), secondary: "#111827", trail: "smoke", idle: "none" }) },
   { id: "classic", name: "Classic", blurb: "The standard glossy pieces", designs: () => ({}) },
   { id: "chess", name: "Chess set", blurb: "Pawns, a crown and a shield", designs: i => ({ shape: pick(["pawn", "pawn", "shield", "crown"], i), pattern: "gradient", finish: "matte", base: "plate" }) },
   { id: "candy", name: "Candy", blurb: "Soft hearts, flowers and drops", designs: i => ({ shape: pick(["heart", "flower", "drop", "donut"], i), pattern: pick(["dots", "stripes", "gradient", "rings"], i), finish: "glossy", trail: "sparkle", idle: "bounce" }) },
@@ -176,6 +193,15 @@ const ensureLoaded = () => {
   if (loaded || typeof window === "undefined") return;
   loaded = true;
   current = sanitizeDesigns(readJSON("pieces", null));
+  // one-off: everyone who has not designed their own pieces starts out on the road
+  if (!readJSON("road-v1-pieces", false)) {
+    writeJSON("road-v1-pieces", true);
+    if (SEATS.every(s => current[s].every(isDefaultDesign))) {
+      const pack = PACKS.find(p => p.id === "roadtrip")!;
+      current = Object.fromEntries(SEATS.map(s => [s, applyPack(pack, s, current[s])])) as unknown as SeatDesigns;
+      writeJSON("pieces", current);
+    }
+  }
   recompute();
 };
 const subscribe = (cb: () => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; };
@@ -208,7 +234,7 @@ export const setRemoteDesigns = (next: Partial<Record<Seat, PieceDesign[]>> | nu
 };
 
 export const useDesigns = (): SeatDesigns => useSyncExternalStore(subscribe, snapshot, serverSnapshot);
-export const useLocalDesigns = (): SeatDesigns => { useDesigns(); return getLocalDesigns(); };
+export const useLocalDesigns = (): SeatDesigns => useSyncExternalStore(subscribe, getLocalDesigns, serverSnapshot);
 
 // ---- colour helpers --------------------------------------------------------------------------------
 
