@@ -227,6 +227,15 @@ export function VehicleShape({ design, id }: { design: ResolvedDesign; id: strin
           <ellipse cx={-0.03} cy={rider.y + 0.025} rx={0.026} ry={0.014} fill="#fff" fillOpacity={0.5} />
         </g>
       )}
+      {!rider && d.accessory === "none" && (
+        <g aria-hidden>
+          {/* a sunroof, and the player's own token sitting in the driver's seat */}
+          <rect x={spec.roof[0] - 0.1} y={spec.roof[1] - 0.085} width={0.2} height={0.17} rx={0.05} fill="#10223a" fillOpacity={0.85} stroke="#e6f4ff" strokeOpacity={0.45} strokeWidth={0.012} />
+          <ellipse cx={spec.roof[0]} cy={spec.roof[1] + 0.035} rx={0.06} ry={0.04} fill={dark} fillOpacity={0.9} />
+          <circle cx={spec.roof[0]} cy={spec.roof[1] - 0.005} r={0.058} fill={d.secondary} stroke="#ffffffcc" strokeWidth={0.012} />
+          <ellipse cx={spec.roof[0] - 0.02} cy={spec.roof[1] - 0.025} rx={0.02} ry={0.012} fill="#fff" fillOpacity={0.7} />
+        </g>
+      )}
       {d.accessory !== "none" && <Accessory kind={d.accessory} at={spec.roof} d={d} spec={spec} />}
       {/* lights */}
       {spec.lx > 0 ? (

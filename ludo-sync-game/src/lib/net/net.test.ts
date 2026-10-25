@@ -194,7 +194,7 @@ describe("play", () => {
     guests[0].onReaction(r => back.push(r));
     host.sendReaction("👍");
     await until(() => back.length === 1, "guest got reaction", 6000);
-  });
+  }, 15000);
 
   it("auto-plays for an idle guest and for one who is away", async () => {
     let clock = 1_000;

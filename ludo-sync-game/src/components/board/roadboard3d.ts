@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { SEATS, SEAT_INFO, SEAT_DIRECTION, YARD, cellInfo, lotOnRight, pointOf, yardCentre, type Seat } from "@/lib/ludo/board";
+import { SEATS, SEAT_INFO, SEAT_DIRECTION, bayPoint, cellInfo, lotOnRight, yardCentre, type Seat } from "@/lib/ludo/board";
 
 /** How far the middle of the board stands above the road, and so how high a finished vehicle sits. */
 export const ROAD_STEP = 0.24;
@@ -72,11 +72,8 @@ export const paintRoadBoard = (g: CanvasRenderingContext2D, size: number, playin
     g.strokeStyle = `rgba(255,255,255,${on ? 0.85 : 0.3})`; g.lineWidth = 0.07; g.stroke();
     g.fillStyle = "rgba(248,250,252,.9)"; g.fillRect(right ? lotX0 + 2.45 - 0.07 : lotX0, c.y - 1.78, 0.07, 3.56);
     g.strokeStyle = `rgba(255,255,255,${on ? 0.75 : 0.3})`; g.lineWidth = 0.05; g.setLineDash([0.18, 0.1]);
-    for (let i = 0; i < 4; i++) { const p = pointOf(seat, i, YARD); rr(g, p.x - 0.5, p.y - 0.58, 1, 1.16, 0.08); g.stroke(); }
+    for (let i = 0; i < 4; i++) { const p = bayPoint(seat, i); rr(g, p.x - 0.5, p.y - 0.58, 1, 1.16, 0.08); g.stroke(); }
     g.setLineDash([]);
-    g.fillStyle = "#1d4ed8"; rr(g, lotX0 + 1.05, c.y - 0.17, 0.34, 0.34, 0.06); g.fill();
-    g.strokeStyle = "#fff"; g.lineWidth = 0.03; g.stroke();
-    g.fillStyle = "#fff"; g.font = "900 0.26px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("P", lotX0 + 1.22, c.y + 0.02);
   }
 
   // the road: every square of the track and the coloured lane up to the middle

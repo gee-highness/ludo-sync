@@ -6,10 +6,9 @@ import { buildBuilding, type BuiltBuilding } from "./buildings3d";
 import { ROAD_Y } from "./roadboard3d";
 
 /** Where each seat's buildings stand on its lawn, in board squares from the yard's top left (a 2 by 3 grid), and how developed each one is. */
-const GRID: { col: 0 | 1; row: 0 | 1 | 2; level: 1 | 2 | 3 }[] = [
-  { col: 0, row: 0, level: 3 }, { col: 1, row: 0, level: 1 },
-  { col: 0, row: 1, level: 2 }, { col: 1, row: 1, level: 2 },
-  { col: 0, row: 2, level: 1 }, { col: 1, row: 2, level: 3 },
+const GRID: { col: 0 | 1; row: 0 | 1; level: 1 | 2 | 3 }[] = [
+  { col: 0, row: 0, level: 3 }, { col: 1, row: 0, level: 2 },
+  { col: 0, row: 1, level: 1 }, { col: 1, row: 1, level: 3 },
 ];
 const SCALE = 1.28;
 
@@ -48,13 +47,16 @@ export const buildIslands3D = (): Island3D => {
       const style = islandFor(seat, islands, SEAT_INFO[seat].main);
       const right = lotOnRight(seat);
       const c = yardCentre(seat);
-      const lawnX0 = right ? c.x - 3 + 0.3 - 0.5 + 0.5 : c.x - 0.15;
-      const cols = right ? [lawnX0 + 0.7 - 0.2, lawnX0 + 2.0 - 0.2] : [lawnX0 + 0.85, lawnX0 + 2.15];
+      const x0 = c.x - 3;
+      const lotX0 = right ? c.x + 0.3 : c.x - 2.75;
+      const lawnX0 = right ? x0 + 0.3 : c.x - 0.15;
+      const lawnW = right ? lotX0 - 0.15 - lawnX0 : x0 + 5.6 - lawnX0;
+      const mid = lawnX0 + lawnW / 2;
       const y0 = c.y - 3;
       for (const spot of GRID) {
         const b = buildBuilding(style, spot.level);
         built.push(b);
-        const cx = cols[spot.col] - 7, cz = y0 + 1.55 + spot.row * 1.85 - 7;
+        const cx = mid + (spot.col ? 0.78 : -0.78) - 7, cz = y0 + (spot.row === 0 ? 2.35 : 4.55) - 7;
         const root = new THREE.Group();
         root.add(b.group);
         b.group.scale.setScalar(SCALE);

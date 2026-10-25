@@ -64,7 +64,7 @@ export const buildVehicle3D = (d: ResolvedDesign): Vehicle3D => {
   });
   const trim = M(d.secondary, { roughness: 0.4, metalness: 0.2 });
   const dark = M(shade(d.primary, -0.6), { roughness: 0.55 });
-  const glass = M("#28425e", { roughness: 0.05, metalness: 0.55, transparent: true, opacity: 0.92, emissive: "#0c1c30", emissiveIntensity: 0.6 });
+  const glass = M("#28425e", { roughness: 0.05, metalness: 0.55, transparent: true, opacity: 0.5, depthWrite: false, emissive: "#0c1c30", emissiveIntensity: 0.35 });
   const rubber = M("#14161a", { roughness: 0.95 });
   const chrome = M("#d7dce4", { roughness: 0.18, metalness: 0.95 });
   const plastic = M("#252a33", { roughness: 0.5 });
@@ -174,6 +174,10 @@ export const buildVehicle3D = (d: ResolvedDesign): Vehicle3D => {
     slab(paint, o.hull, o.w, 0, 0.012);
     const [rz0, rz1, ry] = o.roof;
     slab(glass, o.house, o.houseW, 0, 0.006, false);
+    // the player's own token in the driver's seat, seen through the windows
+    const seatZ = (o.house[0][0] + o.house[o.house.length - 1][0]) / 2, seatY = (o.sill + o.roof[2]) / 2;
+    cyl(trim, 0.045, 0.09, 0, seatY - 0.055, seatZ);
+    ball(trim, 0.04, 0, seatY + 0.012, seatZ);
     box(paint, o.houseW + 0.014, 0.014, rz1 - rz0 + 0.02, 0, ry + 0.003, (rz0 + rz1) / 2, 0.006);
     // pillars: the front, middle and rear ones frame the windows
     const base = o.sill;

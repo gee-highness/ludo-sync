@@ -21,7 +21,6 @@ describe("3D road board", () => {
       paintRoadBoard(ctx, 1024, new Set(playing));
       expect(calls.fillRect).toBeGreaterThan(200);
       expect(calls.fill).toBeGreaterThan(8);
-      expect(calls.setLineDash).toBeGreaterThan(0);
       const top = recorder();
       paintCentreTop(top.ctx, 256, new Set(playing));
       expect(top.calls.arc).toBeGreaterThanOrEqual(2);

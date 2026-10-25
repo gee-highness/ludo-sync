@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
+import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, bayPoint, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
 import { tokenKey, travelDirection, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
+import { sound } from "@/lib/client/audio";
+import { DRIFT_MIN } from "@/lib/client/drift";
 import { shade } from "@/lib/client/pieces";
 import { previewPath } from "@/lib/client/preview";
 import { buildNeonBoard, type NeonBoard } from "./neon3d";
@@ -112,6 +114,10 @@ interface TokenObj {
   designKey: string;
   body: THREE.Object3D | null;
   built: Built3D | null;
+  /** Road theme: the person who stands in the car park until the vehicle drives out. */
+  walker: Built3D | null;
+  /** Road theme: the vehicle itself, left in its bay while its player waits. */
+  parked: { built: Built3D; holder: THREE.Group } | null;
   ownMaterials: THREE.Material[];
   /** Set for flat standing pieces, which turn to face the camera. */
   facing: THREE.Object3D | null;
@@ -120,6 +126,10 @@ interface TokenObj {
   size: number;
   /** Vehicles: the way the nose points, as an angle about the vertical axis. */
   yaw: number | null;
+  /** Vehicles: how fast the nose is swinging, and whether it is drifting round a sharp corner. */
+  yawVel: number;
+  drifting: boolean;
+  lastSmoke: number;
   /** 0..1, how squashed the token is right now (spring that settles after a landing). */
   squash: number;
   hover: number;
@@ -553,12 +563,14 @@ export class LudoScene {
 
   private applyDesign(obj: TokenObj, d: ResolvedDesign) {
     const metal = this.neonOn && d.shape === "classic" && d.vehicle === "none";
-    const key = JSON.stringify(d) + (metal ? "|m" : "");
+    const key = JSON.stringify(d) + (metal ? "|m" : "") + (this.roadOn ? "|r" : "");
     if (obj.designKey === key) return;
     obj.designKey = key;
     if (obj.body) obj.holder.remove(obj.body);
     obj.built?.dispose();
     obj.built = null;
+    if (obj.walker) { obj.holder.remove(obj.walker.group); obj.walker.dispose(); obj.walker = null; }
+    if (obj.parked) { obj.root.remove(obj.parked.holder); obj.parked.built.dispose(); obj.parked = null; }
     obj.ownMaterials.forEach(m => m.dispose());
     obj.ownMaterials = [];
     obj.idle = d.idle; obj.trail = d.trail; obj.size = d.size;
@@ -634,6 +646,23 @@ export class LudoScene {
       obj.body = built.group;
       obj.built = built;
       obj.facing = built.facing;
+      if (d.vehicle !== "none" && this.roadOn) {
+        obj.walker = buildPiece3D({ ...d, vehicle: "none", accessory: "none" });
+        obj.walker.group.position.y = 0.02 / TOKEN_SCALE;
+        obj.walker.group.scale.setScalar(0.7);
+        obj.holder.add(obj.walker.group);
+        const bay = bayPoint(obj.seat, obj.token), spot = pointOf(obj.seat, obj.token, YARD), out = pointOf(obj.seat, obj.token, 0);
+        const parkedBuilt = buildPiece3D(d);
+        const ph = new THREE.Group();
+        ph.scale.setScalar(TOKEN_SCALE * d.size);
+        ph.position.set(bay.x - spot.x, 0.02, bay.y - spot.y);
+        parkedBuilt.group.position.y = 0.02 / TOKEN_SCALE;
+        if (parkedBuilt.heading) parkedBuilt.heading.rotation.y = Math.atan2(-(out.x - bay.x), -(out.y - bay.y));
+        ph.add(parkedBuilt.group);
+        ph.visible = false;
+        obj.root.add(ph);
+        obj.parked = { built: parkedBuilt, holder: ph };
+      }
     }
   }
 
@@ -656,7 +685,7 @@ export class LudoScene {
     obj = {
       root, holder, proxy, seat: p.seat, token: p.token, progress: p.progress, target, scaleTarget: p.scale, tween: null, ring: null, glyph: null,
       phase: Math.random() * TAU, squash: 0, hover: 0, cheerUntil: 0,
-      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null,
+      designKey: "", body: null, built: null, walker: null, parked: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null, yawVel: 0, drifting: false, lastSmoke: 0,
     };
     this.tokens.set(key, obj);
     return obj;
@@ -827,6 +856,12 @@ export class LudoScene {
         obj.target.copy(target);
       }
       obj.progress = p.progress;
+      if (obj.walker && obj.body) {
+        const waiting = p.progress === YARD;
+        obj.walker.group.visible = waiting;
+        obj.body.visible = !waiting;
+        if (obj.parked) obj.parked.holder.visible = waiting;
+      }
       obj.scaleTarget = p.scale;
       if (input.symbols && this.glyphTextures[p.seat]) {
         if (!obj.glyph) {
@@ -1063,10 +1098,19 @@ export class LudoScene {
           if (obj.yaw === null || calm) obj.yaw = want;
           else {
             const d = ((want - obj.yaw + Math.PI * 3) % TAU) - Math.PI;
-            if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
+            if (!obj.drifting && tw && Math.abs(d) > (DRIFT_MIN * Math.PI) / 180) { obj.drifting = true; sound.play("squeal"); }
+            if (obj.drifting) {
+              // an under-damped spring: the nose swings past the new heading and settles, while the car leans and the tyres smoke
+              obj.yawVel += (d * 70 - obj.yawVel * 6.5) * dt;
+              obj.yaw += obj.yawVel * dt;
+              animating = true;
+              if (Math.abs(d) < 0.02 && Math.abs(obj.yawVel) < 0.15) { obj.drifting = false; obj.yawVel = 0; obj.yaw = want; }
+              else if (Math.abs(obj.yawVel) > 1.2 && t - obj.lastSmoke > 0.07) { obj.lastSmoke = t; this.emit(obj.root.position, 3, 0xe5e7eb, { spread: 0.9, up: 0.7, life: 0.6, gravity: 0.5, y: 0.1 }); }
+            } else if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
           }
         }
         heading.rotation.y = obj.yaw ?? 0;
+        heading.rotation.z = obj.drifting ? Math.max(-0.22, Math.min(0.22, -obj.yawVel * 0.07)) : 0;
         spinY = 0;
         // the wheels roll as far as the vehicle travels
         const wl = obj.built?.wheels;
