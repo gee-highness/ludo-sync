@@ -4,6 +4,7 @@ import { sanitizeColors, sanitizePalette, type PaletteMap, type SeatColors } fro
 import { DEFAULT_RULES, type BotLevel, type Rules } from "../ludo/types";
 import { parseQuality, type QualityPref } from "./quality";
 import { readJSON, writeJSON } from "./storage";
+import { MOODS, type Mood } from "./soundDesign";
 
 export type RendererPref = "auto" | "3d" | "2d";
 export type SpeedPref = "normal" | "fast" | "instant";
@@ -20,6 +21,12 @@ export const BOARD_THEMES: readonly BoardTheme[] = ["neon", "atlantic", "forest"
 export interface Settings {
   sound: boolean;
   volume: number;
+  /** Background music, its volume and mood. */
+  music: boolean;
+  musicVolume: number;
+  mood: Mood;
+  /** Engines, horns and tyres. */
+  engineSounds: boolean;
   haptics: boolean;
   renderer: RendererPref;
   quality: QualityPref;
@@ -51,6 +58,10 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   sound: true,
   volume: 0.7,
+  music: true,
+  musicVolume: 0.35,
+  mood: "relaxed",
+  engineSounds: true,
   haptics: true,
   renderer: "2d",
   quality: "auto",
@@ -83,6 +94,10 @@ export const sanitizeSettings = (raw: unknown): Settings => {
   return {
     sound: bool(r.sound, d.sound),
     volume: typeof r.volume === "number" && r.volume >= 0 && r.volume <= 1 ? r.volume : d.volume,
+    music: bool(r.music, d.music),
+    musicVolume: typeof r.musicVolume === "number" && r.musicVolume >= 0 && r.musicVolume <= 1 ? r.musicVolume : d.musicVolume,
+    mood: oneOf(r.mood, MOODS, d.mood),
+    engineSounds: bool(r.engineSounds, d.engineSounds),
     haptics: bool(r.haptics, d.haptics),
     renderer: oneOf(r.renderer, ["auto", "3d", "2d"], d.renderer),
     quality: parseQuality(r.quality, d.quality),
