@@ -5,7 +5,7 @@ import {
   Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, FormControl, FormLabel, Heading,
   Select, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Switch, Text, VStack, HStack, Divider,
 } from "@chakra-ui/react";
-import { BOARD_THEMES, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
+import { BOARD_THEMES, CALM_PRESET, DEFAULT_SETTINGS, useSettings, type Settings } from "@/lib/client/settings";
 import Link from "next/link";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
@@ -34,6 +34,7 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
         <DrawerHeader>Settings</DrawerHeader>
         <DrawerBody pb={8}>
           <VStack align="stretch" spacing={4}>
+            <Button colorScheme="teal" variant="outline" color="white" onClick={() => { sound.unlock(); update(CALM_PRESET); }}>Relax: use the calm settings</Button>
             <Heading size="xs" color="teal.200" textTransform="uppercase">Sound and feel</Heading>
             <Row label="Sound effects">{toggle("sound")}</Row>
             <Row label="Volume">

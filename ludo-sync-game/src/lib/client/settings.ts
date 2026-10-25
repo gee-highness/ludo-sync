@@ -142,6 +142,12 @@ export const sanitizeSettings = (raw: unknown): Settings => {
   };
 };
 
+/** One tap to a relaxed game: the flat road board and its world, an unhurried pace, quiet music, and nothing that flashes. */
+export const CALM_PRESET: Readonly<Partial<Settings>> = {
+  renderer: "2d", camera: "top", boardTheme: "road", speed: "normal", motion: "auto", scenery: true, timeOfDay: "auto", weather: "clear", traffic: true,
+  sound: true, music: true, musicVolume: 0.3, mood: "relaxed", engineSounds: true, hints: true, movePreview: "dots",
+};
+
 let current: Settings = DEFAULT_SETTINGS;
 let loaded = false;
 const listeners = new Set<() => void>();

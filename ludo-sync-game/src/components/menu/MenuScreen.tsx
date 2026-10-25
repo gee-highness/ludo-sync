@@ -93,7 +93,7 @@ export default function MenuScreen() {
         )}
         <Box pt={4}>
           <Text fontSize="sm" color="gray.500">
-            Made by <Link href="https://synapse-digital.vercel.app" style={{ fontWeight: 700 }}>Synapse Digital</Link>
+            Made by <Link href="https://synapse-digital.vercel.app" style={{ fontWeight: 700, display: "inline-block", padding: "10px 4px" }}>Synapse Digital</Link>
           </Text>
         </Box>
       </VStack>

@@ -493,7 +493,7 @@ export default function GameScreen(props: GameScreenProps) {
       {!wide && !immersive && (
         <HStack px={2} py={1.5} spacing={2} flexShrink={0} bg="#151515" position="relative" zIndex={1}>
           {leaveBtn}
-          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.200">{props.title ?? "Ludo Sync"}</Text>
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} minW={0} color="gray.200" visibility={{ base: "hidden", sm: "visible" }}>{props.title ?? "Ludo Sync"}</Text>
           {props.headerExtra}
           {iconButtons}
         </HStack>
@@ -533,7 +533,7 @@ export default function GameScreen(props: GameScreenProps) {
       {immersive && !wide && (
         <HStack ref={headerRef} position="absolute" top={0} left={0} right={0} zIndex={6} px={2} pt="calc(env(safe-area-inset-top) + 6px)" pb={1.5} spacing={2} {...glass}>
           {leaveBtn}
-          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} color="gray.100">{props.title ?? "Ludo Sync"}</Text>
+          <Text fontWeight={700} fontSize="sm" noOfLines={1} flex={1} minW={0} color="gray.100" visibility={{ base: "hidden", sm: "visible" }}>{props.title ?? "Ludo Sync"}</Text>
           {props.headerExtra}
           {iconButtons}
         </HStack>
