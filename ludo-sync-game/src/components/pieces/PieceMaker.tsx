@@ -174,7 +174,7 @@ export default function PieceMaker() {
                         {ACCESSORIES.map(a => <option key={a} value={a}>{ACCESSORY_LABEL[a]}</option>)}
                       </Select>
                     </Row>
-                    <Text fontSize="xs" color="gray.400">Second colour paints the roof sign, the rider's helmet and the stripes. Exhaust and tyre trails are under Motion.</Text>
+                    <Text fontSize="xs" color="gray.400">Second colour paints the roof sign, the rider&apos;s helmet and the stripes. Exhaust and tyre trails are under Motion.</Text>
                   </VStack>
                 )}
               </Section>
