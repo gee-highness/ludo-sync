@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { SEATS, SEAT_INFO, type Seat } from "@/lib/ludo/board";
 import BuildingGlyph from "../board/BuildingGlyph";
 import {
-  BUILDING_THEMES, DEFAULT_ISLAND, ROOFS, WINDOWS, islandFor, sanitizeIsland, sanitizeIslands, setIsland, setIslands, useIslands, type IslandMap, type IslandStyle,
+  BUILDING_THEMES, DEFAULT_ISLAND, EXTRAS, FINISHES, GROUNDS, GROUND_COLOURS, ROOFS, SHAPES, WINDOWS, islandFor, sanitizeIsland, sanitizeIslands, setIsland, setIslands, useIslands, type IslandMap, type IslandStyle,
 } from "@/lib/client/islands";
 
 const IslandPreview3D = dynamic(() => import("./IslandPreview3D"), { ssr: false, loading: () => <Box h="230px" /> });
@@ -21,13 +21,13 @@ const THEME_BLURB: Record<IslandStyle["theme"], string> = {
 const WALLS = ["#1e2a4a", "#3b1f4a", "#14352f", "#4a2a1e", "#2b2f36", "#7c4a35", "#0f766e", "#475569"];
 const ACCENTS = ["#22d3ee", "#f472b6", "#a3e635", "#fbbf24", "#fb923c", "#a78bfa", "#38bdf8", "#f87171"];
 
-const PRESETS: { name: string; style: Omit<IslandStyle, "sign"> & { sign: string } }[] = [
-  { name: "Neon Nights", style: { theme: "neon", primary: "#1e2a4a", accent: "#22d3ee", roof: "antenna", windows: "grid", sign: "", glow: 0.8 } },
-  { name: "Old Town", style: { theme: "brownstone", primary: "#7c4a35", accent: "#fbbf24", roof: "flat", windows: "arched", sign: "", glow: 0.45 } },
-  { name: "Island Resort", style: { theme: "tropical", primary: "#0f766e", accent: "#fb7185", roof: "dome", windows: "stripes", sign: "", glow: 0.6 } },
-  { name: "Factory District", style: { theme: "industrial", primary: "#475569", accent: "#fb923c", roof: "antenna", windows: "grid", sign: "", glow: 0.5 } },
-  { name: "Glass Bay", style: { theme: "glass", primary: "#1d4e6b", accent: "#a7f3d0", roof: "helipad", windows: "stripes", sign: "", glow: 0.7 } },
-  { name: "Candy City", style: { theme: "neon", primary: "#831843", accent: "#f472b6", roof: "dome", windows: "arched", sign: "SWEET", glow: 0.9 } },
+const PRESETS: { name: string; style: IslandStyle }[] = [
+  { name: "Neon Nights", style: { ...DEFAULT_ISLAND, theme: "neon", primary: "#1e2a4a", accent: "#22d3ee", roof: "antenna", windows: "grid", sign: "", glow: 0.8, height: 1.2, extras: ["lamps"], finish: "glossy" } },
+  { name: "Old Town", style: { ...DEFAULT_ISLAND, theme: "brownstone", primary: "#7c4a35", accent: "#fbbf24", roof: "flat", windows: "arched", sign: "", glow: 0.45, ground: "marble", extras: ["fence", "lamps"], lights: "#ffb347" } },
+  { name: "Island Resort", style: { ...DEFAULT_ISLAND, theme: "tropical", primary: "#0f766e", accent: "#fb7185", roof: "dome", windows: "stripes", sign: "", glow: 0.6, ground: "sand", shape: "round", extras: ["trees", "flags"], height: 0.9 } },
+  { name: "Factory District", style: { ...DEFAULT_ISLAND, theme: "industrial", primary: "#475569", accent: "#fb923c", roof: "antenna", windows: "grid", sign: "", glow: 0.5, finish: "metallic", footprint: 1.1, extras: ["fence"], lights: "#ff8a3d" } },
+  { name: "Glass Bay", style: { ...DEFAULT_ISLAND, theme: "glass", primary: "#1d4e6b", accent: "#a7f3d0", roof: "helipad", windows: "stripes", sign: "", glow: 0.7, ground: "water", height: 1.3, shape: "round", finish: "glossy", lights: "#a7f3d0" } },
+  { name: "Candy City", style: { ...DEFAULT_ISLAND, theme: "neon", primary: "#831843", accent: "#f472b6", roof: "dome", windows: "arched", sign: "SWEET", glow: 0.9, ground: "grass", shape: "round", extras: ["flags", "trees"], lights: "#ff9ad5" } },
 ];
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
@@ -50,7 +50,9 @@ const Swatches = ({ label, value, colours, onChange }: { label: string; value: s
 
 const randomStyle = (): IslandStyle => {
   const p = <T,>(l: readonly T[]) => l[Math.floor(Math.random() * l.length)];
-  return sanitizeIsland({ theme: p(BUILDING_THEMES), primary: p(WALLS), accent: p(ACCENTS), roof: p(ROOFS), windows: p(WINDOWS), sign: "", glow: 0.4 + Math.random() * 0.6 });
+  return sanitizeIsland({ theme: p(BUILDING_THEMES), primary: p(WALLS), accent: p(ACCENTS), roof: p(ROOFS), windows: p(WINDOWS), sign: "", glow: 0.4 + Math.random() * 0.6,
+    height: 0.8 + Math.random() * 0.5, footprint: 0.85 + Math.random() * 0.25, shape: p(SHAPES), ground: p(GROUNDS), finish: p(FINISHES),
+    extras: EXTRAS.filter(() => Math.random() < 0.4), lights: Math.random() < 0.5 ? "" : p(ACCENTS) });
 };
 
 export default function IslandEditor() {
@@ -137,6 +139,40 @@ export default function IslandEditor() {
               <Text fontWeight={700} mb={2}>Windows</Text>
               <Wrap>{WINDOWS.map(w => <Button key={w} size="sm" variant={style.windows === w ? "solid" : "outline"} colorScheme="teal" aria-pressed={style.windows === w} onClick={() => edit({ windows: w })}>{cap(w)}</Button>)}</Wrap>
             </Box>
+            <Row label="Height">
+              <HStack w="200px" spacing={3}>
+                <Slider min={0.6} max={1.5} step={0.05} value={style.height} aria-label="Height" onChange={v => edit({ height: v })} colorScheme="teal"><SliderTrack><SliderFilledTrack /></SliderTrack><SliderThumb /></Slider>
+                <Text fontSize="xs" w="34px" textAlign="right">{style.height.toFixed(2)}</Text>
+              </HStack>
+            </Row>
+            <Row label="Width">
+              <HStack w="200px" spacing={3}>
+                <Slider min={0.7} max={1.1} step={0.05} value={style.footprint} aria-label="Width" onChange={v => edit({ footprint: v })} colorScheme="teal"><SliderTrack><SliderFilledTrack /></SliderTrack><SliderThumb /></Slider>
+                <Text fontSize="xs" w="34px" textAlign="right">{style.footprint.toFixed(2)}</Text>
+              </HStack>
+            </Row>
+            <Box>
+              <Text fontWeight={700} mb={2}>Shape</Text>
+              <Wrap>{SHAPES.map(x => <Button key={x} size="sm" variant={style.shape === x ? "solid" : "outline"} colorScheme="teal" aria-pressed={style.shape === x} onClick={() => edit({ shape: x })}>{cap(x)}</Button>)}</Wrap>
+            </Box>
+            <Box>
+              <Text fontWeight={700} mb={2}>Wall finish</Text>
+              <Wrap>{FINISHES.map(x => <Button key={x} size="sm" variant={style.finish === x ? "solid" : "outline"} colorScheme="teal" aria-pressed={style.finish === x} onClick={() => edit({ finish: x })}>{cap(x)}</Button>)}</Wrap>
+            </Box>
+            <Box>
+              <Text fontWeight={700} mb={2}>Ground</Text>
+              <Wrap>{GROUNDS.map(x => (
+                <Button key={x} size="sm" variant={style.ground === x ? "solid" : "outline"} colorScheme="teal" aria-pressed={style.ground === x} onClick={() => edit({ ground: x })} leftIcon={<Box w="12px" h="12px" borderRadius="sm" bg={GROUND_COLOURS[x]} border="1px solid #fff8" />}>{cap(x)}</Button>
+              ))}</Wrap>
+            </Box>
+            <Box>
+              <Text fontWeight={700} mb={2}>Around the building</Text>
+              <Wrap>{EXTRAS.map(x => {
+                const on = style.extras.includes(x);
+                return <Button key={x} size="sm" variant={on ? "solid" : "outline"} colorScheme="teal" aria-pressed={on} onClick={() => edit({ extras: on ? style.extras.filter(e => e !== x) : [...style.extras, x] })}>{cap(x)}</Button>;
+              })}</Wrap>
+            </Box>
+            <Swatches label="Window light" value={style.lights || "#ffd27a"} colours={["#ffd27a", ...ACCENTS]} onChange={c => edit({ lights: c })} />
             <Row label="Sign text">
               <Input w="150px" size="sm" bg="gray.700" maxLength={8} value={style.sign} placeholder="Automatic" aria-label="Sign text" onChange={e => edit({ sign: e.target.value })} />
             </Row>

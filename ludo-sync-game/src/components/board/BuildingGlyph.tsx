@@ -2,6 +2,7 @@
 
 import type { IslandStyle } from "@/lib/client/islands";
 import { shade } from "@/lib/client/pieces";
+import { GROUND_COLOURS } from "@/lib/client/islands";
 import { defaultSign } from "./buildings3d";
 
 type Level = 0 | 1 | 2 | 3;
@@ -29,14 +30,14 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
   const els: React.ReactNode[] = [];
 
   // ground plot with an accent edge
-  els.push(<polygon key="plot" points="50,98 92,88 50,78 8,88" fill="#0e1322" stroke={style.accent} strokeWidth={1.6} strokeOpacity={0.9} />);
+  els.push(<polygon key="plot" points="50,98 92,88 50,78 8,88" fill={GROUND_COLOURS[style.ground]} stroke={style.accent} strokeWidth={1.6} strokeOpacity={0.9} />);
 
   if (level === 0) {
     els.push(<polygon key="pyr" points="50,64 60,86 50,90 40,86" fill={style.accent} fillOpacity={0.9} />, <polygon key="pyr2" points="50,64 60,86 50,90" fill={shade(style.accent, -0.3)} />);
     return <g>{els}</g>;
   }
 
-  const tiers = TIERS[style.theme][level - 1];
+  const tiers = TIERS[style.theme][level - 1].map(t => ({ w: t.w * style.footprint, h: Math.min(60, t.h * style.height) }));
   let yb = gy;
   let topW = tiers[0].w, topX = 0, topY = 0;
   tiers.forEach((t, i) => {
@@ -45,7 +46,7 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
     const yt = yb - t.h;
     els.push(
       <g key={`t${i}`}>
-        <rect x={x} y={yt} width={t.w} height={t.h} fill={wallFront} />
+        <rect x={x} y={yt} width={t.w} height={t.h} rx={style.shape === "round" ? t.w * 0.3 : 0} fill={wallFront} />
         <polygon points={`${x + t.w},${yt} ${x + t.w + dx},${yt - dy} ${x + t.w + dx},${yb - dy} ${x + t.w},${yb}`} fill={wallSide} />
         <polygon points={`${x},${yt} ${x + dx},${yt - dy} ${x + t.w + dx},${yt - dy} ${x + t.w},${yt}`} fill={wallTop} />
         <polygon points={`${x},${yt} ${x + dx},${yt - dy} ${x + t.w + dx},${yt - dy} ${x + t.w},${yt}`} fill="none" stroke={style.accent} strokeWidth={1.2} strokeOpacity={style.theme === "brownstone" || style.theme === "industrial" ? 0.2 : 0.95} />
@@ -65,7 +66,7 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
               const wx = x + 2.5 + c * ((t.w - 4) / cols), wy = yt + 2.5 + r * (t.h / rows);
               out.push(
                 <rect key={`w${r}-${c}`} x={wx} y={wy} width={w} height={h} rx={style.windows === "arched" ? w / 2 : 0.6}
-                  fill={on ? (c % 3 === 0 ? style.accent : WARM[(r + c) % 2]) : "#0b1020"} fillOpacity={on ? 0.5 + 0.5 * glow : 0.9} />,
+                  fill={on ? (style.lights || (c % 3 === 0 ? style.accent : WARM[(r + c) % 2])) : "#0b1020"} fillOpacity={on ? 0.5 + 0.5 * glow : 0.9} />,
               );
             }
           }
@@ -85,6 +86,11 @@ export function BuildingShape({ style, level, withSign = false }: Props) {
   if (style.roof === "antenna") els.push(<g key="ant"><line x1={cx} y1={topY - 3} x2={cx} y2={topY - 24} stroke="#cbd5e1" strokeWidth={1.6} /><line x1={cx - 5} y1={topY - 17} x2={cx + 5} y2={topY - 17} stroke="#cbd5e1" strokeWidth={1.2} /><circle cx={cx} cy={topY - 25} r={2.2} fill="#ff3b3b" /></g>);
   if (style.roof === "dome") els.push(<path key="dome" d={`M${cx - topW * 0.36},${topY - 2} a${topW * 0.36},${topW * 0.36} 0 0 1 ${topW * 0.72},0 z`} fill={style.accent} fillOpacity={0.6} stroke={style.accent} strokeWidth={1} />);
   if (style.roof === "helipad") els.push(<g key="pad"><ellipse cx={cx} cy={topY - 2} rx={topW * 0.42} ry={topW * 0.17} fill="#1a1f2e" stroke={style.accent} strokeWidth={1.4} /><text x={cx} y={topY} textAnchor="middle" fontSize={9} fontWeight={800} fill="#fff">H</text></g>);
+
+  if (style.extras.includes("trees")) els.push(<g key="tree"><rect x={14} y={80} width={2} height={7} fill="#6b4a2c" /><polygon points="15,66 21,82 9,82" fill="#2f8f46" /></g>);
+  if (style.extras.includes("flags")) els.push(<g key="flag"><line x1={84} y1={90} x2={84} y2={66} stroke="#d5dbe5" strokeWidth={1.2} /><rect x={84} y={66} width={9} height={6} fill={style.accent} /></g>);
+  if (style.extras.includes("lamps")) els.push(<g key="lamp"><line x1={30} y1={92} x2={30} y2={78} stroke="#2a2f3a" strokeWidth={1.4} /><circle cx={30} cy={77} r={2.4} fill="#fff2b0" /></g>);
+  if (style.extras.includes("fence")) els.push(<polyline key="fence" points="8,88 50,98 92,88" fill="none" stroke="#caa87a" strokeWidth={1.6} strokeDasharray="2 2.5" />);
 
   if (withSign) {
     const text = style.sign || defaultSign(style.theme, level);

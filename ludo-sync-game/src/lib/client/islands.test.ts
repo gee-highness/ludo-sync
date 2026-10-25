@@ -20,6 +20,17 @@ describe("island styles", () => {
     expect(s.sign).not.toMatch(/[<>]/);
     expect(s.glow).toBe(1);
   });
+  it("cleans the new options and fills them in for older saved islands", () => {
+    const s = sanitizeIsland({ height: 9, footprint: 0, shape: "hex", ground: "lava", finish: 3, extras: ["trees", "bogus", "trees", "flags"], lights: "nope" });
+    expect(s.height).toBe(1.5);
+    expect(s.footprint).toBe(0.7);
+    expect(s.shape).toBe("block");
+    expect(s.ground).toBe("slab");
+    expect(s.finish).toBe("auto");
+    expect(s.extras).toEqual(["flags", "trees"]);
+    expect(s.lights).toBe("");
+    expect(sanitizeIsland({ theme: "glass" }).extras).toEqual([]);
+  });
   it("keeps only seats 0 to 3 and falls back to the seat colour", () => {
     expect(Object.keys(sanitizeIslands({ 0: { theme: "glass" }, 7: { theme: "glass" } }))).toEqual(["0"]);
     expect(islandFor(2, {}, "#123456").accent).toBe("#123456");

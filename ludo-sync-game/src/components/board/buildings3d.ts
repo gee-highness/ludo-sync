@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { BuildingTheme, IslandStyle } from "@/lib/client/islands";
+import { GROUND_COLOURS, type BuildingTheme, type IslandStyle } from "@/lib/client/islands";
 
 export interface BuiltBuilding {
   /** Feet at y = 0, centred on x = z = 0, fitting inside a 0.9 x 0.9 square. */
@@ -50,8 +50,8 @@ const facade = (style: IslandStyle) => {
     const g = c.getContext("2d")!;
     const wall = style.theme === "glass" ? mix(style.primary, "#9fd8ff", 0.25) : style.primary;
     g.fillStyle = glowMap ? "#000" : wall; g.fillRect(0, 0, 128, 128);
-    const r = rng(hash(`${style.theme}${style.windows}${style.primary}${style.accent}`));
-    const warm = ["#ffd27a", "#ffe9a8", style.accent];
+    const r = rng(hash(`${style.theme}${style.windows}${style.primary}${style.accent}${style.lights}`));
+    const warm = style.lights ? [style.lights, mix(style.lights, "#ffffff", 0.45), style.lights] : ["#ffd27a", "#ffe9a8", style.accent];
     const cols = 4, rows = 4, cw = 128 / cols, ch = 128 / rows;
     const paint = (x: number, y: number, w: number, h: number, on: boolean, arch: boolean) => {
       g.fillStyle = on ? warm[Math.floor(r() * 3)] : glowMap ? "#000" : "#0b1020";
@@ -72,14 +72,15 @@ const facade = (style: IslandStyle) => {
 };
 
 const wallMaterial = (style: IslandStyle, rel: (() => void)[]): THREE.MeshStandardMaterial => {
-  const key = `wall|${style.theme}|${style.windows}|${style.primary}|${style.accent}|${q(style.glow)}`;
+  const key = `wall|${style.theme}|${style.windows}|${style.primary}|${style.accent}|${q(style.glow)}|${style.lights}|${style.finish}`;
   return lease(key, () => {
     const tex = hasDom ? facade(style) : null;
     const glass = style.theme === "glass";
     const m = new THREE.MeshStandardMaterial({
       color: tex ? 0xffffff : style.primary, map: tex?.map ?? null, emissive: 0xffffff, emissiveMap: tex?.glow ?? null,
       emissiveIntensity: tex ? 0.35 + 1.3 * q(style.glow) : 0,
-      roughness: glass ? 0.18 : style.theme === "industrial" ? 0.8 : 0.6, metalness: glass ? 0.55 : 0.08,
+      roughness: style.finish === "glossy" ? 0.12 : style.finish === "metallic" ? 0.3 : style.finish === "matte" ? 0.9 : glass ? 0.18 : style.theme === "industrial" ? 0.8 : 0.6,
+      metalness: style.finish === "metallic" ? 0.85 : style.finish === "glossy" ? 0.25 : style.finish === "matte" ? 0 : glass ? 0.55 : 0.08,
       transparent: glass, opacity: glass ? 0.88 : 1,
     });
     return { v: m, free: () => { m.dispose(); tex?.map.dispose(); tex?.glow.dispose(); } };
@@ -158,6 +159,15 @@ const boxGeo = (w: number, h: number, d: number, rel: (() => void)[], tiled = tr
 
 const cylGeo = (rt: number, rb: number, h: number, seg: number, rel: (() => void)[]): THREE.BufferGeometry =>
   lease(`cyl|${rt}|${rb}|${h}|${seg}`, () => { const g = new THREE.CylinderGeometry(rt, rb, h, seg); return { v: g, free: () => g.dispose() }; }, rel);
+/** A drum whose side faces are scaled so the facade tiles round it as they do a box. */
+const drumGeo = (r: number, h: number, rel: (() => void)[]): THREE.BufferGeometry =>
+  lease(`drum|${r.toFixed(3)}|${h.toFixed(3)}`, () => {
+    const g = new THREE.CylinderGeometry(r, r, h, 28, 1, false);
+    const uv = g.getAttribute("uv") as THREE.BufferAttribute;
+    const around = Math.max(3, Math.round((2 * Math.PI * r) / TILE));
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * around, (uv.getY(i) * h) / TILE);
+    return { v: g, free: () => g.dispose() };
+  }, rel);
 const sphGeo = (r: number, half: boolean, rel: (() => void)[]): THREE.BufferGeometry =>
   lease(`sph|${r}|${half}`, () => { const g = half ? new THREE.SphereGeometry(r, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2) : new THREE.SphereGeometry(r, 10, 8); return { v: g, free: () => g.dispose() }; }, rel);
 const planeGeo = (w: number, h: number, rel: (() => void)[]): THREE.BufferGeometry =>
@@ -187,11 +197,44 @@ export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBu
     return m;
   };
   const trim = trimMaterial(style.accent, rel);
-  const slab = plainMaterial("#0e1322", rel, 0, 0.9);
+  const slab = plainMaterial(GROUND_COLOURS[style.ground], rel, 0, style.ground === "marble" ? 0.25 : style.ground === "water" ? 0.1 : 0.9);
 
   // the plot every building stands on, edged in the island's accent colour
   add(boxGeo(0.86, 0.04, 0.86, rel, false), slab, 0, 0.02, 0);
   for (const [sx, sz, w, d] of [[0, 0.42, 0.86, 0.025], [0, -0.42, 0.86, 0.025], [0.42, 0, 0.025, 0.86], [-0.42, 0, 0.025, 0.86]] as const) add(boxGeo(w, 0.03, d, rel, false), trim, sx, 0.045, sz);
+
+  // the small things standing around the plot
+  const extras = new Set(style.extras);
+  if (extras.has("fence")) {
+    const post = plainMaterial("#caa87a", rel, 0, 0.8);
+    for (const [x, z, w, d] of [[0, 0.4, 0.8, 0.014], [0, -0.4, 0.8, 0.014], [0.4, 0, 0.014, 0.8], [-0.4, 0, 0.014, 0.8]] as const) {
+      add(boxGeo(w, 0.02, d, rel, false), post, x, 0.14, z);
+      add(boxGeo(w, 0.02, d, rel, false), post, x, 0.09, z);
+    }
+    for (const [x, z] of [[-0.4, -0.4], [0.4, -0.4], [-0.4, 0.4], [0.4, 0.4], [0, 0.4], [0, -0.4], [0.4, 0], [-0.4, 0]] as const) add(boxGeo(0.025, 0.14, 0.025, rel, false), post, x, 0.11, z);
+  }
+  if (extras.has("lamps")) {
+    const pole = plainMaterial("#2a2f3a", rel, 0, 0.5);
+    const bulb = plainMaterial("#fff2b0", rel, 1.4, 0.4);
+    for (const x of [-0.38, 0.38]) {
+      add(cylGeo(0.01, 0.012, 0.3, 6, rel), pole, x, 0.19, 0.38);
+      add(sphGeo(0.03, false, rel), bulb, x, 0.35, 0.38);
+    }
+  }
+  if (extras.has("trees")) {
+    const leaf = plainMaterial(style.ground === "sand" ? "#3f9d52" : "#2f8f46", rel, 0, 0.8), bark = plainMaterial("#6b4a2c", rel, 0, 0.9);
+    const cone = lease("tree|cone", () => { const g = new THREE.ConeGeometry(0.09, 0.26, 8); return { v: g, free: () => g.dispose() }; }, rel);
+    for (const [x, z] of [[-0.36, -0.36], [0.36, -0.36]] as const) {
+      add(cylGeo(0.012, 0.015, 0.1, 6, rel), bark, x, 0.09, z);
+      add(cone, leaf, x, 0.27, z);
+    }
+  }
+  if (extras.has("flags")) {
+    const pole = plainMaterial("#d5dbe5", rel, 0, 0.4);
+    const flag = plainMaterial(style.accent, rel, 0.5, 0.6);
+    add(cylGeo(0.008, 0.008, 0.5, 6, rel), pole, -0.38, 0.29, 0.38);
+    add(boxGeo(0.16, 0.1, 0.01, rel, false), flag, -0.3, 0.48, 0.38);
+  }
 
   if (level === 0) {
     const pyramid = lease("lot|pyramid", () => { const g = new THREE.ConeGeometry(0.16, 0.3, 4); return { v: g, free: () => g.dispose() }; }, rel);
@@ -201,18 +244,19 @@ export const buildBuilding = (style: IslandStyle, level: 0 | 1 | 2 | 3): BuiltBu
   }
 
   const lv = level as 1 | 2 | 3;
-  const tiers = TIERS[style.theme][lv - 1];
+  const round = style.shape === "round";
+  const tiers = TIERS[style.theme][lv - 1].map(t => ({ w: t.w * style.footprint, d: (round ? t.w : t.d) * style.footprint, h: t.h * style.height }));
   const wall = wallMaterial(style, rel);
   const stone = plainMaterial(mix(style.primary, "#ffffff", 0.35), rel, 0, 0.8);
   let y = 0.04;
   let top = { w: tiers[0].w, d: tiers[0].d };
   tiers.forEach((t, i) => {
-    add(boxGeo(t.w, t.h, t.d, rel), wall, 0, y + t.h / 2, 0);
+    add(round ? drumGeo(t.w / 2, t.h, rel) : boxGeo(t.w, t.h, t.d, rel), wall, 0, y + t.h / 2, 0);
     y += t.h;
     // a glowing band at the top of every tier; brownstone gets a stone cornice instead
-    if (style.theme === "brownstone" || style.theme === "industrial") add(boxGeo(t.w + 0.05, 0.05, t.d + 0.05, rel, false), stone, 0, y + 0.01, 0);
-    else add(boxGeo(t.w + 0.03, 0.03, t.d + 0.03, rel, false), trim, 0, y + 0.005, 0);
-    if (style.theme === "neon" && i < tiers.length - 1) for (const sx of [-1, 1]) add(boxGeo(0.025, tiers[i].h, 0.025, rel, false), trim, sx * (t.w / 2 + 0.005), y - t.h / 2, t.d / 2 + 0.005);
+    if (style.theme === "brownstone" || style.theme === "industrial") add(round ? cylGeo(t.w / 2 + 0.025, t.w / 2 + 0.025, 0.05, 28, rel) : boxGeo(t.w + 0.05, 0.05, t.d + 0.05, rel, false), stone, 0, y + 0.01, 0);
+    else add(round ? cylGeo(t.w / 2 + 0.015, t.w / 2 + 0.015, 0.03, 28, rel) : boxGeo(t.w + 0.03, 0.03, t.d + 0.03, rel, false), trim, 0, y + 0.005, 0);
+    if (style.theme === "neon" && !round && i < tiers.length - 1) for (const sx of [-1, 1]) add(boxGeo(0.025, tiers[i].h, 0.025, rel, false), trim, sx * (t.w / 2 + 0.005), y - t.h / 2, t.d / 2 + 0.005);
     top = { w: t.w, d: t.d };
   });
   const roofY = y + 0.03;
