@@ -259,7 +259,7 @@ export default function GameScreen(props: GameScreenProps) {
   // one forced move can play itself, if asked
   useEffect(() => {
     if (!settings.autoMove || moves.length !== 1) return;
-    const t = setTimeout(() => move(moves[0]), 350);
+    const t = setTimeout(() => move(moves[0]), 600);
     return () => clearTimeout(t);
   }, [settings.autoMove, moves, move]);
 

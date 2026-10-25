@@ -53,7 +53,7 @@ export const useBotDriver = (
     if (busy || paused || state.phase === "over") return;
     const player = currentPlayer(state);
     if (player.kind !== "bot") return;
-    const think = speed === "instant" ? 0 : speed === "fast" ? 250 : state.phase === "roll" ? 650 : 900;
+    const think = speed === "instant" ? 0 : speed === "fast" ? 250 : state.phase === "roll" ? 1100 : 1400;
     const timer = setTimeout(() => {
       const action = autoAction(state);
       if (action) act(action);

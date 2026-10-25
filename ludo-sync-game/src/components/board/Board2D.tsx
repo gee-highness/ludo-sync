@@ -41,6 +41,7 @@ const PALETTES: Record<BoardTheme, Palette> = {
   classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
+  serene: { bg: "#EFE9DF", cell: "#FFFEFA", line: "#D8CEC0", panel: "#FFFDF8", inactiveCol: "#CFC6BA" },
   paper: { bg: "#E5E5E5", cell: "#FFFFFF", line: "#CCCCCC", panel: "#fff", inactiveCol: "#CCCCCC" },
 };
 
