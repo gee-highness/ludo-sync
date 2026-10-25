@@ -901,6 +901,11 @@ export class LudoScene {
 
   private onWheel = (e: WheelEvent) => { e.preventDefault(); this.nudgeView(0, 0, Math.exp(e.deltaY * 0.0012)); };
 
+  /** The current picture as a PNG data address, for photo mode. */
+  snapshot(): string | null {
+    try { this.renderer.render(this.scene, this.camera); return this.renderer.domElement.toDataURL("image/png"); } catch { return null; }
+  }
+
   private resize() {
     const w = this.host.clientWidth, h = this.host.clientHeight;
     if (!w || !h) return;

@@ -3,7 +3,7 @@
 import { isWorld } from "@/lib/client/themes";
 import {
   AlertDialog, AlertDialogBody, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogOverlay, Box, Button, Flex, HStack,
-  IconButton, Text, VStack, useDisclosure, useMediaQuery,
+  IconButton, Text, VStack, useDisclosure, useMediaQuery, useToast,
 } from "@chakra-ui/react";
 import { ChevronLeftIcon, QuestionIcon, SettingsIcon, InfoIcon } from "@chakra-ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,7 +20,11 @@ import { useSettings, updateSettings } from "@/lib/client/settings";
 import { getDesigns } from "@/lib/client/pieces";
 import { describeLastMove, lastMoveOf, nextSeat, type LastMove } from "@/lib/client/lastMove";
 import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/device";
-import { recordGame } from "@/lib/client/stats";
+import { loadStats, recordGame } from "@/lib/client/stats";
+import { newlyUnlocked } from "@/lib/client/achievements";
+import { sharePhoto } from "@/lib/client/photo";
+import { dateKey, recordDaily } from "@/lib/client/daily";
+import { FloatingReactions, type FloatingReaction } from "./FloatingReactions";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
 import { useBotDriver } from "@/hooks/useLocalGame";
 import { useLeaveGuard } from "@/hooks/useLeaveGuard";
@@ -67,6 +71,10 @@ export interface GameScreenProps {
   viewSeat?: Seat;
   /** Shown in the header, such as a room code. */
   title?: string;
+  /** Reactions from other players, floated over the board for a moment. */
+  reactions?: FloatingReaction[];
+  /** Marks the game as today's daily challenge when it finishes. */
+  daily?: boolean;
 }
 
 const MAX_LOG = 120;
@@ -92,6 +100,8 @@ export default function GameScreen(props: GameScreenProps) {
   const replayRef = useRef<{ before: GameState; frame: Frame } | null>(null);
   const replaying = useRef(false);
   const shownRef = useRef<GameState>(state);
+  const toast = useToast();
+  const [streak, setStreak] = useState(0);
   // the hour of the day, refreshed every few minutes, picks the sky when the time is set to auto
   const [hour, setHour] = useState(() => { const d = new Date(); return d.getHours() + d.getMinutes() / 60; });
   useEffect(() => {
@@ -266,10 +276,18 @@ export default function GameScreen(props: GameScreenProps) {
       if (recordStats && !recorded.current) {
         recorded.current = true;
         const bot = frame.state.players.find(p => p.kind === "bot");
-        recordGame({ won, captures: captures.current, botLevel: bot?.level });
+        const before = loadStats();
+        const vehicles = mine.current.flatMap(seat => getDesigns()[seat]?.map(d => d.vehicle) ?? []).filter(v => v !== "none");
+        const after = recordGame({ won, captures: captures.current, botLevel: bot?.level, vehicles, daily: props.daily });
+        setStreak(after.streak);
+        if (props.daily) {
+          const day = recordDaily(dateKey(), won);
+          toast({ title: won ? "📅 Daily challenge won" : "📅 Daily challenge finished", description: won ? `${day.streakDays} day${day.streakDays === 1 ? "" : "s"} in a row` : "Come back tomorrow for a new one", status: won ? "success" : "info", duration: 6000, isClosable: true, position: "top" });
+        }
+        for (const a of newlyUnlocked(before, after)) toast({ title: `${a.icon} ${a.title}`, description: a.blurb, status: "success", duration: 6000, isClosable: true, position: "top" });
       }
     }
-  }, [recordStats]);
+  }, [recordStats, props.daily, toast]);
 
   const anim = useAnimatedGame(bus, state, { speed, longRoll: renderer === "3d", onFrameStart, onStep, onFrameEnd });
   const { shown, busy } = anim;
@@ -365,6 +383,10 @@ export default function GameScreen(props: GameScreenProps) {
     immersive && round("Reset camera", <span aria-hidden>⟲</span>, resetCameraView),
     immersive && round(droneCamera ? "Leave drone camera" : "Drone camera", <span aria-hidden>🛸</span>, () => updateSettings({ camera: droneCamera ? "top" : "drone" }), droneCamera ? { bg: "#facc15" } : {}),
     canReplay && !busy && shown.phase !== "over" && round("Replay the last move", <span aria-hidden>↺</span>, replay),
+    round("Take a photo of the board", <span aria-hidden>📷</span>, async () => {
+      const r = await sharePhoto();
+      toast({ title: r === "failed" ? "Could not take a photo" : r === "saved" ? "Photo saved" : "Photo shared", status: r === "failed" ? "error" : "success", duration: 2500, position: "top" });
+    }),
     round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
     canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
     round("How to play", <QuestionIcon />, help.onOpen),
@@ -495,6 +517,7 @@ export default function GameScreen(props: GameScreenProps) {
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />
+            <FloatingReactions items={props.reactions ?? []} reduceMotion={reduceMotion} />
           </Box>
         </Box>
 
@@ -529,7 +552,7 @@ export default function GameScreen(props: GameScreenProps) {
       {shown.phase === "over" && !busy && (
         <WinnerOverlay
           state={shown} reduceMotion={reduceMotion} onRematch={props.onRematch} rematchLabel={props.rematchLabel}
-          waitingText={props.waitingText} onExit={onExit}
+          waitingText={props.waitingText} onExit={onExit} streak={streak}
         />
       )}
       <HowToPlay isOpen={help.isOpen} onClose={help.onClose} />

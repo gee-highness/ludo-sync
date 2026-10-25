@@ -11,6 +11,7 @@ import { useSettings } from "@/lib/client/settings";
 import { resolveDesign, useDesigns, type ResolvedDesign } from "@/lib/client/pieces";
 import type { Tier } from "@/lib/client/quality";
 import { LudoScene, type SceneInput } from "./LudoScene";
+import { registerSnapshot } from "@/lib/client/photo";
 import { placeTokens, seatTokens } from "./layout";
 import type { BoardProps } from "./types";
 
@@ -74,7 +75,8 @@ export default function Board3D(props: Board3DProps) {
     sceneRef.current = scene;
     scene.update(inputRef.current);
     scene.load().then(() => cb.current.onReady()).catch(() => cb.current.onFail());
-    return () => { scene.dispose(); sceneRef.current = null; };
+    registerSnapshot(() => scene.snapshot());
+    return () => { registerSnapshot(null); scene.dispose(); sceneRef.current = null; };
   }, [quality]);
 
   useEffect(() => { sceneRef.current?.update(input); }, [input]);
