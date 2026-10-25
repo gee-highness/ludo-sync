@@ -2,6 +2,7 @@
 
 import { outlineOf, pathOf } from "@/lib/client/pieceShapes";
 import { shade, type ResolvedDesign } from "@/lib/client/pieces";
+import { VehicleShape } from "./VehicleShape";
 
 interface Props {
   design: ResolvedDesign;
@@ -72,6 +73,7 @@ function Figurine({ design, id, metal }: { design: ResolvedDesign; id: string; m
 }
 
 export function PieceShape({ design, id, upright = 0, metal }: Props) {
+  if (design.vehicle !== "none") return <VehicleShape design={design} id={id} />;
   if (metal) return <Figurine design={design} id={id} metal={metal} />;
   const d = design;
   const shape = d.shape === "classic" ? "disc" : d.shape;

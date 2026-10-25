@@ -10,9 +10,10 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { SEATS, SEAT_INFO, type Seat } from "@/lib/ludo/board";
 import { PieceShape } from "../board/PieceShape";
+import { ACCESSORY_LABEL, VEHICLE_LABEL } from "../board/VehicleShape";
 import { SHAPE_LABEL } from "@/lib/client/pieceShapes";
 import {
-  BASES, DEFAULT_DESIGN, FINISHES, IDLES, PACKS, PATTERNS, SHAPES, TRAILS, applyPack, defaultDesigns, exportDesigns, importDesigns, randomDesign,
+  ACCESSORIES, BASES, DEFAULT_DESIGN, FINISHES, IDLES, PACKS, PATTERNS, SHAPES, TRAILS, VEHICLES, applyPack, defaultDesigns, exportDesigns, importDesigns, randomDesign,
   resolveDesign, sanitizeDesign, setDesigns, updatePiece, useLocalDesigns, type PieceDesign,
 } from "@/lib/client/pieces";
 
@@ -153,7 +154,31 @@ export default function PieceMaker() {
           </VStack>
 
           <Box flex={1} minW={0}>
-            <Accordion allowMultiple defaultIndex={[0, 1]}>
+            <Accordion allowMultiple defaultIndex={[0, 2]}>
+              <Section title="Vehicle">
+                <Text fontSize="xs" color="gray.400" mb={2}>Ride the road instead of standing as a shape. Vehicles face the way they are driving and take your colours, pattern, finish and outline.</Text>
+                <SimpleGrid columns={{ base: 4, sm: 6 }} gap={2}>
+                  {VEHICLES.map(v => (
+                    <Button key={v} h="auto" p={1} flexDir="column" gap={0} onClick={() => edit({ vehicle: v })} aria-label={VEHICLE_LABEL[v]} aria-pressed={design.vehicle === v}
+                      variant={design.vehicle === v ? "solid" : "outline"} colorScheme="teal">
+                      {v === "none" ? <Box w="44px" h="44px" display="grid" placeItems="center" fontSize="lg" aria-hidden>🚫</Box> : mini({ ...design, vehicle: v, mark: "", accessory: "none" }, seat, `v-${v}`, 44)}
+                      <Text fontSize="2xs">{VEHICLE_LABEL[v]}</Text>
+                    </Button>
+                  ))}
+                </SimpleGrid>
+                {design.vehicle !== "none" && (
+                  <VStack align="stretch" spacing={3} mt={3}>
+                    <Row label="Headlights"><Switch colorScheme="teal" isChecked={design.headlights} aria-label="Headlights" onChange={e => edit({ headlights: e.target.checked })} /></Row>
+                    <Row label="Roof extra">
+                      <Select w="150px" size="sm" bg="gray.700" value={design.accessory} aria-label="Roof extra" onChange={e => edit({ accessory: e.target.value as PieceDesign["accessory"] })}>
+                        {ACCESSORIES.map(a => <option key={a} value={a}>{ACCESSORY_LABEL[a]}</option>)}
+                      </Select>
+                    </Row>
+                    <Text fontSize="xs" color="gray.400">Second colour paints the roof sign, the rider&apos;s helmet and the stripes. Exhaust and tyre trails are under Motion.</Text>
+                  </VStack>
+                )}
+              </Section>
+
               <Section title="Shape">
                 <SimpleGrid columns={{ base: 4, sm: 6 }} gap={2}>
                   {SHAPES.map(s => (

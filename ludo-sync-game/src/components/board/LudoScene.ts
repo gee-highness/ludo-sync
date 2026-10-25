@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { FINISH, RING, SEATS, SEAT_INFO, STAR_RING_INDEXES, YARD, pointOf, type Point, type Seat } from "@/lib/ludo/board";
 import type { MoveOption } from "@/lib/ludo/types";
-import { tokenKey, type PlacedToken } from "./layout";
+import { tokenKey, travelDirection, type PlacedToken } from "./layout";
 import type { ResolvedDesign, TrailId, IdleId } from "@/lib/client/pieces";
 import { buildPiece3D, type Built3D } from "./pieces3d";
 import { shade } from "@/lib/client/pieces";
@@ -18,6 +18,7 @@ import type { IslandMap } from "@/lib/client/islands";
 import type { TycoonState } from "@/lib/ludo/types";
 import type { MovePreview } from "@/lib/client/settings";
 import { TIER_SPECS, TierGovernor, stepUp, type Tier, type TierSpec } from "@/lib/client/quality";
+import { onCameraReset } from "@/lib/client/cameraView";
 import { flyDice } from "@/lib/client/diceFlight";
 import { flickFrom, isThrow, setPendingThrow, takePendingThrow, toThrow, type PointerSample, type ThrowInput } from "@/lib/client/throw";
 
@@ -35,7 +36,7 @@ export interface SceneInput {
   hints: boolean;
   reduceMotion: boolean;
   hopMs: number;
-  camera: "tilt" | "top" | "follow";
+  camera: "tilt" | "top" | "follow" | "drone";
   movePreview: MovePreview;
   /** Dark tiles with glowing outlines instead of the pale classic look. */
   neon: boolean;
@@ -110,6 +111,8 @@ interface TokenObj {
   idle: IdleId;
   trail: TrailId;
   size: number;
+  /** Vehicles: the way the nose points, as an angle about the vertical axis. */
+  yaw: number | null;
   /** 0..1, how squashed the token is right now (spring that settles after a landing). */
   squash: number;
   hover: number;
@@ -170,6 +173,16 @@ export class LudoScene {
   private lastRollKey = -1;
   private diceFadeAt = 0;
   private camMoved = false;
+  // the player's own view: drag to orbit, pinch or scroll to zoom. Values ease towards their targets so every move is smooth.
+  private view = { yaw: 0, pitch: 0, zoom: 1 };
+  private viewTo = { yaw: 0, pitch: 0, zoom: 1 };
+  private droneYaw = 0;
+  private droneK = 0;
+  private autoPause = 0;
+  private touches = new Map<number, { x: number; y: number }>();
+  private pinch: { d: number; a: number; y: number } | null = null;
+  private orbit: { id: number; x: number; y: number } | null = null;
+  private unreset: (() => void) | null = null;
   private baseFov = FOV;
   private followK = 0;
   private followObj: TokenObj | null = null;
@@ -231,6 +244,8 @@ export class LudoScene {
     canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     canvas.addEventListener("pointercancel", this.onPointerCancel);
+    canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    this.unreset = onCameraReset(() => this.resetView());
     host.appendChild(canvas);
 
     this.scene.add(this.world);
@@ -523,7 +538,7 @@ export class LudoScene {
   }
 
   private applyDesign(obj: TokenObj, d: ResolvedDesign) {
-    const metal = this.neonOn && d.shape === "classic";
+    const metal = this.neonOn && d.shape === "classic" && d.vehicle === "none";
     const key = JSON.stringify(d) + (metal ? "|m" : "");
     if (obj.designKey === key) return;
     obj.designKey = key;
@@ -533,7 +548,7 @@ export class LudoScene {
     obj.ownMaterials.forEach(m => m.dispose());
     obj.ownMaterials = [];
     obj.idle = d.idle; obj.trail = d.trail; obj.size = d.size;
-    if (d.shape === "classic") {
+    if (d.shape === "classic" && d.vehicle === "none") {
       const tpl = this.templates[obj.seat];
       if (!tpl) return;
       const body = tpl.clone(true);
@@ -627,7 +642,7 @@ export class LudoScene {
     obj = {
       root, holder, proxy, seat: p.seat, token: p.token, progress: p.progress, target, scaleTarget: p.scale, tween: null, ring: null, glyph: null,
       phase: Math.random() * TAU, squash: 0, hover: 0, cheerUntil: 0,
-      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1,
+      designKey: "", body: null, built: null, ownMaterials: [], facing: null, idle: "breathe", trail: "dust", size: 1, yaw: null,
     };
     this.tokens.set(key, obj);
     return obj;
@@ -639,6 +654,8 @@ export class LudoScene {
       case "sparkle": this.emit(at, 2, Math.random() < 0.5 ? 0xfacc15 : 0xffffff, { spread: 0.8, up: 0.6, life: 0.6, gravity: 0.5, y: 0.3 }); break;
       case "ember": this.emit(at, 2, 0xfb923c, { spread: 0.4, up: 1.4, life: 0.7, gravity: -0.4, y: 0.2 }); break;
       case "bubbles": this.emit(at, 1, 0x7dd3fc, { spread: 0.5, up: 1.1, life: 0.9, gravity: -0.3, y: 0.3 }); break;
+      case "smoke": this.emit(at, 1, 0xb8bcc4, { spread: 0.35, up: 0.9, life: 0.9, gravity: -0.4, y: 0.25 }); break;
+      case "skid": this.emit(at, 2, 0x23262c, { spread: 0.25, up: 0.05, life: 0.8, gravity: 0, y: 0.03 }); break;
       default: this.emit(at, 1, hex(SEAT_INFO[obj.seat].light), { spread: 0.5, up: 0.4, life: 0.45, gravity: 1, y: 0.15 });
     }
   }
@@ -690,7 +707,7 @@ export class LudoScene {
 
   update(input: SceneInput) {
     this.input = input;
-    this.renderer.domElement.style.touchAction = input.rollable && !input.reduceMotion ? "none" : "manipulation";
+    this.renderer.domElement.style.touchAction = "none";
     this.applyLook(input);
     if (this.lastRollKey < 0) this.lastRollKey = input.rollKey;
     if (input.rollKey !== this.lastRollKey) {
@@ -833,7 +850,7 @@ export class LudoScene {
     }
   }
 
-  private updateCamera(mode: "tilt" | "top" | "follow") {
+  private updateCamera(mode: "tilt" | "top" | "follow" | "drone") {
     const w = this.host.clientWidth || 1, h = this.host.clientHeight || 1;
     const aspect = w / h;
     const look = !!this.input?.look;
@@ -842,7 +859,7 @@ export class LudoScene {
     this.baseFov = fov;
     this.camera.aspect = aspect;
     this.camera.fov = fov;
-    const elev = THREE.MathUtils.degToRad(mode === "top" ? 89 : 60);
+    const elev = THREE.MathUtils.degToRad(mode === "top" ? 89 : mode === "drone" ? 38 : 60);
     const tan = Math.tan(THREE.MathUtils.degToRad(fov / 2));
     const halfW = look ? 8.8 : 8.0;
     const halfH = 7.7 * Math.sin(elev) + (look ? 2.2 : 1.3);
@@ -853,11 +870,36 @@ export class LudoScene {
     const dist = Math.max((halfW * w) / (fw * tan * aspect), (halfH * h) / (fh * tan));
     this.camBase.set(0, dist * Math.sin(elev), dist * Math.cos(elev));
     // while the camera is swooping, the frame loop owns its position
-    if (!this.camMoved) { this.camera.position.copy(this.camBase); this.camera.lookAt(0, 0, 0); }
+    if (!this.camMoved) { this.camera.position.copy(this.viewPos(new THREE.Vector3())); this.camera.lookAt(0, 0, 0); }
     const dx = (il - ir) / 2, dy = (it - ib) / 2;
     if (dx || dy) this.camera.setViewOffset(w, h, -dx, -dy, w, h); else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
+
+  /** Where the camera sits: the framed overview, turned, tilted and zoomed by the player (and swung round by the drone). */
+  private viewPos(out: THREE.Vector3): THREE.Vector3 {
+    const b = this.camBase;
+    const dist = b.length() * this.view.zoom;
+    const elev = THREE.MathUtils.clamp(Math.asin(b.y / b.length()) + this.view.pitch, 0.22, 1.54);
+    const yaw = this.view.yaw + (this.input?.camera === "drone" ? this.droneYaw : 0);
+    const bob = this.input?.camera === "drone" ? 0.1 * Math.sin(this.droneYaw * 1.7) : 0;
+    const e = THREE.MathUtils.clamp(elev + bob, 0.22, 1.54);
+    return out.set(dist * Math.cos(e) * Math.sin(yaw), dist * Math.sin(e), dist * Math.cos(e) * Math.cos(yaw));
+  }
+
+  /** Back to the standard view, easing there. */
+  resetView() { this.viewTo = { yaw: 0, pitch: 0, zoom: 1 }; this.autoPause = 0; this.invalidate(); }
+
+  private nudgeView(dyaw: number, dpitch: number, zoomBy: number) {
+    const t = this.viewTo;
+    t.yaw += dyaw;
+    t.pitch = THREE.MathUtils.clamp(t.pitch + dpitch, -0.9, 0.9);
+    t.zoom = THREE.MathUtils.clamp(t.zoom * zoomBy, 0.3, 1.7);
+    this.autoPause = performance.now() + 3500;
+    this.invalidate();
+  }
+
+  private onWheel = (e: WheelEvent) => { e.preventDefault(); this.nudgeView(0, 0, Math.exp(e.deltaY * 0.0012)); };
 
   private resize() {
     const w = this.host.clientWidth, h = this.host.clientHeight;
@@ -952,6 +994,23 @@ export class LudoScene {
       const sxz = 1 + 0.24 * sq - stretch * 0.45 - breathe * 0.5;
       const k = TOKEN_SCALE * obj.size * grow;
       obj.holder.scale.set(k * sxz, k * sy, k * sxz);
+      const heading = obj.built?.heading;
+      if (heading) {
+        // a vehicle drives nose first: it turns to face the square it is heading for
+        let dx = 0, dz = 0;
+        if (tw && (tw.to.x !== tw.from.x || tw.to.z !== tw.from.z)) { dx = tw.to.x - tw.from.x; dz = tw.to.z - tw.from.z; }
+        else { const v = travelDirection(obj.seat, obj.token, obj.progress); dx = v.x; dz = v.y; }
+        if (dx || dz) {
+          const want = Math.atan2(-dx, -dz);
+          if (obj.yaw === null || calm) obj.yaw = want;
+          else {
+            const d = ((want - obj.yaw + Math.PI * 3) % TAU) - Math.PI;
+            if (Math.abs(d) > 0.002) { obj.yaw += d * Math.min(1, dt * 12); animating = true; } else obj.yaw = want;
+          }
+        }
+        heading.rotation.y = obj.yaw ?? 0;
+        spinY = 0;
+      }
       obj.holder.rotation.y = spinY;
       obj.holder.rotation.z = tilt;
       obj.holder.position.y = lift + bounce;
@@ -1025,12 +1084,29 @@ export class LudoScene {
     if (Math.abs(target - this.followK) < 0.002) this.followK = target;
     if (target === 0 && this.followK === 0) this.followObj = null;
     const following = this.followK > 0.001 && !!this.followObj;
-    if (following || this.shake > 0.003 || this.kick > 0.003) {
+    // the player's view eases to where they asked for it; the drone keeps circling until they touch the controls
+    const drone = !!input && input.camera === "drone" && !input.reduceMotion;
+    if (drone && now > this.autoPause) this.droneYaw += dt * 0.16;
+    if (!drone && this.droneYaw) this.droneYaw *= Math.exp(-dt * 3);
+    let droneMover: TokenObj | null = null;
+    if (drone) for (const o of this.tokens.values()) if (o.tween && o.tween.kind !== "slide") { droneMover = o; break; }
+    this.droneK += ((droneMover ? 1 : 0) - this.droneK) * Math.min(1, dt * 2.2);
+    const k9 = 1 - Math.exp(-dt * 9), v = this.view, vt = this.viewTo;
+    const settling = Math.abs(vt.yaw - v.yaw) + Math.abs(vt.pitch - v.pitch) + Math.abs(vt.zoom - v.zoom) > 0.0005;
+    if (settling) { v.yaw += (vt.yaw - v.yaw) * k9; v.pitch += (vt.pitch - v.pitch) * k9; v.zoom += (vt.zoom - v.zoom) * k9; } else { v.yaw = vt.yaw; v.pitch = vt.pitch; v.zoom = vt.zoom; }
+    const userView = settling || drone || Math.abs(v.yaw) > 0.0005 || Math.abs(v.pitch) > 0.0005 || Math.abs(v.zoom - 1) > 0.0005 || Math.abs(this.droneYaw) > 0.0005;
+    if (following || userView || this.shake > 0.003 || this.kick > 0.003) {
       this.shake *= Math.exp(-dt * 7);
       this.kick *= Math.exp(-dt * 5);
       const a = this.shake * 0.22;
-      const base = this.camBase.clone();
+      const base = this.viewPos(new THREE.Vector3());
       this.camLook.set(0, 0, 0);
+      if (this.droneK > 0.002 && droneMover) {
+        // the drone drifts towards the token that is travelling, then back out
+        const wp = droneMover.root.getWorldPosition(new THREE.Vector3());
+        this.camLook.lerp(wp, 0.7 * this.droneK);
+        base.lerp(wp.clone().add(new THREE.Vector3(0, 4.2, 0)).addScaledVector(base.clone().normalize(), 4), 0.45 * this.droneK);
+      }
       let zoom = 0;
       if (following) {
         const o = this.followObj!;
@@ -1051,11 +1127,11 @@ export class LudoScene {
       this.camera.fov = this.baseFov - 2.4 * this.kick - zoom;
       this.camera.updateProjectionMatrix();
       this.camMoved = true;
-      animating = true;
+      animating = animating || following || drone || settling || this.shake > 0.003 || this.kick > 0.003;
     } else if (this.camMoved || this.shake > 0 || this.kick > 0) {
       this.shake = this.kick = 0;
       this.camMoved = false;
-      this.camera.position.copy(this.camBase);
+      this.camera.position.copy(this.viewPos(new THREE.Vector3()));
       this.camera.lookAt(0, 0, 0);
       this.camera.fov = this.baseFov;
       if (this.scene.fog instanceof THREE.Fog) { this.scene.fog.near = 28; this.scene.fog.far = 90; }
@@ -1123,8 +1199,31 @@ export class LudoScene {
     return p ? { x: p.x, z: p.z } : null;
   }
 
+  /** Two fingers: pinch to zoom, twist to turn the board, slide up or down to tilt it. */
+  private gesture(): { d: number; a: number; y: number } | null {
+    const [p, q] = [...this.touches.values()];
+    if (!p || !q) return null;
+    return { d: Math.hypot(q.x - p.x, q.y - p.y) || 1, a: Math.atan2(q.y - p.y, q.x - p.x), y: (p.y + q.y) / 2 };
+  }
+
   private onPointerDown = (e: PointerEvent) => {
     this.downAt = { x: e.clientX, y: e.clientY };
+    if (e.pointerType === "touch") {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.touches.size === 2) {
+        if (this.swipe?.held) this.dice.release();
+        this.swipe = null; this.orbit = null; this.downAt = null;
+        this.pinch = this.gesture();
+        return;
+      }
+    }
+    // a drag turns the board unless it is time to throw the dice (then only the right or middle mouse button turns it)
+    const input0 = this.input;
+    const throwing = !!input0?.rollable && !input0.reduceMotion;
+    if (!this.pinch && (!throwing || (e.pointerType === "mouse" && e.button !== 0))) {
+      this.orbit = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
     const input = this.input;
     if (!input?.rollable || input.reduceMotion || (e.pointerType === "mouse" && e.button !== 0)) return;
     const p = this.onPlane(e);
@@ -1161,6 +1260,12 @@ export class LudoScene {
     return true;
   };
   private onPointerUp = (e: PointerEvent) => {
+    this.touches.delete(e.pointerId);
+    if (this.touches.size < 2) this.pinch = null;
+    if (this.orbit?.id === e.pointerId) {
+      this.orbit = null;
+      try { this.renderer.domElement.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
     if (this.endSwipe(e)) return;
     const d = this.downAt;
     this.downAt = null;
@@ -1169,6 +1274,24 @@ export class LudoScene {
     if (obj) this.opts.onPick(obj.token);
   };
   private onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType === "touch" && this.touches.has(e.pointerId)) {
+      this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (this.pinch) {
+        const g = this.gesture();
+        if (g) {
+          this.nudgeView(-(g.a - this.pinch.a), -(g.y - this.pinch.y) * 0.004, this.pinch.d / g.d);
+          this.pinch = g;
+        }
+        return;
+      }
+    }
+    const orb = this.orbit;
+    if (orb && orb.id === e.pointerId) {
+      const dx = e.clientX - orb.x, dy = e.clientY - orb.y;
+      orb.x = e.clientX; orb.y = e.clientY;
+      if (this.downAt && Math.hypot(e.clientX - this.downAt.x, e.clientY - this.downAt.y) > 8) this.nudgeView(-dx * 0.007, dy * 0.005, 1);
+      return;
+    }
     const sw = this.swipe;
     if (sw && sw.id === e.pointerId) {
       sw.samples.push({ x: e.clientX, y: e.clientY, t: e.timeStamp });
@@ -1186,7 +1309,8 @@ export class LudoScene {
     const t = obj ? obj.token : null;
     if (t !== this.hoverToken) this.setHover(t);
   };
-  private onPointerCancel = (e: PointerEvent) => { if (this.swipe?.id === e.pointerId) { if (this.swipe.held) this.dice.release(); this.swipe = null; this.downAt = null; } };
+  private onPointerCancel = (e: PointerEvent) => {
+    this.touches.delete(e.pointerId); this.pinch = null; if (this.orbit?.id === e.pointerId) this.orbit = null; if (this.swipe?.id === e.pointerId) { if (this.swipe.held) this.dice.release(); this.swipe = null; this.downAt = null; } };
   private onPointerLeave = () => { if (this.hoverToken !== null) this.setHover(null); };
   private firstFrameDone = false;
   private onContextLost = (e: Event) => { e.preventDefault(); this.opts.onContextLost(); };
@@ -1198,6 +1322,8 @@ export class LudoScene {
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("webglcontextlost", this.onContextLost);
     canvas.removeEventListener("pointercancel", this.onPointerCancel);
+    canvas.removeEventListener("wheel", this.onWheel);
+    this.unreset?.();
     canvas.removeEventListener("pointerdown", this.onPointerDown);
     canvas.removeEventListener("pointerup", this.onPointerUp);
     canvas.removeEventListener("pointermove", this.onPointerMove);

@@ -12,12 +12,12 @@ export interface AnimStep {
   kind: StepKind;
 }
 
-const BASE_MS: Record<StepKind, number> = { hop: 170, enter: 280, finish: 320, return: 460 };
+const BASE_MS: Record<StepKind, number> = { hop: 300, enter: 450, finish: 500, return: 700 };
 const FACTOR: Record<SpeedPref, number> = { normal: 1, fast: 0.5, instant: 0 };
 
 export const stepMs = (kind: StepKind, speed: SpeedPref) => Math.round(BASE_MS[kind] * FACTOR[speed]);
 /** How long the dice take. The 3D board throws them across the table, which takes longer than the flat board's tumble. */
-export const rollMs = (speed: SpeedPref, long = false) => Math.round((long ? 1100 : 650) * FACTOR[speed]);
+export const rollMs = (speed: SpeedPref, long = false) => Math.round((long ? 1300 : 900) * FACTOR[speed]);
 
 /**
  * Works out how tokens travel to get from one state to the next: movers hop square by square,

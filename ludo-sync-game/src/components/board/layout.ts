@@ -64,3 +64,14 @@ export const placeTokens = (tokens: TokenView[], moving?: { seat: Seat; token: n
   }
   return [...out, ...travelling];
 };
+
+/** Which way a token is facing, as a direction on the board (x right, y down): into the square it is on, out of the yard, or in towards the middle when home. */
+export const travelDirection = (seat: Seat, token: number, progress: number): Point => {
+  const here = pointOf(seat, token, progress);
+  const towards = (to: Point): Point => ({ x: to.x - here.x, y: to.y - here.y });
+  if (progress === YARD) return towards(pointOf(seat, token, 0));
+  if (progress >= FINISH) return towards({ x: 7, y: 7 });
+  if (progress === 0) return towards(pointOf(seat, token, 1));
+  const from = pointOf(seat, token, progress - 1);
+  return { x: here.x - from.x, y: here.y - from.y };
+};

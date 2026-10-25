@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { outlineOf } from "@/lib/client/pieceShapes";
 import { shade, type ResolvedDesign } from "@/lib/client/pieces";
+import { buildVehicle3D } from "./vehicles3d";
 
 /** Pieces are built in the same units as the shipped model, which the scene shrinks to 0.42 of this. */
 const S = 2.3;
@@ -11,6 +12,8 @@ export interface Built3D {
   group: THREE.Group;
   /** Flat standing pieces turn to face the camera; the scene rotates this to stay facing it. */
   facing: THREE.Object3D | null;
+  /** Set for vehicles: turn this about the vertical axis to point the nose (towards negative z) where it is going. */
+  heading: THREE.Object3D | null;
   dispose: () => void;
 }
 
@@ -149,6 +152,7 @@ export const buildPiece3D = (d: ResolvedDesign): Built3D => {
   const group = new THREE.Group();
   const disposables: { dispose: () => void }[] = [];
   let facing: THREE.Object3D | null = null;
+  let heading: THREE.Object3D | null = null;
   const track = <T extends { dispose: () => void }>(x: T): T => { disposables.push(x); return x; };
   const shape = d.shape === "classic" ? "disc" : d.shape;
 
@@ -158,6 +162,16 @@ export const buildPiece3D = (d: ResolvedDesign): Built3D => {
   }
   const base = pedestal(d);
   if (base) { group.add(base); track(base.geometry); track(base.material as THREE.Material); }
+
+  if (d.vehicle !== "none") {
+    const v = buildVehicle3D(d);
+    disposables.push(v);
+    const turner = new THREE.Group();
+    turner.add(v.group);
+    group.add(turner);
+    heading = turner;
+    return { group, facing: null, heading, dispose: () => { disposables.forEach(x => x.dispose()); } };
+  }
 
   const revolve = shape === "disc" || shape === "cone" || shape === "pawn";
   if (revolve || shape === "cube" || shape === "donut") {
@@ -216,7 +230,7 @@ export const buildPiece3D = (d: ResolvedDesign): Built3D => {
     facing = turner;
   }
   return {
-    group, facing,
+    group, facing, heading,
     dispose: () => { disposables.forEach(x => x.dispose()); },
   };
 };

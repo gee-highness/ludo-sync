@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_ISLAND, getIslands, islandFor, sanitizeIsland, sanitizeIslands, setIsland } from "./islands";
+import { DEFAULT_ISLAND, getIslands, islandFor, resolveLevel, sanitizeIsland, sanitizeIslands, setIsland } from "./islands";
 
 const store = new Map<string, string>();
 beforeEach(() => {
@@ -19,6 +19,27 @@ describe("island styles", () => {
     expect(s.sign.length).toBeLessThanOrEqual(8);
     expect(s.sign).not.toMatch(/[<>]/);
     expect(s.glow).toBe(1);
+  });
+  it("cleans the new options and fills them in for older saved islands", () => {
+    const s = sanitizeIsland({ height: 9, footprint: 0, shape: "hex", ground: "lava", finish: 3, extras: ["trees", "bogus", "trees", "flags"], lights: "nope" });
+    expect(s.height).toBe(1.5);
+    expect(s.footprint).toBe(0.7);
+    expect(s.shape).toBe("block");
+    expect(s.ground).toBe("slab");
+    expect(s.finish).toBe("auto");
+    expect(s.extras).toEqual(["flags", "trees"]);
+    expect(s.lights).toBe("");
+    expect(sanitizeIsland({ theme: "glass" }).extras).toEqual([]);
+  });
+  it("keeps valid stage differences and resolves them over the island", () => {
+    const s = sanitizeIsland({ theme: "castle", primary: "#111111", levels: { 2: { primary: "#abcdef", roof: "spire", height: 9, bogus: 1, windows: "nope" }, 7: { primary: "#ffffff" }, 3: "x" } });
+    expect(s.levels[2]).toEqual({ primary: "#abcdef", roof: "spire", height: 1.5 });
+    expect(s.levels[1]).toBeUndefined();
+    expect(s.levels[3]).toBeUndefined();
+    expect(resolveLevel(s, 2).primary).toBe("#abcdef");
+    expect(resolveLevel(s, 2).theme).toBe("castle");
+    expect(resolveLevel(s, 1).primary).toBe("#111111");
+    expect(resolveLevel(s, 0)).toBe(s);
   });
   it("keeps only seats 0 to 3 and falls back to the seat colour", () => {
     expect(Object.keys(sanitizeIslands({ 0: { theme: "glass" }, 7: { theme: "glass" } }))).toEqual(["0"]);
