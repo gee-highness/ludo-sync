@@ -10,6 +10,7 @@ import { getClientId } from "@/lib/net/identity";
 import { GuestClient, type GuestSnapshot } from "@/lib/net/guest";
 import { HostSession, type HostSnapshot, type Reaction } from "@/lib/net/host";
 import { PeerNetwork } from "@/lib/net/peerTransport";
+import type { Network } from "@/lib/net/transport";
 import type { Rules } from "@/lib/ludo/types";
 import type { HostResume } from "@/lib/net/resume";
 import { clearRoomRecord, saveRoomRecord } from "@/lib/client/rooms";
@@ -18,7 +19,15 @@ import { clearRoomRecord, saveRoomRecord } from "@/lib/client/rooms";
  * Opens a room on this device (or opens a saved one again) and follows it. Leaving the screen only pauses the room:
  * the game is saved as it goes, guests wait for the host to come back, and `endRoom` is the one way to close it for good.
  */
-export const useHostSession = (name: string, rules: Rules, resume?: HostResume) => {
+export interface SessionOptions {
+  /** How the phones reach each other; the online pairing service unless given. */
+  network?: Network;
+  /** Keep a record so the game can be rejoined from the menu. Nearby games cannot be rejoined that way. */
+  persist?: boolean;
+}
+
+export const useHostSession = (name: string, rules: Rules, resume?: HostResume, options: SessionOptions = {}) => {
+  const { network, persist: keepRecord = true } = options;
   const [session, setSession] = useState<HostSession | null>(null);
   const [snap, setSnap] = useState<HostSnapshot | null>(null);
   const ended = useRef(false);
@@ -26,13 +35,13 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume) 
 
   useEffect(() => {
     ended.current = false;
-    const s = new HostSession({ network: new PeerNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    const s = new HostSession({ network: network ?? new PeerNetwork(), name, rules, ...(resume ? { resume } : {}) });
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
     // keep a copy of a game in progress, so the room can be opened again after leaving, a crash or a closed tab
     const persist = () => {
-      if (ended.current) return;
+      if (ended.current || !keepRecord) return;
       const r = s.exportResume();
       if (!r) return;
       // a finished game is kept too: the room goes on if the host starts a rematch
@@ -56,13 +65,14 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume) 
   /** Closes the room for everyone and forgets it. */
   const endRoom = () => {
     ended.current = true;
-    clearRoomRecord();
+    if (keepRecord) clearRoomRecord();
     sessionRef.current?.close();
   };
   return { session, snap, endRoom };
 };
 
-export const useGuestClient = (code: string, name: string, rejoin = false) => {
+export const useGuestClient = (code: string, name: string, rejoin = false, options: SessionOptions = {}) => {
+  const { network, persist: keepRecord = true } = options;
   const [client, setClient] = useState<GuestClient | null>(null);
   const [snap, setSnap] = useState<GuestSnapshot | null>(null);
   const quit = useRef(false);
@@ -70,7 +80,7 @@ export const useGuestClient = (code: string, name: string, rejoin = false) => {
 
   useEffect(() => {
     quit.current = false;
-    const c = new GuestClient({ network: new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
+    const c = new GuestClient({ network: network ?? new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
@@ -79,9 +89,9 @@ export const useGuestClient = (code: string, name: string, rejoin = false) => {
       setSnap(snapshot);
       const playing = snapshot.room?.phase === "playing" && !!snapshot.state;
       if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") {
-        if (saved) clearRoomRecord();
+        if (saved && keepRecord) clearRoomRecord();
         saved = false;
-      } else if (playing && !saved && !quit.current) {
+      } else if (keepRecord && playing && !saved && !quit.current) {
         saved = saveRoomRecord({ role: "guest", code, name });
       }
     });
@@ -94,7 +104,7 @@ export const useGuestClient = (code: string, name: string, rejoin = false) => {
   /** Gives up the seat for good. */
   const quitForGood = () => {
     quit.current = true;
-    clearRoomRecord();
+    if (keepRecord) clearRoomRecord();
     clientRef.current?.leave({ forfeit: true });
   };
   return { client, snap, quitForGood };

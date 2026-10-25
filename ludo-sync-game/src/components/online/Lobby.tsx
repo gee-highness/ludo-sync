@@ -50,6 +50,8 @@ interface Props {
   /** Six digits the guest should match with the host's screen. */
   check?: string;
   chat?: ChatSource;
+  /** Replaces the room code card on the host, for games that are joined some other way. */
+  invite?: React.ReactNode;
 }
 
 export const ShareCard = ({ code }: { code: string }) => {
@@ -72,14 +74,14 @@ export const ShareCard = ({ code }: { code: string }) => {
   );
 };
 
-export const Lobby = ({ room, host, onClaim, check, chat }: Props) => {
+export const Lobby = ({ room, host, onClaim, check, chat, invite }: Props) => {
   const rules = room.rules;
   const [settings] = useSettings();
   usePalette(); // seat colours change as players choose theirs
   const [pickColours, setPickColours] = useState(false);
   return (
     <VStack align="stretch" spacing={4} w="100%">
-      {host && <ShareCard code={room.code} />}
+      {host && (invite ?? <ShareCard code={room.code} />)}
       {check && (
         <Box bg="whiteAlpha.100" borderRadius="xl" p={3} textAlign="center">
           <Text fontSize="xs" textTransform="uppercase" color="gray.400">Security check</Text>

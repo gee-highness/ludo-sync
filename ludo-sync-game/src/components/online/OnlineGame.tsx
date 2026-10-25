@@ -27,10 +27,14 @@ interface Props {
   onRematch?: () => void;
   /** Shown when the link to the host is down. */
   note?: string;
+  /** Replaces the room name in the header (nearby games have no room code). */
+  title?: string;
+  /** An extra button in the header, such as "invite a player". */
+  headerAction?: React.ReactNode;
 }
 
 /** The ordinary game screen, dressed for a room: who is away, quick reactions, rematch from the host. */
-export default function OnlineGame({ room, state, bus, act, isHost, onReaction, sendReaction, chat, onExit, onForfeit, onRematch, note }: Props) {
+export default function OnlineGame({ room, state, bus, act, isHost, onReaction, sendReaction, chat, onExit, onForfeit, onRematch, note, title, headerAction }: Props) {
   const reactions = useReactionLog(onReaction);
   const mySeats: Seat[] = room.you.seat === null ? [] : [room.you.seat];
   const away = useMemo(() => new Set(room.slots.flatMap(s => (s.kind === "human" && !s.connected ? [s.seat] : []))), [room.slots]);
@@ -46,9 +50,9 @@ export default function OnlineGame({ room, state, bus, act, isHost, onReaction, 
       forfeitWarning={isHost ? "Closing the room ends the game for everyone and cannot be undone." : "Quitting for good gives up your seat and cannot be undone."}
       guardUnload
       onRematch={onRematch} rematchLabel="Rematch" waitingText="Waiting for the host to start a rematch…"
-      title={`Room ${formatRoomCode(room.code)}${mySeats.length === 0 ? " · watching" : ""}`}
+      title={`${title ?? `Room ${formatRoomCode(room.code)}`}${mySeats.length === 0 ? " · watching" : ""}`}
       tags={tags} away={away}
-      headerExtra={note ? <Badge colorScheme="orange">{note}</Badge> : undefined}
+      headerExtra={note || headerAction ? <>{note && <Badge colorScheme="orange">{note}</Badge>}{headerAction}</> : undefined}
       panelExtra={
         <Box bg="whiteAlpha.100" borderRadius="xl" p={2} flexShrink={0}>
           <ChatPanel items={chat.items} onSend={chat.onSend} mySeat={room.you.seat} reactions={reactions} onReact={sendReaction} height="clamp(230px, 34dvh, 340px)" />

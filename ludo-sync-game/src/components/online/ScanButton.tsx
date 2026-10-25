@@ -5,7 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import { extractRoomCode } from "@/lib/net/identity";
 
 /** Opens the camera and reads a room QR code. Hidden where there is no camera. */
-export const ScanButton = ({ onCode }: { onCode: (code: string) => void }) => {
+export const ScanButton = ({ onCode, parse = extractRoomCode, label = "Scan a QR code", failText = "Camera not available. Type the code instead." }: {
+  onCode: (code: string) => void;
+  /** Turns what the camera read into what the screen wants, or null to keep looking. */
+  parse?: (text: string) => string | null;
+  label?: string;
+  failText?: string;
+}) => {
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
   const video = useRef<HTMLVideoElement>(null);
@@ -23,15 +29,15 @@ export const ScanButton = ({ onCode }: { onCode: (code: string) => void }) => {
         const reader = new BrowserQRCodeReader();
         stop = () => reader.reset();
         await reader.decodeFromVideoDevice(null, video.current!, result => {
-          const code = result ? extractRoomCode(result.getText()) : null;
+          const code = result ? parse(result.getText()) : null;
           if (code && !cancelled) { cancelled = true; reader.reset(); setScanning(false); onCode(code); }
         });
       } catch {
-        if (!cancelled) { setError("Camera not available. Type the code instead."); setScanning(false); }
+        if (!cancelled) { setError(failText); setScanning(false); }
       }
     })();
     return () => { cancelled = true; stop?.(); };
-  }, [scanning, onCode]);
+  }, [scanning, onCode, parse, failText]);
 
   if (!supported) return null;
   return (
@@ -42,7 +48,7 @@ export const ScanButton = ({ onCode }: { onCode: (code: string) => void }) => {
         </Box>
       )}
       <Button variant="outline" color="white" w="100%" onClick={() => { setError(""); setScanning(s => !s); }}>
-        {scanning ? "Stop scanning" : "Scan a QR code"}
+        {scanning ? "Stop scanning" : label}
       </Button>
       {error && <Text color="red.300" fontSize="sm" mt={1}>{error}</Text>}
     </Box>
