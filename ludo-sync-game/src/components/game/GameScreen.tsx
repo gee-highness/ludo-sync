@@ -17,6 +17,7 @@ import { describeFrame, type LogLine } from "@/lib/client/describe";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { useSettings, updateSettings } from "@/lib/client/settings";
+import { getDesigns } from "@/lib/client/pieces";
 import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/device";
 import { recordGame } from "@/lib/client/stats";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
@@ -155,6 +156,10 @@ export default function GameScreen(props: GameScreenProps) {
 
   useEffect(() => { setCanFullscreen(!!document.fullscreenEnabled); }, []);
 
+  // music follows the settings, and everything stops when the game screen goes away
+  useEffect(() => { sound.syncMusic(); }, [settings.sound, settings.music, settings.musicVolume, settings.mood]);
+  useEffect(() => () => sound.stopAmbience(), []);
+
   useEffect(() => {
     const on = () => setFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", on);
@@ -217,14 +222,17 @@ export default function GameScreen(props: GameScreenProps) {
     }
   }, [addFloater, showBanner]);
   const onStep = useCallback((step: AnimStep) => {
-    if (step.kind === "hop") sound.play("hop");
-    else if (step.kind === "enter") sound.play("enter");
-    else if (step.kind === "finish") sound.play("home");
-    else { sound.play("capture"); buzz("capture"); }
+    const vehicle = getDesigns()[step.seat]?.[step.token]?.vehicle ?? "none";
+    const driving = vehicle !== "none";
+    if (step.kind === "hop") { if (driving) sound.drive(vehicle, 0.28); else sound.play("hop"); }
+    else if (step.kind === "enter") { if (driving) { sound.horn(vehicle); sound.drive(vehicle, 0.4); } else sound.play("enter"); }
+    else if (step.kind === "finish") { sound.play("home"); if (driving) sound.horn(vehicle, true); }
+    else { sound.play("capture"); if (driving) { sound.play("squeal"); sound.play("crash"); } sound.duck(1.4); buzz("capture"); }
   }, []);
   const onFrameEnd = useCallback((frame: Frame) => {
     if (frame.events.some(e => e.type === "win")) {
       const won = frame.state.winner !== null && mine.current.includes(frame.state.winner);
+      sound.duck(3.5);
       sound.play(won || mine.current.length === 0 ? "win" : "error");
       buzz("win");
       if (recordStats && !recorded.current) {

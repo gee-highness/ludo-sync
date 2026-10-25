@@ -46,6 +46,11 @@ export const HowToPlay = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
             "Leaving the yard pays $100, reaching home pays $250, and a capture takes $50. 🎁 and ❓ draw cards; 💸 is tax.",
             "If you cannot pay, buildings and squares are sold at half price. Still short means bankrupt and out.",
           ]} />
+          <Section title="Playing nearby, no internet" items={[
+            "Choose Play nearby on the menu. One phone hosts and invites; the other joins. You pass two short notes between the phones: the host's invite, then the guest's reply. Scan the QR code or paste the text.",
+            "The phones must be on the same small network: one phone's hotspot, the same Wi-Fi (even with no internet), or Bluetooth tethering.",
+            "If the link drops, the host makes a new invite and the guest scans it to get their seat back.",
+          ]} />
           <Section title="Tips" items={[
             "Space or Enter rolls the dice. Tab moves between glowing tokens and Enter picks one.",
             "Turn on token symbols in Settings if colours are hard to tell apart.",

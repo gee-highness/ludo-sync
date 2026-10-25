@@ -9,6 +9,7 @@ import { BOARD_THEMES, DEFAULT_SETTINGS, useSettings, type Settings } from "@/li
 import Link from "next/link";
 import { clearSavedGame } from "@/lib/client/save";
 import { sound } from "@/lib/client/audio";
+import { MOODS, MOOD_LABEL } from "@/lib/client/soundDesign";
 
 const Row = ({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) => (
   <FormControl display="flex" alignItems="center" justifyContent="space-between" gap={4}>
@@ -40,6 +41,18 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
                 onChangeEnd={() => { sound.unlock(); sound.play("pop"); }} aria-label="Volume" colorScheme="teal">
                 <SliderTrack><SliderFilledTrack /></SliderTrack><SliderThumb />
               </Slider>
+            </Row>
+            <Row label="Engines and horns" hint="Each vehicle has its own voice">{toggle("engineSounds")}</Row>
+            <Row label="Music" hint="Soft, generated as you play">{toggle("music")}</Row>
+            <Row label="Music volume">
+              <Slider w="130px" min={0} max={1} step={0.05} value={s.musicVolume} onChange={v => update({ musicVolume: v })} aria-label="Music volume" colorScheme="teal">
+                <SliderTrack><SliderFilledTrack /></SliderTrack><SliderThumb />
+              </Slider>
+            </Row>
+            <Row label="Music mood">
+              <Select w="140px" size="sm" value={s.mood} onChange={e => update({ mood: e.target.value as Settings["mood"] })} bg="gray.700">
+                {MOODS.map(m => <option key={m} value={m}>{MOOD_LABEL[m]}</option>)}
+              </Select>
             </Row>
             <Row label="Vibration" hint="On phones that support it">{toggle("haptics")}</Row>
             <Divider borderColor="whiteAlpha.300" />
