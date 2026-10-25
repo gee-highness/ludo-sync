@@ -87,7 +87,6 @@ export const SettingsDrawer = ({ isOpen, onClose }: { isOpen: boolean; onClose: 
               </Select>
             </Row>
             <Row label="Auto-move forced moves" hint="When only one move is possible">{toggle("autoMove")}</Row>
-            <Row label="Face the current player" hint="Pass-and-play: turns the board each turn">{toggle("followTurn")}</Row>
             <Row label="Keep screen awake">{toggle("keepAwake")}</Row>
             <Divider borderColor="whiteAlpha.300" />
             <HStack>

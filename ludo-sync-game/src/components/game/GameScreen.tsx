@@ -273,7 +273,7 @@ export default function GameScreen(props: GameScreenProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [canRoll, roll]);
 
-  const viewSeat: Seat = props.viewSeat ?? (mySeats.length === 1 ? mySeats[0] : settings.followTurn ? me.seat : 0);
+  const viewSeat: Seat = props.viewSeat ?? (mySeats.length === 1 ? mySeats[0] : 0);
   const accent = SEAT_INFO[me.seat].main;
   const choiceOptions = choice === null ? [] : moves.filter(o => o.token === choice);
 
