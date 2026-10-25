@@ -4,6 +4,8 @@ import type { LastMove } from "@/lib/client/lastMove";
 
 /** What every board renderer (flat or 3D) is given. */
 export interface BoardProps {
+  /** The part of the day, for the sky behind the 3D board. */
+  phase?: import("@/lib/client/scenery").DayPhase;
   /** How much to darken the board for evening and night, 0 to 0.5. */
   dim?: number;
   /** The token that moved most recently, so the board can keep marking where it came from and where it went. */
