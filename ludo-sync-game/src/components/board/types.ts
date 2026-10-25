@@ -1,8 +1,11 @@
 import type { Seat } from "@/lib/ludo/board";
 import type { GameState, MoveOption } from "@/lib/ludo/types";
+import type { LastMove } from "@/lib/client/lastMove";
 
 /** What every board renderer (flat or 3D) is given. */
 export interface BoardProps {
+  /** The token that moved most recently, so the board can keep marking where it came from and where it went. */
+  lastMove?: LastMove | null;
   /** The state to draw, which may lag the real game while tokens are still hopping. */
   state: GameState;
   /** Seat shown at the bottom of the screen. */

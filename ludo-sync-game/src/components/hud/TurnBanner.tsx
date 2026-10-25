@@ -2,25 +2,30 @@
 
 import { Box, Text } from "@chakra-ui/react";
 
-export interface BannerInfo { key: number; text: string; sub?: string; tone: "turn" | "bonus" }
+export interface BannerInfo { key: number; text: string; sub?: string; tone: "turn" | "bonus" | "capture" }
 
-/** A lime ribbon that sweeps across the board for a moment, like the reference's "X's turn". Decorative: the status bar carries the same news for assistive tech. */
+const LOOK = {
+  turn: { bg: "rgba(21,21,21,.78)", fg: "#fff", ring: "rgba(255,255,255,.35)" },
+  bonus: { bg: "linear-gradient(180deg, #fde047, #eab308)", fg: "#3b2f00", ring: "rgba(255,255,255,.55)" },
+  capture: { bg: "linear-gradient(180deg, #f87171, #dc2626)", fg: "#fff", ring: "rgba(255,255,255,.55)" },
+} as const;
+
+/** A small pill at the top of the board that fades in and out: who is up, a bonus roll, or a capture. It stays out of the way of the board. Decorative: the status bar carries the same news for assistive tech. */
 export const TurnBanner = ({ banner, reduceMotion }: { banner: BannerInfo | null; reduceMotion: boolean }) => {
   if (!banner) return null;
-  const gold = banner.tone === "bonus";
+  const look = LOOK[banner.tone];
   return (
     <Box
-      key={banner.key} position="absolute" left={0} right={0} top="50%" mt="-26px" h="52px" zIndex={6} pointerEvents="none" aria-hidden display="grid" placeItems="center"
-      bg={gold ? "linear-gradient(180deg, #fde047, #eab308)" : "linear-gradient(180deg, #a3e635, #65a30d)"} boxShadow="0 6px 18px rgba(0,0,0,.5)"
-      borderY="2px solid rgba(255,255,255,.55)"
+      key={banner.key} position="absolute" left="50%" top="6px" zIndex={6} pointerEvents="none" aria-hidden maxW="92%"
+      bg={look.bg} color={look.fg} px={4} py={1} borderRadius="full" border="1px solid" borderColor={look.ring} boxShadow="0 4px 14px rgba(0,0,0,.4)"
       sx={{
-        animation: reduceMotion ? "bannerFade 1.6s linear forwards" : "bannerSweep 1.7s cubic-bezier(.2,.8,.2,1) forwards",
-        "@keyframes bannerSweep": { "0%": { transform: "translateX(-105%)" }, "18%": { transform: "translateX(0)" }, "78%": { transform: "translateX(0)", opacity: 1 }, "100%": { transform: "translateX(105%)", opacity: 0.9 } },
-        "@keyframes bannerFade": { "0%": { opacity: 0 }, "15%": { opacity: 1 }, "80%": { opacity: 1 }, "100%": { opacity: 0 } },
+        animation: reduceMotion ? "pillFade 1.6s linear forwards" : "pillDrop 1.8s cubic-bezier(.2,.8,.2,1) forwards",
+        "@keyframes pillDrop": { "0%": { opacity: 0, transform: "translate(-50%, -14px)" }, "14%": { opacity: 1, transform: "translate(-50%, 0)" }, "80%": { opacity: 1, transform: "translate(-50%, 0)" }, "100%": { opacity: 0, transform: "translate(-50%, -6px)" } },
+        "@keyframes pillFade": { "0%": { opacity: 0, transform: "translate(-50%, 0)" }, "15%": { opacity: 1, transform: "translate(-50%, 0)" }, "80%": { opacity: 1, transform: "translate(-50%, 0)" }, "100%": { opacity: 0, transform: "translate(-50%, 0)" } },
       }}
     >
-      <Text fontWeight={900} fontSize={{ base: "lg", md: "xl" }} color={gold ? "#3b2f00" : "#fff"} textShadow={gold ? "none" : "0 2px 4px rgba(0,0,0,.45)"} letterSpacing="0.02em" noOfLines={1} px={3}>
-        {banner.text}{banner.sub ? <Text as="span" fontWeight={700} fontSize="sm" ml={2} opacity={0.85}>{banner.sub}</Text> : null}
+      <Text fontWeight={800} fontSize={{ base: "sm", md: "md" }} noOfLines={1} textShadow={banner.tone === "bonus" ? "none" : "0 1px 3px rgba(0,0,0,.45)"}>
+        {banner.text}{banner.sub ? <Text as="span" fontWeight={600} fontSize="xs" ml={2} opacity={0.85}>{banner.sub}</Text> : null}
       </Text>
     </Box>
   );

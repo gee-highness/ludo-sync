@@ -18,6 +18,7 @@ import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { useSettings, updateSettings } from "@/lib/client/settings";
 import { getDesigns } from "@/lib/client/pieces";
+import { describeLastMove, lastMoveOf, nextSeat, type LastMove } from "@/lib/client/lastMove";
 import { resolveRenderer, useCapabilities, useWakeLock } from "@/lib/client/device";
 import { recordGame } from "@/lib/client/stats";
 import { useAnimatedGame } from "@/hooks/useAnimatedGame";
@@ -84,6 +85,11 @@ export default function GameScreen(props: GameScreenProps) {
   const [choice, setChoice] = useState<number | null>(null);
   const [bonus, setBonus] = useState<string | null>(null);
   const [banner, setBanner] = useState<BannerInfo | null>(null);
+  const [lastMove, setLastMove] = useState<LastMove | null>(null);
+  const [canReplay, setCanReplay] = useState(false);
+  const replayRef = useRef<{ before: GameState; frame: Frame } | null>(null);
+  const replaying = useRef(false);
+  const shownRef = useRef<GameState>(state);
   const [floaters, setFloaters] = useState<Floater[]>([]);
   const [short] = useMediaQuery("(max-height: 560px)");
   const bannerKey = useRef(0);
@@ -186,7 +192,10 @@ export default function GameScreen(props: GameScreenProps) {
   }, [later]);
 
   const onFrameStart = useCallback((frame: Frame) => {
-    setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
+    const again = replaying.current;
+    if (!again) setLines(l => [...l, ...describeFrame(frame.events, frame.state)].slice(-MAX_LOG));
+    if (frame.events.some(e => e.type === "move")) { if (!again) replayRef.current = { before: shownRef.current, frame }; setLastMove(null); setCanReplay(false); }
+    if (frame.events.some(e => e.type === "roll")) setLastMove(null);
     frame.events.forEach((e: GameEvent) => {
       switch (e.type) {
         case "roll": sound.play("dice"); buzz("tap"); setBonus(null); break;
@@ -205,7 +214,10 @@ export default function GameScreen(props: GameScreenProps) {
           if (e.other !== undefined) addFloater(e.other, `${e.amount < 0 ? "+" : "-"}$${Math.abs(e.amount)}`, e.amount < 0 ? "gain" : "loss");
           break;
         }
-        case "capture": if (mine.current.includes(e.seat)) captures.current += 1; break;
+        case "capture":
+          if (mine.current.includes(e.seat)) captures.current += 1;
+          showBanner(`${frame.state.players.find(p => p.seat === e.victim)?.name ?? "A token"} was sent home`, "capture");
+          break;
       }
     });
     if (frame.state.seq === 0) {
@@ -230,6 +242,9 @@ export default function GameScreen(props: GameScreenProps) {
     else { sound.play("capture"); if (driving) { sound.play("squeal"); sound.play("crash"); } sound.duck(1.4); buzz("capture"); }
   }, []);
   const onFrameEnd = useCallback((frame: Frame) => {
+    const mv = lastMoveOf(frame.events);
+    if (mv) { setLastMove(mv); setCanReplay(!!replayRef.current); }
+    replaying.current = false;
     if (frame.events.some(e => e.type === "win")) {
       const won = frame.state.winner !== null && mine.current.includes(frame.state.winner);
       sound.duck(3.5);
@@ -245,6 +260,16 @@ export default function GameScreen(props: GameScreenProps) {
 
   const anim = useAnimatedGame(bus, state, { speed, longRoll: renderer === "3d", onFrameStart, onStep, onFrameEnd });
   const { shown, busy } = anim;
+  shownRef.current = shown;
+
+  // plays the last move again: the board steps back to how it was, then the same frame runs once more
+  const replay = useCallback(() => {
+    const r = replayRef.current;
+    if (!r || busy) return;
+    replaying.current = true;
+    bus.push({ ...r.before, seq: -1 }, []);
+    bus.push(r.frame.state, r.frame.events);
+  }, [bus, busy]);
   useBotDriver(state, busy, act, speed, !runBots);
 
   const me = currentPlayer(shown);
@@ -326,6 +351,7 @@ export default function GameScreen(props: GameScreenProps) {
     immersive && round(topCamera ? "Switch to the moving camera" : "Switch to the top-down view", <span aria-hidden>{topCamera ? "◩" : "⬒"}</span>, () => updateSettings({ camera: topCamera ? "follow" : "top" })),
     immersive && round("Reset camera", <span aria-hidden>⟲</span>, resetCameraView),
     immersive && round(droneCamera ? "Leave drone camera" : "Drone camera", <span aria-hidden>🛸</span>, () => updateSettings({ camera: droneCamera ? "top" : "drone" }), droneCamera ? { bg: "#facc15" } : {}),
+    canReplay && !busy && shown.phase !== "over" && round("Replay the last move", <span aria-hidden>↺</span>, replay),
     round(settings.sound ? "Mute sound" : "Unmute sound", <span aria-hidden>{settings.sound ? "🔊" : "🔇"}</span>, () => { sound.unlock(); updateSettings({ sound: !settings.sound }); }),
     canFullscreen && round(fullscreen ? "Exit full screen" : "Full screen", <span aria-hidden>{fullscreen ? "🗗" : "⛶"}</span>, toggleFullscreen, { display: { base: "none", md: "inline-flex" } }),
     round("How to play", <QuestionIcon />, help.onOpen),
@@ -335,7 +361,7 @@ export default function GameScreen(props: GameScreenProps) {
   const panels = (
     <PlayerPanels
       players={shown.players} currentSeat={shown.phase !== "over" ? me.seat : null} mySeats={mySeats} cash={shown.tycoon?.cash} away={props.away} tags={props.tags}
-      compact={compact} twoColumns={!wide} floaters={floaters}
+      compact={compact} twoColumns={!wide} floaters={floaters} next={nextSeat(shown)}
     />
   );
   const tycoonCard = iAct && shown.phase === "decide" ? <PropertyCard state={shown} act={act} wide={wide} /> : null;
@@ -358,7 +384,12 @@ export default function GameScreen(props: GameScreenProps) {
   const statusBar = (
     <StatusBar
       text={status} tone={canRoll && bonus ? "bonus" : undefined}
-      extra={shown.sixes > 0 && shown.phase !== "over" ? <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text> : undefined}
+      extra={
+        <>
+          {shown.sixes > 0 && shown.phase !== "over" && <Text fontSize="xs" color="#fde047">Sixes in a row: {shown.sixes}</Text>}
+          {lastMove && !busy && shown.phase !== "over" && <Text fontSize="xs" color="whiteAlpha.800">{describeLastMove(lastMove, shown)}</Text>}
+        </>
+      }
     />
   );
   const controls = (
@@ -446,7 +477,7 @@ export default function GameScreen(props: GameScreenProps) {
           <Box position="relative" {...boardInnerProps}>
             <BoardView
               renderer={renderer} state={shown} viewSeat={viewSeat} options={moves} onPick={pick} onUse3d={setBoardUses3d} hideCameraToggle={immersive}
-              symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
+              lastMove={lastMove} symbols={settings.symbols} hints={settings.hints} reduceMotion={reduceMotion} hopMs={stepMs("hop", speed)} moving={anim.moving} rollKey={anim.rollKey} rolled={shown.rolled} rollable={canRoll} onThrow={throwDice}
               insets={immersive ? insets : undefined}
             />
             <TurnBanner banner={banner} reduceMotion={reduceMotion} />
