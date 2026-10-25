@@ -41,7 +41,7 @@ const PALETTES: Record<BoardTheme, Palette> = {
   classic: { bg: "#151515", cell: "#D6D6D6", line: "#8E8E8E", panel: "#fff", inactiveCol: "#A0A0A0" },
   midnight: { bg: "#050505", cell: "#2B2B2B", line: "#555555", panel: "#1C1C1C", inactiveCol: "#555555" },
   sunset: { bg: "#2B1424", cell: "#FFF3E0", line: "#E0A878", panel: "#FFF8EE", inactiveCol: "#C9A28A" },
-  serene: { bg: "#EFE9DF", cell: "#FFFEFA", line: "#D8CEC0", panel: "#FFFDF8", inactiveCol: "#CFC6BA" },
+  serene: { bg: "#7a5333", cell: "#FFFEFA", line: "#D8CEC0", panel: "#FFFDF8", inactiveCol: "#CFC6BA" },
   paper: { bg: "#E5E5E5", cell: "#FFFFFF", line: "#CCCCCC", panel: "#fff", inactiveCol: "#CCCCCC" },
 };
 
@@ -149,6 +149,7 @@ export default function Board2D({
   const [settings] = useSettings();
   const world = worldOf(settings.boardTheme);
   const neon = isWorld(settings.boardTheme);
+  const rich = settings.boardTheme === "serene";
   const pal = useMemo(() => neon ? { ...PALETTES[settings.boardTheme], bg: world.bg, cell: world.cell, line: world.accent } : PALETTES[settings.boardTheme], [neon, world, settings.boardTheme]);
   const designs = useDesigns();
   const rotation = -90 * viewSeat;
@@ -212,7 +213,7 @@ export default function Board2D({
       const active = info.seat === undefined || playing.has(info.seat);
       let fill = pal.cell;
       if (info.kind === "column") fill = active ? seatInfo!.path : pal.inactiveCol;
-      if (info.kind === "start") fill = active ? seatInfo!.main : INACTIVE;
+      if (info.kind === "start") fill = active ? seatInfo!.main : rich ? "#bfb4a3" : INACTIVE;
       const tycoonRing = state.tycoon && info.kind !== "column" ? RING.findIndex(c => c[0] === row && c[1] === col) : -1;
       cells.push(
         <g key={`${row}-${col}`}>
@@ -227,6 +228,17 @@ export default function Board2D({
                 <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.16} strokeOpacity={0.2} />
                 <rect x={col - 0.46} y={row - 0.46} width={0.92} height={0.92} rx={0.08} fill="none" stroke={rim} strokeWidth={0.09} strokeOpacity={1} />
                 <path d={`M${col - 0.44} ${row - 0.44}H${col + 0.44}`} stroke="#fff" strokeOpacity={0.12} strokeWidth={0.05} />
+              </g>
+            );
+          })() : rich ? (() => {
+            const x = col - 0.45, y = row - 0.45, w = 0.9;
+            const solid = info.kind === "column" || info.kind === "start";
+            return (
+              <g>
+                <rect x={x} y={y + 0.05} width={w} height={w} rx={0.16} fill="#3a2a1a" fillOpacity={0.16} />
+                <rect x={x} y={y} width={w} height={w} rx={0.16} fill={solid ? fill : "url(#sr-cell)"} />
+                <rect x={x} y={y} width={w} height={w * 0.5} rx={0.16} fill="#fff" fillOpacity={solid ? 0.2 : 0.55} />
+                <rect x={x} y={y} width={w} height={w} rx={0.16} fill="none" stroke={solid ? "#000" : "#a98f6d"} strokeOpacity={solid ? 0.18 : 0.45} strokeWidth={0.035} />
               </g>
             );
           })() : <rect x={col - 0.5} y={row - 0.5} width={CELL} height={CELL} fill={fill} stroke={pal.line} strokeWidth={0.04} />}
@@ -262,7 +274,7 @@ export default function Board2D({
                   <path d="M-0.24 0.02L0 -0.2L0.24 0.02" /><path d="M-0.24 0.28L0 0.06L0.24 0.28" opacity={0.6} />
                 </g>
               ) : (
-                <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={0.78} fill="#D69E2E"
+                <text className="twinkle" y={0.05} textAnchor="middle" dominantBaseline="central" fontSize={rich ? 0.7 : 0.78} fill={rich ? "#E3A72F" : "#D69E2E"} stroke={rich ? "#8a5a08" : undefined} strokeWidth={rich ? 0.03 : undefined}
                   style={{ animationDelay: `${((row * 15 + col) % 7) * 0.35}s` }}>★</text>
               )}
             </g>
@@ -280,7 +292,7 @@ export default function Board2D({
   return cells;
   // the board squares only change with the game state, rotation, theme and colours
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tycoon, playing, rotation, neon, paletteVersion, islands, pal]);
+  }, [state.tycoon, playing, rotation, neon, rich, paletteVersion, islands, pal]);
 
   const yards = SEATS.map(seat => {
     const info = SEAT_INFO[seat];
@@ -297,12 +309,26 @@ export default function Board2D({
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.28} strokeWidth={0.3} />
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeWidth={0.07} />
           </g>
+        ) : rich ? (
+          <g>
+            <rect x={x0 + 0.05} y={y0 + 0.12} width={5.9} height={5.9} rx={0.55} fill="#2a1a0a" fillOpacity={0.25} />
+            <rect x={x0} y={y0} width={5.9} height={5.9} rx={0.55} fill={active ? `url(#sr-yard-${seat})` : "#cfc6ba"} />
+            <rect x={x0 + 0.08} y={y0 + 0.08} width={5.74} height={5.74} rx={0.48} fill="none" stroke="#fff" strokeOpacity={0.45} strokeWidth={0.07} />
+          </g>
         ) : <rect x={x0} y={y0} width={6} height={6} fill={active ? info.home : INACTIVE} />}
         {turnSeat === seat && <rect className="yard-glow" x={x0 + 0.1} y={y0 + 0.1} width={5.8} height={5.8} fill="none" stroke="#fff" strokeWidth={0.16} rx={0.3} />}
-        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill={pal.panel} fillOpacity={neon ? 0.95 : active ? 0.88 : 0.35} />
+        {rich && <rect x={x0 + 0.85} y={y0 + 0.95} width={4.2} height={4.2} rx={0.7} fill="#2a1a0a" fillOpacity={0.22} />}
+        <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={rich ? 0.7 : 0.5} fill={rich ? "url(#sr-nest)" : pal.panel} fillOpacity={neon ? 0.95 : rich ? (active ? 1 : 0.6) : active ? 0.88 : 0.35} />
         {neon && <rect x={x0 + 0.9} y={y0 + 0.9} width={4.2} height={4.2} rx={0.5} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.7} strokeWidth={0.04} />}
         {[0, 1, 2, 3].map(i => {
           const p = pointOf(seat, i, YARD);
+          if (rich) return (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={0.52} fill={active ? info.main : "#bdb3a5"} fillOpacity={0.22} />
+              <circle cx={p.x} cy={p.y} r={0.52} fill="none" stroke={active ? info.dark : "#9a8f80"} strokeOpacity={0.5} strokeWidth={0.07} />
+              <circle cx={p.x} cy={p.y} r={0.34} fill="none" stroke="#fff" strokeOpacity={0.7} strokeWidth={0.05} />
+            </g>
+          );
           return <circle key={i} cx={p.x} cy={p.y} r={0.46} fill={active ? info.main : INACTIVE} fillOpacity={neon ? 0.35 : 0.28} stroke={neon ? (active ? info.main : "#666") : active ? info.dark : "#2B2B2B"} strokeWidth={neon ? 0.07 : 0.06} />;
         })}
         {player && (
@@ -320,6 +346,7 @@ export default function Board2D({
       0: "5.5,8.5 8.5,8.5 7,7", 1: "5.5,5.5 5.5,8.5 7,7", 2: "5.5,5.5 8.5,5.5 7,7", 3: "8.5,5.5 8.5,8.5 7,7",
     };
     const on = playing.has(seat);
+    if (rich) return <polygon key={seat} points={pts[seat]} fill={on ? `url(#sr-tri-${seat})` : "#cfc6ba"} stroke="#fff" strokeOpacity={0.9} strokeWidth={0.06} strokeLinejoin="round" />;
     return neon
       ? <g key={seat}><polygon points={pts[seat]} fill={on ? SEAT_INFO[seat].main : INACTIVE} fillOpacity={0.22} /><polygon points={pts[seat]} fill="none" stroke={on ? SEAT_INFO[seat].main : "#666"} strokeWidth={0.1} strokeOpacity={0.3} strokeLinejoin="round" /><polygon points={pts[seat]} fill="none" stroke={on ? SEAT_INFO[seat].main : "#666"} strokeWidth={0.05} strokeLinejoin="round" /></g>
       : <polygon key={seat} points={pts[seat]} fill={on ? SEAT_INFO[seat].main : INACTIVE} stroke="#fff" strokeWidth={0.05} />;
@@ -421,7 +448,7 @@ export default function Board2D({
 
   const svgEl = (
     <svg
-      ref={svgRef} viewBox={immersive ? undefined : "-0.5 -0.5 15 15"} role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
+      ref={svgRef} viewBox={immersive ? undefined : rich ? "-1 -1 16 16" : "-0.5 -0.5 15 15"} role="group" aria-label="Ludo board" className={reduceMotion ? "reduce" : undefined}
       onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
       style={{ width: "100%", height: "100%", display: "block", position: "relative", touchAction: rollable ? "none" : "manipulation", "--hop": `${hopMs}ms` } as React.CSSProperties}
     >
@@ -435,6 +462,21 @@ export default function Board2D({
             </radialGradient>
           );
         })}
+        {rich && (
+          <>
+            <linearGradient id="sr-cell" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffdf7" /><stop offset="1" stopColor="#efe6d6" /></linearGradient>
+            <linearGradient id="sr-nest" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffdf8" /><stop offset="1" stopColor="#f1e8d8" /></linearGradient>
+            <linearGradient id="sr-frame" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5b3d26" /><stop offset="0.5" stopColor="#7a5333" /><stop offset="1" stopColor="#3f2917" /></linearGradient>
+            <radialGradient id="sr-felt" cx="0.5" cy="0.45" r="0.75"><stop offset="0" stopColor="#f6efe2" /><stop offset="1" stopColor="#e4d8c3" /></radialGradient>
+            <radialGradient id="sr-gem" cx="0.35" cy="0.3" r="0.9"><stop offset="0" stopColor="#fff6c9" /><stop offset="0.5" stopColor="#f0b429" /><stop offset="1" stopColor="#9a6208" /></radialGradient>
+            {SEATS.map(seat => (
+              <g key={`sr${seat}`}>
+                <linearGradient id={`sr-yard-${seat}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={SEAT_INFO[seat].light} /><stop offset="0.55" stopColor={SEAT_INFO[seat].main} /><stop offset="1" stopColor={SEAT_INFO[seat].dark} /></linearGradient>
+                <linearGradient id={`sr-tri-${seat}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={SEAT_INFO[seat].light} /><stop offset="1" stopColor={SEAT_INFO[seat].dark} /></linearGradient>
+              </g>
+            ))}
+          </>
+        )}
         {neon && (
           <>
             <pattern id="nd-dots" width={0.25} height={0.25} patternUnits="userSpaceOnUse"><circle cx={0.125} cy={0.125} r={0.022} fill="#8fb0ff" fillOpacity={0.3} /></pattern>
@@ -446,11 +488,24 @@ export default function Board2D({
           </>
         )}
       </defs>
-      <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={neon && immersive ? world.bg : pal.bg} />
+      {rich ? (
+        <>
+          <rect x={-1} y={-1} width={16} height={16} rx={1} fill="url(#sr-frame)" />
+          <rect x={-0.95} y={-0.95} width={15.9} height={15.9} rx={0.95} fill="none" stroke="#e8c98a" strokeOpacity={0.55} strokeWidth={0.06} />
+          <rect x={-0.55} y={-0.55} width={15.1} height={15.1} rx={0.62} fill="url(#sr-felt)" stroke="#2a1a0a" strokeOpacity={0.5} strokeWidth={0.08} />
+        </>
+      ) : <rect x={-0.5} y={-0.5} width={15} height={15} rx={0.6} fill={neon && immersive ? world.bg : pal.bg} />}
       <g transform={`rotate(${rotation} 7 7)`}>
         {yards}
         {cells}
         {centre}
+        {rich && (
+          <g aria-hidden>
+            <circle cx={7} cy={7} r={0.62} fill="#2a1a0a" fillOpacity={0.25} transform="translate(0 0.06)" />
+            <circle cx={7} cy={7} r={0.58} fill="url(#sr-gem)" stroke="#fff" strokeWidth={0.07} />
+            <circle cx={6.85} cy={6.82} r={0.14} fill="#fff" fillOpacity={0.8} />
+          </g>
+        )}
         {previews}
         {placed.map(t => {
           const isMine = t.seat === interactiveSeat;
@@ -483,6 +538,7 @@ export default function Board2D({
                   state.winner === t.seat && t.progress === FINISH ? "tok-dance"
                     : t.progress === YARD ? "tok-spin" : "tok-hop"
                 }>
+                  {rich && <ellipse cy={0.36} rx={0.34} ry={0.1} fill="#2a1a0a" fillOpacity={0.3} />}
                   <circle className="focus-ring" r={0.44} fill="none" stroke="transparent" strokeWidth={0.06} />
                   <g transform={`scale(${design.size})`}><PieceShape design={design} id={`p${t.seat}${t.token}`} upright={-rotation} metal={neon && isDefaultDesign(designs[t.seat][t.token]) ? (t.seat % 2 === 0 ? "gold" : "silver") : undefined} /></g>
                   {symbols && (
@@ -516,7 +572,7 @@ export default function Board2D({
           </g>
         ))}
       </g>
-      {turnSeat !== null && (
+      {turnSeat !== null && !rich && (
         <g key={`${state.turn}-${state.players.length}`} className="banner" aria-hidden style={{ transformBox: "fill-box", transformOrigin: "center" }}>
           <rect x={3.5} y={6.2} width={8} height={1.6} rx={0.8} fill={SEAT_INFO[turnSeat].dark} fillOpacity={0.92} stroke="#fff" strokeWidth={0.06} />
           <text x={7.5} y={7} textAnchor="middle" dominantBaseline="central" fontSize={0.7} fontWeight={800} fill="#fff">
