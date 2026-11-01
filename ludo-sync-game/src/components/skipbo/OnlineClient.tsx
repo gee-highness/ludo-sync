@@ -18,7 +18,7 @@ import { ScanButton } from "../online/ScanButton";
 import { Reactions } from "./Reactions";
 import { Table } from "./Table";
 
-const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
+export const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
   <Flex minH="100dvh" bg="#0c3a27" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
     <VStack w="100%" maxW="460px" spacing={4} align="stretch">
       <HStack>
@@ -30,7 +30,7 @@ const Shell = ({ title, onBack, children }: { title: string; onBack: () => void;
   </Flex>
 );
 
-const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: () => void }) => (
+export const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: () => void }) => (
   <Shell title="Skip-Bo online" onBack={onBack}>
     <VStack bg="whiteAlpha.100" borderRadius="xl" p={6} spacing={3} textAlign="center">
       <Heading size="md">{title}</Heading>
@@ -42,7 +42,7 @@ const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: 
 
 const TURN_CHOICES = [{ ms: 0, label: "No limit" }, { ms: 30_000, label: "30 seconds" }, { ms: 60_000, label: "60 seconds" }, { ms: 120_000, label: "2 minutes" }];
 
-interface HostControls {
+export interface HostControls {
   setSlot: (slot: number, kind: "empty" | "bot", level?: BotLevel) => void;
   kick: (slot: number) => void;
   setRules: (r: { stockSize?: number; tournament?: boolean; target?: number }) => void;
@@ -78,12 +78,12 @@ const SlotRow = ({ s, room, host }: { s: SlotView; room: RoomView; host?: HostCo
   );
 };
 
-const Lobby = ({ room, host, check }: { room: RoomView; host?: HostControls; check?: string }) => {
+export const Lobby = ({ room, host, check, invite }: { room: RoomView; host?: HostControls; check?: string; invite?: React.ReactNode }) => {
   const players = room.slots.filter(s => s.kind !== "empty").length;
   const stock = room.rules.stockSize;
   return (
     <VStack align="stretch" spacing={4}>
-      {host && <ShareCard code={room.code} link={skipBoShareLink(room.code)} game="Skip-Bo" />}
+      {host && (invite ?? <ShareCard code={room.code} link={skipBoShareLink(room.code)} game="Skip-Bo" />)}
       {check && (
         <Box bg="whiteAlpha.100" borderRadius="xl" p={3} textAlign="center">
           <Text fontSize="xs" textTransform="uppercase" color="gray.400">Security check</Text>

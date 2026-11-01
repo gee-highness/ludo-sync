@@ -2,11 +2,11 @@ import { readJSON, removeKey, writeJSON } from "../client/storage";
 import { parseGameState } from "./validate";
 import type { GameState } from "./types";
 
-export interface SavedGame { state: GameState; you: number; savedAt: number }
+export interface SavedGame { state: GameState; you: number; /** Everyone plays on this one device, passing it round. */ hotseat: boolean; savedAt: number }
 
-export const saveGame = (state: GameState, you: number) => {
+export const saveGame = (state: GameState, you: number, hotseat = false) => {
   if (state.phase === "over") { removeKey("skipbo-save"); return; }
-  writeJSON("skipbo-save", { state, you, savedAt: Date.now() });
+  writeJSON("skipbo-save", { state, you, hotseat, savedAt: Date.now() });
 };
 
 export const loadGame = (): SavedGame | null => {
@@ -16,7 +16,7 @@ export const loadGame = (): SavedGame | null => {
   const state = parseGameState(r.state);
   if (!state || state.phase === "over") return null;
   const you = typeof r.you === "number" && Number.isInteger(r.you) && r.you >= 0 && r.you < state.players.length ? r.you : 0;
-  return { state, you, savedAt: typeof r.savedAt === "number" ? r.savedAt : 0 };
+  return { state, you, hotseat: r.hotseat === true, savedAt: typeof r.savedAt === "number" ? r.savedAt : 0 };
 };
 
 export const clearSavedGame = () => removeKey("skipbo-save");

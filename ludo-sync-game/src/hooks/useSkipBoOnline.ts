@@ -6,6 +6,7 @@ import { SkipBoGuest, type GuestSnapshot } from "@/lib/skipbo/net/guest";
 import { SkipBoHost, type HostSnapshot, type Reaction } from "@/lib/skipbo/net/host";
 import type { Rules } from "@/lib/skipbo/types";
 import { PeerNetwork } from "@/lib/net/peerTransport";
+import type { Network } from "@/lib/net/transport";
 import { getClientId } from "@/lib/net/identity";
 import { readJSON, removeKey, writeJSON } from "@/lib/client/storage";
 import { useFeed, type Feed } from "./useSkipBoLocal";
@@ -34,13 +35,16 @@ export const useReactionLog = (subscribe: ((cb: (r: Reaction) => void) => () => 
 };
 
 /** Opens a room on this device and follows it. Closing the screen closes the room: the table lives on the host's phone. */
-export const useSkipBoHost = (name: string, rules: Partial<Rules>) => {
+export interface SessionOptions { network?: Network; /** Keep a record so the game can be rejoined from the menu. Nearby games cannot be rejoined that way. */ persist?: boolean }
+
+export const useSkipBoHost = (name: string, rules: Partial<Rules>, options: SessionOptions = {}) => {
+  const { network } = options;
   const [session, setSession] = useState<SkipBoHost | null>(null);
   const [snap, setSnap] = useState<HostSnapshot | null>(null);
   const { feed, push, reset } = useFeed();
 
   useEffect(() => {
-    const s = new SkipBoHost({ network: new PeerNetwork(), name, rules });
+    const s = new SkipBoHost({ network: network ?? new PeerNetwork(), name, rules });
     setSession(s);
     setSnap(s.getSnapshot());
     const off = s.subscribe(setSnap);
@@ -54,7 +58,8 @@ export const useSkipBoHost = (name: string, rules: Partial<Rules>) => {
   return { session, snap, feed };
 };
 
-export const useSkipBoGuest = (code: string, name: string, rejoin = false) => {
+export const useSkipBoGuest = (code: string, name: string, rejoin = false, options: SessionOptions = {}) => {
+  const { network, persist: keepRecord = true } = options;
   const [client, setClient] = useState<SkipBoGuest | null>(null);
   const [snap, setSnap] = useState<GuestSnapshot | null>(null);
   const { feed, push, reset } = useFeed();
@@ -63,7 +68,7 @@ export const useSkipBoGuest = (code: string, name: string, rejoin = false) => {
 
   useEffect(() => {
     quit.current = false;
-    const c = new SkipBoGuest({ network: new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
+    const c = new SkipBoGuest({ network: network ?? new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
@@ -71,7 +76,7 @@ export const useSkipBoGuest = (code: string, name: string, rejoin = false) => {
     const off = c.subscribe(snapshot => {
       setSnap(snapshot);
       if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") { if (saved) clearSkipBoRoom(); saved = false; }
-      else if (snapshot.room?.phase === "playing" && snapshot.view && !saved && !quit.current) saved = writeJSON("skipbo-room", { code, name });
+      else if (keepRecord && snapshot.room?.phase === "playing" && snapshot.view && !saved && !quit.current) saved = writeJSON("skipbo-room", { code, name });
     });
     const offFrame = c.onFrame(f => { if (f.events.length) push(f.events, describeEvents(f.events, f.view)); else reset(); });
     void c.start();

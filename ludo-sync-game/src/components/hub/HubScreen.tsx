@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Flex, HStack, Heading, Image, Text, VStack } from "@chakra-ui/react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { GAMES } from "@/lib/games";
@@ -17,7 +17,6 @@ const Art = ({ id }: { id: string }) =>
   ) : <Image src="/icons/icon-192x192.png" alt="" w="72px" h="72px" borderRadius="18px" boxShadow="0 6px 18px rgba(0,0,0,.45)" />;
 
 export default function HubScreen() {
-  const router = useRouter();
   const [resume, setResume] = useState<Record<string, boolean>>({});
   useEffect(() => { setResume({ ludo: !!loadLudo(), skipbo: !!loadSkipBo() }); }, []);
   return (
@@ -30,9 +29,9 @@ export default function HubScreen() {
         <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">
           {GAMES.map(g => (
             <Box as="li" key={g.id} w="100%">
-              <Flex as="button" w="100%" textAlign="left" align="center" gap={4} p={4} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
+              <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
                 _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
-                onClick={() => { sound.unlock(); sound.play("click"); router.push(g.href); }} aria-label={`${g.name}. ${g.tagline} ${g.players}${resume[g.id] ? ". A saved game is waiting." : ""}`}>
+                onClick={() => { sound.unlock(); sound.play("click"); }} aria-label={`${g.name}. ${g.tagline} ${g.players}${resume[g.id] ? ". A saved game is waiting." : ""}`}>
                 <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} /></Box>
                 <VStack align="start" spacing={1} flex={1} minW={0}>
                   <HStack><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}</HStack>

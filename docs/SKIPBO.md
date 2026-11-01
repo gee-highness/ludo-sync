@@ -16,8 +16,10 @@ Adding a game means a new entry in `GAMES` and its own routes.
 - `components/skipbo/*`: the flat table, cards (drawn in CSS and SVG), menu, online room, how to play. `useTableInput.ts` holds everything a table needs (picked-up card, hints, sounds, banners) and is shared by both views.
 - 3D table (`SkipBoScene.ts`, `Table3DCanvas.tsx`, `Table3DView.tsx`, `lib/skipbo/layout3d.ts`): the same Renderer setting and quality tiers as Ludo. A felt table with wooden rim, cards painted on canvas textures, your hand fanned up towards you, opponents seated round the far side (the layout adapts to the screen shape), cards that fly where they are played, a burst when a pile is cleared. Drag to orbit, pinch or scroll to zoom, Reset camera, top-down and drone cameras. Tap works as on the flat table. If WebGL fails, the context is lost or the frame rate stays poor, play carries on on the flat table.
 
+## Ways to play
+Against bots (1 to 5, three skill levels), pass and play (2 to 4 people on one device; a cover screen hides each hand until the right person taps), online (room code, link or QR), and nearby (two or more phones on the same hotspot or Wi-Fi with no internet, using the same note-passing pairing as Ludo's nearby play).
+
 ## Not done yet
-- Pass-and-play on one device (it would need a "hand the phone over" screen to hide hands).
-- Nearby (no internet) play for Skip-Bo: the net layer is transport-agnostic, so the nearby pairing screens can be pointed at `SkipBoHost` and `SkipBoGuest`.
 - Teams (partnership) rules.
 - A host who closes the tab ends the room; rooms are not saved for resuming yet.
+- Chat in Skip-Bo rooms (quick emoji reactions only).

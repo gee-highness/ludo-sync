@@ -19,7 +19,10 @@ export const ServiceWorker = () => {
       reg.active?.postMessage({ type: "WARM", urls });
     };
 
+    // on a menu nothing can be lost, so a new version simply takes over; in the middle of a game the player is asked
+    const MENUS = new Set(["/", "/ludo", "/skipbo", "/garage", "/pieces", "/island"]);
     const announce = (worker: ServiceWorker) => {
+      if (MENUS.has(window.location.pathname)) { worker.postMessage({ type: "SKIP_WAITING" }); return; }
       toast({
         id: "sw-update", duration: null, isClosable: true, position: "bottom",
         render: ({ onClose }) => (
@@ -32,6 +35,7 @@ export const ServiceWorker = () => {
     };
 
     let cancelled = false;
+    let stopChecking: () => void = () => undefined;
     navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(reg => {
       if (cancelled) return;
       if (reg.waiting && navigator.serviceWorker.controller) announce(reg.waiting);
@@ -42,13 +46,18 @@ export const ServiceWorker = () => {
         });
       });
       void navigator.serviceWorker.ready.then(warm);
+      // an installed app can stay open for days: look for a new version whenever it comes back to the front
+      const check = () => { if (document.visibilityState === "visible") void reg.update().catch(() => undefined); };
+      document.addEventListener("visibilitychange", check);
+      stopChecking = () => document.removeEventListener("visibilitychange", check);
+      check();
     }).catch(() => undefined);
     navigator.serviceWorker.addEventListener("controllerchange", onChange);
 
     // keep saved games and settings from being evicted under storage pressure
     void navigator.storage?.persist?.().catch(() => undefined);
 
-    return () => { cancelled = true; navigator.serviceWorker.removeEventListener("controllerchange", onChange); };
+    return () => { cancelled = true; stopChecking(); navigator.serviceWorker.removeEventListener("controllerchange", onChange); };
   }, [toast]);
 
   return null;
