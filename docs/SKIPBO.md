@@ -13,7 +13,8 @@ Adding a game means a new entry in `GAMES` and its own routes.
 ## Code
 - `lib/skipbo/engine.ts`, `types.ts`: pure rules, seeded shuffle. `bot.ts`: easy, normal and hard bots (hard looks four plays ahead to free its stock card and avoids setting up opponents). `view.ts`: what each player may see; `describe.ts`: log text; `save.ts`, `validate.ts`: saved games and stats.
 - `lib/skipbo/net/*`: online play. The host's phone is authoritative and, through the same encrypted `SecureChannel` and PeerJS pairing as Ludo, sends each guest a `TableView` holding only their own hand and everyone's face-up cards (never other hands, the draw pile or the stock under the top card). Guests can drop and rejoin their seat; someone who quits is replaced by a bot; away players are auto-played after a grace period.
-- `components/skipbo/*`: the table, cards (drawn in CSS and SVG), menu, online room, how to play.
+- `components/skipbo/*`: the flat table, cards (drawn in CSS and SVG), menu, online room, how to play. `useTableInput.ts` holds everything a table needs (picked-up card, hints, sounds, banners) and is shared by both views.
+- 3D table (`SkipBoScene.ts`, `Table3DCanvas.tsx`, `Table3DView.tsx`, `lib/skipbo/layout3d.ts`): the same Renderer setting and quality tiers as Ludo. A felt table with wooden rim, cards painted on canvas textures, your hand fanned up towards you, opponents seated round the far side (the layout adapts to the screen shape), cards that fly where they are played, a burst when a pile is cleared. Drag to orbit, pinch or scroll to zoom, Reset camera, top-down and drone cameras. Tap works as on the flat table. If WebGL fails, the context is lost or the frame rate stays poor, play carries on on the flat table.
 
 ## Not done yet
 - Pass-and-play on one device (it would need a "hand the phone over" screen to hide hands).
