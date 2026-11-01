@@ -23,3 +23,12 @@ Against bots (1 to 5, three skill levels), pass and play (2 to 4 people on one d
 - Teams (partnership) rules.
 - A host who closes the tab ends the room; rooms are not saved for resuming yet.
 - Chat in Skip-Bo rooms (quick emoji reactions only).
+
+## Points, progress and the rest
+- **Points** (`POINTS` in `engine.ts`): 1 for a hand card, 2 for a discard-pile card, 3 for a stock card, 10 for finishing a pile, 10 for playing a whole hand, and 25 plus 5 a card left in the others' stocks for winning a round. They are shown live (a star beside each name, floating "+3 ★" when someone scores) in every kind of game. Ludo's squares-travelled score plays the same part there.
+- **Experience** (`lib/client/profile.ts`): a finished game turns your points into XP (capped at 250), plus 10 for finishing, 30 for winning, and more for harder bots, tournaments, challenges and playing with friends. Levels need 50 x level x (level - 1) XP in total. The Profile page shows the level, stats, achievements for both games and the last games with what each paid.
+- **Unlocks** (`lib/client/unlocks.ts`): six card backs and six table cloths open at levels 1 to 16; they show on the flat and the 3D table.
+- **Achievements** (`lib/skipbo/achievements.ts`), **daily challenge** (`lib/skipbo/daily.ts`, a new twist each day with the same shuffle for everyone) and bot styles (balanced, blocker, racer).
+- **Accessibility**: shapes on the cards for colour blindness, larger cards, a hidden live region that announces the last move, a main landmark and a heading on every screen, and card numbers that are painted by CSS so a button's label is its name.
+- **Learn to play** (`/skipbo/learn`): seven scripted steps on the real rules, each checked by a test that its solution reaches its goal.
+- **Chat and room reopening**: the host's room is saved while a game runs and can be reopened from the menu with the same code; guests rejoin their seats.

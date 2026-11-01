@@ -13,6 +13,7 @@ import { clearSkipBoRoom, loadSkipBoRoom, type RoomRecord } from "@/hooks/useSki
 import { CardFace } from "./CardFace";
 import { SettingsDrawer } from "@/components/game/SettingsDrawer";
 import { SkipBoHowToPlay } from "./HowToPlay";
+import { lessonDone } from "@/lib/skipbo/lessonStore";
 import { dailyDone, dateKey, loadDailyRecord, skipBoDaily, type SkipBoDaily, type SkipBoDailyRecord } from "@/lib/skipbo/daily";
 
 type Level = "easy" | "normal" | "hard";
@@ -29,6 +30,7 @@ export default function SkipBoMenu() {
   const [resume, setResume] = useState<string | null>(null);
   const [stats, setStats] = useState<SkipBoStats | null>(null);
   const [room, setRoom] = useState<RoomRecord | null>(null);
+  const [learned, setLearned] = useState(true);
   const [today, setToday] = useState<{ d: SkipBoDaily; rec: SkipBoDailyRecord; done: boolean } | null>(null);
   const [passNames, setPassNames] = useState<string[]>(["", ""]);
 
@@ -38,6 +40,7 @@ export default function SkipBoMenu() {
     setResume(saved ? saved.state.players.map(p => p.name).join(" · ") : null);
     setStats(loadStats());
     setRoom(loadSkipBoRoom());
+    setLearned(lessonDone());
     const key = dateKey(), rec = loadDailyRecord();
     setToday({ d: skipBoDaily(key), rec, done: dailyDone(rec, key) });
   }, []);
@@ -70,9 +73,13 @@ export default function SkipBoMenu() {
           <HStack spacing={-3} aria-hidden>
             {[0, 7, 12].map((v, i) => <Box key={v} transform={`rotate(${(i - 1) * 14}deg) translateY(${i === 1 ? -6 : 0}px)`}><CardFace value={v} size="md" /></Box>)}
           </HStack>
-          <Heading size="2xl" letterSpacing="-0.02em">Skip-Bo</Heading>
+          <Heading as="h1" size="2xl" letterSpacing="-0.02em">Skip-Bo</Heading>
           <Text color="whiteAlpha.800" textAlign="center">Empty your stock pile first. Build 1 to 12, discard wisely, and block your rivals.</Text>
         </VStack>
+
+        <Button colorScheme={learned ? "gray" : "green"} variant={learned ? "outline" : "solid"} color={learned ? "white" : undefined} size={learned ? "md" : "lg"} h="auto" py={3} onClick={go("/skipbo/learn")}>
+          <VStack spacing={0}><Text>{learned ? "Learn to play again" : "Learn to play: a quick guided lesson"}</Text>{!learned && <Text fontSize="xs" fontWeight={400}>Five minutes, and you earn XP</Text>}</VStack>
+        </Button>
 
         {resume && <Button colorScheme="orange" size="lg" h="auto" py={3} onClick={go("/skipbo/play?resume=1")}><VStack spacing={0}><Text>Resume game</Text><Text fontSize="xs" fontWeight={400}>{resume}</Text></VStack></Button>}
 
@@ -140,7 +147,7 @@ export default function SkipBoMenu() {
         {room && (
           <HStack w="100%" spacing={2} align="stretch">
             <Button colorScheme="orange" size="lg" flex={1} h="auto" py={3} onClick={go("/skipbo/online?rejoin=1")}>
-              <VStack spacing={0}><Text>Rejoin online game</Text><Text fontSize="xs" fontWeight={400}>Room {room.code.slice(0, 3)}-{room.code.slice(3)}</Text></VStack>
+              <VStack spacing={0}><Text>{room.role === "host" ? "Reopen your room" : "Rejoin online game"}</Text><Text fontSize="xs" fontWeight={400}>Room {room.code.slice(0, 3)}-{room.code.slice(3)}{room.role === "host" ? " · you are hosting" : ""}</Text></VStack>
             </Button>
             <Button variant="outline" color="white" h="auto" aria-label="Forget this online game" onClick={() => { clearSkipBoRoom(); setRoom(null); }}>✕</Button>
           </HStack>

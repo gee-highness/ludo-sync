@@ -1,4 +1,5 @@
 import { isClientId } from "../../net/crypto";
+import { CHAT_HISTORY, cleanChat } from "../../net/protocol";
 import { cleanRules } from "../engine";
 import type { Action, BotLevel, GameEvent, Rules } from "../types";
 import { parseAction, parseView, type TableView } from "../view";
@@ -7,6 +8,9 @@ export const PROTOCOL = 1;
 /** Room ids on the pairing service. Different from Ludo's, so a Ludo code never opens a Skip-Bo room. */
 export const ROOM_ID_PREFIX = "skipbo-";
 export const MAX_SLOTS = 6;
+export { CHAT_HISTORY, cleanChat };
+
+export interface ChatItem { id: number; slot: number | null; name: string; text: string; at: number }
 export const MAX_NAME = 20;
 export const REACTIONS = ["👍", "😂", "😮", "😡", "🎉", "🙏", "❤️", "👏", "🔥", "😢", "🤔", "😎"] as const;
 
@@ -37,6 +41,7 @@ export type ClientMsg =
   | { t: "act"; action: Action }
   | { t: "name"; name: string }
   | { t: "react"; emoji: string }
+  | { t: "chat"; text: string }
   | { t: "sync" }
   | { t: "bye" };
 
@@ -44,6 +49,8 @@ export type HostMsg =
   | { t: "room"; room: RoomView }
   | { t: "frame"; gameId: number; n: number; view: TableView; events: GameEvent[] }
   | { t: "reaction"; slot: number | null; name: string; emoji: string }
+  | { t: "chat"; item: ChatItem }
+  | { t: "chatlog"; items: ChatItem[] }
   | { t: "reject"; reason: string }
   | { t: "kicked" }
   | { t: "bye" }
@@ -62,10 +69,17 @@ export const parseClientMsg = (raw: unknown): ClientMsg | null => {
     case "act": { const action = parseAction(raw.action); return action ? { t: "act", action } : null; }
     case "name": return typeof raw.name === "string" ? { t: "name", name: cleanText(raw.name, "Guest") } : null;
     case "react": return typeof raw.emoji === "string" && (REACTIONS as readonly string[]).includes(raw.emoji) ? { t: "react", emoji: raw.emoji } : null;
+    case "chat": { const text = cleanChat(raw.text); return text ? { t: "chat", text } : null; }
     case "sync": return { t: "sync" };
     case "bye": return { t: "bye" };
     default: return null;
   }
+};
+
+const parseChatItem = (v: unknown): ChatItem | null => {
+  if (!isObj(v) || !Number.isInteger(v.id) || typeof v.name !== "string" || typeof v.at !== "number") return null;
+  const text = cleanChat(v.text);
+  return text ? { id: v.id as number, slot: Number.isInteger(v.slot) ? (v.slot as number) : null, name: cleanText(v.name, "Player"), text, at: v.at } : null;
 };
 
 const parseSlots = (v: unknown): SlotView[] | null => {
@@ -120,6 +134,12 @@ export const parseHostMsg = (raw: unknown): HostMsg | null => {
       return typeof raw.emoji === "string" && (REACTIONS as readonly string[]).includes(raw.emoji)
         ? { t: "reaction", slot: Number.isInteger(raw.slot) ? (raw.slot as number) : null, name: cleanText(raw.name, "Player"), emoji: raw.emoji } : null;
     case "reject": return typeof raw.reason === "string" ? { t: "reject", reason: raw.reason.slice(0, 40) } : null;
+    case "chat": { const item = parseChatItem(raw.item); return item ? { t: "chat", item } : null; }
+    case "chatlog": {
+      if (!Array.isArray(raw.items) || raw.items.length > CHAT_HISTORY) return null;
+      const items = raw.items.map(parseChatItem);
+      return items.every(Boolean) ? { t: "chatlog", items: items as ChatItem[] } : null;
+    }
     case "kicked": return { t: "kicked" };
     case "bye": return { t: "bye" };
     case "error": return typeof raw.reason === "string" ? { t: "error", reason: raw.reason.slice(0, 40) } : null;

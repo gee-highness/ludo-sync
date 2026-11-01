@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { newClientId } from "../../net/crypto";
 import { MemoryNetwork } from "../../net/transport";
-import { AWAY_GRACE_MS, SkipBoHost } from "./host";
+import { AWAY_GRACE_MS, SkipBoHost, parseHostResume } from "./host";
 import { SkipBoGuest } from "./guest";
 import { parseClientMsg, parseHostMsg } from "./protocol";
 import { hintFor, type TableView } from "../view";
@@ -179,3 +179,74 @@ describe("skip-bo messages", () => {
 
 
 const hostView = (h: SkipBoHost): TableView => h.getSnapshot().room.view!;
+
+describe("skip-bo chat", () => {
+  it("reaches everyone, cleaned, in order, and is rate limited", async () => {
+    const { host, guests } = await setup({ guests: 1 });
+    expect(host.sendChat("  hello   there \u0000 ")).toBe(true);
+    await until(() => guests[0].getSnapshot().chat.length === 1, "guest got it");
+    expect(guests[0].getSnapshot().chat[0]).toMatchObject({ name: "Hosty", text: "hello there", slot: 0 });
+    expect(guests[0].sendChat("hi back")).toBe(true);
+    await until(() => host.getSnapshot().chat.length === 2, "host got it");
+    expect(host.getSnapshot().chat.map(c => c.text)).toEqual(["hello there", "hi back"]);
+    expect(guests[0].sendChat("   ")).toBe(false);
+    // a flood is cut off after five messages
+    for (let i = 0; i < 10; i++) guests[0].sendChat(`spam ${i}`);
+    await new Promise(r => setTimeout(r, 120));
+    expect(host.getSnapshot().chat.length).toBeLessThanOrEqual(2 + 4);
+  });
+  it("is replayed to someone who joins later", async () => {
+    const { net, host } = await setup();
+    host.sendChat("first");
+    const late = new SkipBoGuest({ network: net, code: "ABC234", name: "Late", clientId: newClientId(), retryDelays: [5] });
+    cleanup.push(() => late.leave());
+    void late.start();
+    await until(() => late.getSnapshot().chat.length === 1, "history");
+    expect(late.getSnapshot().chat[0].text).toBe("first");
+  });
+  it("rejects junk chat messages", () => {
+    expect(parseClientMsg({ t: "chat", text: "  " })).toBeNull();
+    expect(parseClientMsg({ t: "chat", text: 5 })).toBeNull();
+    expect(parseHostMsg({ t: "chat", item: { id: 1, slot: 0, name: "A", text: "hi", at: 1 } })).toMatchObject({ t: "chat" });
+    expect(parseHostMsg({ t: "chat", item: { id: "x" } })).toBeNull();
+  });
+});
+
+describe("reopening a room", () => {
+  it("brings back the same code, seats, game and chat, and lets a guest come straight back to their seat", { timeout: 30000 }, async () => {
+    const { net, host, guests, ids } = await setup();
+    host.setSlot(2, "bot", "normal");
+    host.start();
+    host.sendChat("before");
+    await until(() => guests[0].getSnapshot().view !== null && guests[0].getSnapshot().chat.length === 1, "playing");
+    const saved = JSON.parse(JSON.stringify(host.exportResume()));
+    const seq = host.getSnapshot().room.view!.seq;
+    host.suspend();
+    await new Promise(r => setTimeout(r, 30));
+    const again = new SkipBoHost({ network: net, name: "Hosty", code: "ABC234", botDelayMs: 0, resume: parseHostResume(saved)! });
+    await again.open();
+    cleanup.push(() => again.close());
+    expect(again.code).toBe("ABC234");
+    expect(again.getSnapshot().room.view!.seq).toBe(seq);
+    expect(again.getSnapshot().room.slots[1]).toMatchObject({ kind: "human", name: "Guest1" });
+    expect(again.getSnapshot().room.slots[2].kind).toBe("bot");
+    const back = new SkipBoGuest({ network: net, code: "ABC234", name: "Guest1", clientId: ids[0], retryDelays: [5, 5, 5], rejoin: true });
+    cleanup.push(() => back.leave());
+    void back.start();
+    await until(() => back.getSnapshot().status === "connected" && back.getSnapshot().view !== null, "guest back");
+    expect(back.getSnapshot().room!.you.player).toBe(1);
+    await until(() => back.getSnapshot().chat.length === 1, "chat history");
+    expect(back.getSnapshot().chat.map(c => c.text)).toEqual(["before"]);
+    void guests;
+  });
+  it("ignores a damaged save", () => {
+    expect(parseHostResume(null)).toBeNull();
+    expect(parseHostResume({ v: 1, code: "abc" })).toBeNull();
+    const host = new SkipBoHost({ network: new MemoryNetwork(), name: "H", code: "ABC234", botDelayMs: 0 });
+    const r = JSON.parse(JSON.stringify(host.exportResume()));
+    expect(parseHostResume(r)).not.toBeNull();
+    expect(parseHostResume({ ...r, phase: "playing" })).toBeNull();
+    expect(parseHostResume({ ...r, slots: r.slots.slice(1) })).toBeNull();
+    expect(parseHostResume({ ...r, slots: [{ kind: "human", id: "ghost" }, ...r.slots.slice(1)] })).toBeNull();
+  });
+});

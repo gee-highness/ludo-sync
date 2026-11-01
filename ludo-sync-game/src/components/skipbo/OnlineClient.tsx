@@ -10,12 +10,13 @@ import { extractRoomCode, skipBoShareLink } from "@/lib/net/identity";
 import { getSettings, updateSettings } from "@/lib/client/settings";
 import { officialStock } from "@/lib/skipbo/engine";
 import type { RoomView, SlotView } from "@/lib/skipbo/net/protocol";
-import type { MemberView } from "@/lib/skipbo/net/host";
+import type { HostResume, MemberView } from "@/lib/skipbo/net/host";
 import type { BotLevel } from "@/lib/skipbo/types";
 import { loadSkipBoRoom, useReactionLog, useSkipBoGuest, useSkipBoHost } from "@/hooks/useSkipBoOnline";
 import { ShareCard } from "../online/Lobby";
 import { ScanButton } from "../online/ScanButton";
 import { Reactions } from "./Reactions";
+import { ChatBox, ChatButton, type ChatSource } from "./ChatBox";
 import { Table } from "./Table";
 
 export const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
@@ -23,7 +24,7 @@ export const Shell = ({ title, onBack, children }: { title: string; onBack: () =
     <VStack w="100%" maxW="460px" spacing={4} align="stretch">
       <HStack>
         <IconButton aria-label="Back" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
-        <Heading size="md">{title}</Heading>
+        <Heading as="h1" size="md">{title}</Heading>
       </HStack>
       {children}
     </VStack>
@@ -78,7 +79,7 @@ const SlotRow = ({ s, room, host }: { s: SlotView; room: RoomView; host?: HostCo
   );
 };
 
-export const Lobby = ({ room, host, check, invite }: { room: RoomView; host?: HostControls; check?: string; invite?: React.ReactNode }) => {
+export const Lobby = ({ room, host, check, invite, chat }: { room: RoomView; host?: HostControls; check?: string; invite?: React.ReactNode; chat?: ChatSource }) => {
   const players = room.slots.filter(s => s.kind !== "empty").length;
   const stock = room.rules.stockSize;
   return (
@@ -119,6 +120,12 @@ export const Lobby = ({ room, host, check, invite }: { room: RoomView; host?: Ho
           ) : <Text fontSize="sm" color="gray.300">{TURN_CHOICES.find(c => c.ms === room.turnMs)?.label ?? `${room.turnMs / 1000}s`}</Text>}
         </HStack>
       </VStack>
+      {chat && (
+        <VStack align="stretch" spacing={2} as="section" aria-label="Chat">
+          <Text fontSize="xs" textTransform="uppercase" color="gray.400">Chat</Text>
+          <ChatBox chat={chat} height="200px" />
+        </VStack>
+      )}
       {host ? (
         <>
           {!room.slots.some(s => s.kind === "human" && !s.host) && <Text textAlign="center" color="gray.300" fontSize="sm" role="status">Waiting for friends to join. You can start with bots if you like.</Text>}
@@ -129,8 +136,9 @@ export const Lobby = ({ room, host, check, invite }: { room: RoomView; host?: Ho
   );
 };
 
-function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
-  const { session, snap, feed } = useSkipBoHost(name, {});
+function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume; onExit: () => void }) {
+  const { session, snap, feed, endRoom } = useSkipBoHost(name, {}, {}, resume);
+  const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0c3a27"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
   if (snap.status === "error") return <Notice title="Could not open a room" text={snap.error ?? "Try again."} onBack={onExit} />;
@@ -143,20 +151,21 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
         record={room.slots.filter(x => x.kind === "human").length > 1 ? { withFriends: true } : undefined}
         view={room.view} act={session.act} frame={feed.frame} log={feed.log} title={`Room ${room.code.slice(0, 3)}-${room.code.slice(3)}`} onExit={onExit}
         note={snap.online ? undefined : "Pairing service offline"} away={new Set(room.away)}
-        onRematch={over ? session.rematch : undefined} rematchLabel="Rematch"
+        onRematch={over ? session.rematch : undefined} rematchLabel="Rematch" headerExtra={<>{chat && <ChatButton chat={chat} />}<Button size="sm" variant="outline" color="red.200" onClick={() => { endRoom(); onExit(); }} aria-label="Close the room for everyone">Close</Button></>}
         footer={<Reactions items={reactions} onSend={e => session.sendReaction(e)} />}
       />
     );
   }
   return (
     <Shell title="Your room" onBack={onExit}>
-      <Lobby room={room} host={{ setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r), setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members }} />
+      <Lobby room={room} host={{ setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r), setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members }} chat={chat ?? undefined} />
     </Shell>
   );
 }
 
 function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string; rejoin?: boolean; onExit: () => void }) {
   const { client, snap, feed, quitForGood } = useSkipBoGuest(code, name, rejoin);
+  const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
   if (!client || !snap) return <Center minH="100dvh" bg="#0c3a27"><Spinner size="xl" color="white" /></Center>;
@@ -170,7 +179,7 @@ function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string;
       <Table
         record={{ withFriends: true }}
         view={snap.view} act={client.act} frame={feed.frame} log={feed.log} rejected={snap.rejected} title={`${room.hostName}'s room`} away={away}
-        onExit={() => { quitForGood(); onExit(); }} note={snap.status === "reconnecting" ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…"
+        onExit={() => { quitForGood(); onExit(); }} note={snap.status === "reconnecting" ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…" headerExtra={chat ? <ChatButton chat={chat} /> : undefined}
         footer={<Reactions items={reactions} onSend={e => client.react(e)} />}
       />
     );
@@ -178,12 +187,12 @@ function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string;
   return (
     <Shell title={`${room.hostName}'s room`} onBack={onExit}>
       {snap.status === "reconnecting" && <Text color="orange.300">Reconnecting…</Text>}
-      <Lobby room={room} check={snap.check} />
+      <Lobby room={room} check={snap.check} chat={chat ?? undefined} />
     </Shell>
   );
 }
 
-type Step = { kind: "choose" } | { kind: "host" } | { kind: "join"; code: string; rejoin?: boolean };
+type Step = { kind: "choose" } | { kind: "host"; resume?: HostResume } | { kind: "join"; code: string; rejoin?: boolean };
 
 export default function SkipBoOnlineClient() {
   const router = useRouter();
@@ -198,7 +207,7 @@ export default function SkipBoOnlineClient() {
     setName(getSettings().playerName);
     if (params.get("rejoin") === "1") {
       const rec = loadSkipBoRoom();
-      if (rec) { setName(rec.name); setStep({ kind: "join", code: rec.code, rejoin: true }); }
+      if (rec) { setName(rec.name); setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true }); }
     }
     setReady(true);
     // read once, when the screen opens
@@ -210,7 +219,7 @@ export default function SkipBoOnlineClient() {
   const remember = () => updateSettings({ playerName: finalName });
 
   if (!ready) return <Center minH="100dvh" bg="#0c3a27"><Spinner color="white" size="xl" /></Center>;
-  if (step.kind === "host") return <HostFlow name={finalName} onExit={exit} />;
+  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
   if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
 
   const code = cleanRoomCode(typed);

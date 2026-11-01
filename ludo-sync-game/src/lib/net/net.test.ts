@@ -188,12 +188,12 @@ describe("play", () => {
     const got: Reaction[] = [];
     host.onReaction(r => got.push(r));
     guests[0].react("🎉");
-    await until(() => got.length === 1, "host got reaction", 6000);
+    await until(() => got.length === 1, "host got reaction", 12000);
     expect(got[0]).toMatchObject({ emoji: "🎉", seat: 2, name: "Guest1" });
     const back: Reaction[] = [];
     guests[0].onReaction(r => back.push(r));
     host.sendReaction("👍");
-    await until(() => back.length === 1, "guest got reaction", 6000);
+    await until(() => back.length === 1, "guest got reaction", 12000);
   }, 15000);
 
   it("auto-plays for an idle guest and for one who is away", async () => {

@@ -5,6 +5,9 @@ import { WILD, type Card } from "@/lib/skipbo/types";
 import { usePrefs } from "@/lib/skipbo/prefs";
 import { backById } from "@/lib/client/unlocks";
 
+/** A number drawn by CSS: the card is described by its button's label, not by the digits painted on it. */
+const Num = ({ n, ...rest }: { n: number | string } & React.ComponentProps<typeof Box>) => <Box as="span" data-n={n} sx={{ "&::before": { content: "attr(data-n)" } }} {...rest} />;
+
 export type CardSize = "xs" | "sm" | "md" | "lg";
 /** Width in px at each size; the height is 1.42 times that. */
 export const CARD_W: Record<CardSize, number> = { xs: 30, sm: 44, md: 56, lg: 68 };
@@ -73,23 +76,23 @@ export function CardFace({ value = 1, size = "md", faceDown, selected, glow, dim
             </svg>
           ) : (
             <>
-              <Box position="absolute" top="3px" left={`${Math.round(w * 0.1)}px`} fontSize={`${Math.round(w * 0.2)}px`} fontWeight={800} color={c.main} lineHeight={1}>{value}</Box>
-              <Box position="absolute" bottom="3px" right={`${Math.round(w * 0.1)}px`} fontSize={`${Math.round(w * 0.2)}px`} fontWeight={800} color={c.main} lineHeight={1} transform="rotate(180deg)">{value}</Box>
+              <Box position="absolute" top="3px" left={`${Math.round(w * 0.1)}px`} fontSize={`${Math.round(w * 0.2)}px`} fontWeight={800} color={c.main} lineHeight={1}><Num n={value} /></Box>
+              <Box position="absolute" bottom="3px" right={`${Math.round(w * 0.1)}px`} fontSize={`${Math.round(w * 0.2)}px`} fontWeight={800} color={c.main} lineHeight={1} transform="rotate(180deg)"><Num n={value} /></Box>
               <Box position="absolute" inset={`${Math.round(w * 0.18)}px ${Math.round(w * 0.12)}px`} borderRadius="50%" bg={`radial-gradient(circle at 35% 30%, ${c.light}55, ${c.main}22 70%)`} />
-              <Box position="relative" fontSize={`${big}px`} fontWeight={900} color={c.main} lineHeight={1} textShadow={`0 2px 0 ${c.light}`} letterSpacing="-0.04em">{value}</Box>
-              {prefs.marks && <Box position="absolute" bottom={`${Math.round(w * 0.12)}px`} left="50%" transform="translateX(-50%)" fontSize={`${Math.round(w * 0.2)}px`} color={c.main} lineHeight={1}>{markFor(value)}</Box>}
+              <Box position="relative" fontSize={`${big}px`} fontWeight={900} color={c.main} lineHeight={1} textShadow={`0 2px 0 ${c.light}`} letterSpacing="-0.04em"><Num n={value} /></Box>
+              {prefs.marks && <Box position="absolute" bottom={`${Math.round(w * 0.12)}px`} left="50%" transform="translateX(-50%)" fontSize={`${Math.round(w * 0.2)}px`} color={c.main} lineHeight={1}><Num n={markFor(value)} /></Box>}
             </>
           )}
         </Box>
       )}
       {asValue !== undefined && wild && (
         <Box position="absolute" top="-7px" right="-7px" minW="22px" h="22px" px="4px" borderRadius="full" bg="#fde047" color="#1f2937" fontWeight={900} fontSize="12px" display="grid" placeItems="center" border="2px solid #fff" boxShadow="0 2px 4px rgba(0,0,0,.5)">
-          {asValue}
+          <Num n={asValue} />
         </Box>
       )}
       {count !== undefined && count > 1 && (
         <Box position="absolute" bottom="-8px" left="50%" transform="translateX(-50%)" px="6px" h="18px" borderRadius="full" bg="rgba(15,23,42,.92)" color="#f8fafc" fontWeight={800} fontSize="11px" display="grid" placeItems="center" border="1px solid rgba(255,255,255,.35)">
-          {count}
+          <Num n={count} />
         </Box>
       )}
     </Box>

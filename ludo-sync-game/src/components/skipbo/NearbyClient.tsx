@@ -15,6 +15,7 @@ import { ConnectionTips, HostInvites } from "../nearby/HostInvites";
 import { GuestPairing } from "../nearby/GuestPairing";
 import { Lobby, Notice, Shell } from "./OnlineClient";
 import { Reactions } from "./Reactions";
+import { ChatButton, type ChatSource } from "./ChatBox";
 import { Table } from "./Table";
 
 const TITLE = "Nearby game";
@@ -23,6 +24,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   const [network] = useState(() => new ManualNetwork());
   const invites = useDisclosure();
   const { session, snap, feed } = useSkipBoHost(name, {}, { network, persist: false });
+  const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
 
@@ -37,7 +39,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
           record={room.slots.filter(x => x.kind === "human").length > 1 ? { withFriends: true } : undefined}
           view={room.view} act={session.act} frame={feed.frame} log={feed.log} title={TITLE} onExit={leave} away={new Set(room.away)}
           onRematch={room.view.phase === "over" ? session.rematch : undefined} rematchLabel="Rematch"
-          headerExtra={<Button size="xs" colorScheme="cyan" onClick={invites.onOpen} aria-label="Invite or reconnect a player">Invite</Button>}
+          headerExtra={<>{chat && <ChatButton chat={chat} />}<Button size="xs" colorScheme="cyan" onClick={invites.onOpen} aria-label="Invite or reconnect a player">Invite</Button></>}
           footer={<Reactions items={reactions} onSend={e => session.sendReaction(e)} />}
         />
         <Drawer isOpen={invites.isOpen} onClose={invites.onClose} placement="right" size="sm">
@@ -56,7 +58,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
       <Lobby
         room={room}
         invite={<HostInvites desk={network.desk} ready={snap.status === "ready"} />}
-        host={{ setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r), setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members }}
+        host={{ setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r), setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members }} chat={chat ?? undefined}
       />
     </Shell>
   );
@@ -65,6 +67,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
 function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit: () => void }) {
   const [network] = useState(() => new ManualNetwork());
   const { client, snap, feed, quitForGood } = useSkipBoGuest("NEARBY", name, false, { network, persist: false });
+  const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
@@ -82,7 +85,7 @@ function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit
         <Table
           record={{ withFriends: true }}
           view={snap.view} act={client.act} frame={feed.frame} log={feed.log} rejected={snap.rejected} title={TITLE} away={away}
-          onExit={() => { quitForGood(); leave(); }} note={reconnecting ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…"
+          onExit={() => { quitForGood(); leave(); }} note={reconnecting ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…" headerExtra={chat ? <ChatButton chat={chat} /> : undefined}
           footer={<Reactions items={reactions} onSend={e => client.react(e)} />}
         />
         <Modal isOpen={reconnecting} onClose={() => undefined} isCentered closeOnOverlayClick={false} closeOnEsc={false} scrollBehavior="inside">
@@ -101,7 +104,7 @@ function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit
   return (
     <Shell title={`${room.hostName}'s game`} onBack={leave}>
       {reconnecting && <GuestPairing desk={network.desk} />}
-      <Lobby room={room} check={snap.check} />
+      <Lobby room={room} check={snap.check} chat={chat ?? undefined} />
     </Shell>
   );
 }

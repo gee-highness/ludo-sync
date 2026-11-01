@@ -105,7 +105,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
       <HStack position="relative" zIndex={2} spacing={2} mb={2}>
         <IconButton aria-label="Leave table" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" size="sm" onClick={onExit} />
         <VStack spacing={0} align="start" flex={1} minW={0}>
-          <Text fontWeight={800} noOfLines={1}>{title}</Text>
+          <Text as="h1" fontWeight={800} noOfLines={1}>{title}</Text>
           <Text fontSize="xs" color="whiteAlpha.800">
             {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}{badge ? ` · ${badge}` : ""}
           </Text>
@@ -125,7 +125,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
       <VStack position="relative" zIndex={1} spacing={3} py={2} borderRadius="2xl" bg="rgba(0,0,0,.2)" border="1px solid rgba(255,255,255,.12)" mb={2}>
         <HStack spacing={sizes.pile === "lg" ? 4 : 2.5} justify="center" wrap="wrap" align="flex-start">
           <VStack spacing={1}>
-            <Box position="relative" aria-label={`Draw pile, ${view.drawCount} cards`}>
+            <Box position="relative" role="img" aria-label={`Draw pile, ${view.drawCount} cards`}>
               {view.drawCount > 0 ? <CardFace faceDown size={sizes.pile} /> : <Slot size={sizes.pile} label="∅" />}
             </Box>
             <Text fontSize="xs" color="whiteAlpha.800">Draw · {view.drawCount}</Text>
@@ -257,7 +257,7 @@ export function Table(props: TableProps) {
 
 function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView; active: boolean; dealer: boolean; tournament: boolean; away?: boolean; size: CardSize }) {
   return (
-    <VStack spacing={1} p={2} borderRadius="xl" flex="1 1 150px" maxW="230px" minW="140px" bg={active ? "rgba(253,224,71,.14)" : "rgba(0,0,0,.2)"} border="2px solid" borderColor={active ? "#fde047" : "rgba(255,255,255,.12)"}
+    <VStack role="group" spacing={1} p={2} borderRadius="xl" flex="1 1 150px" maxW="230px" minW="140px" bg={active ? "rgba(253,224,71,.14)" : "rgba(0,0,0,.2)"} border="2px solid" borderColor={active ? "#fde047" : "rgba(255,255,255,.12)"}
       transition="all .2s" opacity={away ? 0.6 : 1} aria-label={`${p.name}${active ? ", their turn" : ""}`}>
       <HStack w="100%" justify="space-between" spacing={1}>
         <Text fontWeight={800} fontSize="sm" noOfLines={1}>{p.name}</Text>
@@ -278,7 +278,7 @@ function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView
           {tournament && <Text fontSize="xs" color="#fde047" fontWeight={800}>{p.score} score</Text>}
         </VStack>
       </HStack>
-      <HStack spacing="3px" align="flex-end" justify="center" aria-label={`${p.name}'s discard piles`}>
+      <HStack spacing="3px" align="flex-end" justify="center" role="group" aria-label={`${p.name}'s discard piles`}>
         {p.discards.map((d, i) => d.length ? <CardFace key={i} value={d.at(-1)!} size="xs" count={d.length} /> : <Slot key={i} size="xs" />)}
       </HStack>
     </VStack>

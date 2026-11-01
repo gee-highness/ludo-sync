@@ -6,7 +6,8 @@ import { chooseAction } from "../bot";
 import { applyAction, cleanRules, createGame, defaultRules } from "../engine";
 import type { Action, BotLevel, GameEvent, GameState, PlayerSetup, Rules } from "../types";
 import { viewOf, type TableView } from "../view";
-import { MAX_SLOTS, PROTOCOL, ROOM_ID_PREFIX, cleanText, parseClientMsg, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
+import { parseGameState } from "../validate";
+import { CHAT_HISTORY, MAX_SLOTS, PROTOCOL, ROOM_ID_PREFIX, cleanChat, cleanText, parseClientMsg, type ChatItem, type ClientMsg, type HostMsg, type RoomView, type SlotView } from "./protocol";
 
 export const HOST_ID = "host";
 const MAX_MEMBERS = 12;
@@ -18,13 +19,68 @@ export const NEXT_ROUND_MS = 30_000;
 
 type Slot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
 
-interface Member { id: string; name: string; host: boolean; chan: SecureChannel | null; check: string; lastReact: number }
+interface Member { id: string; name: string; host: boolean; chan: SecureChannel | null; check: string; lastReact: number; chatAt: number[] }
+const CHAT_BURST = 5;
+const CHAT_WINDOW_MS = 5_000;
 export interface MemberView { id: string; name: string; slot: number | null; connected: boolean; check: string; host: boolean }
 export type HostStatus = "opening" | "ready" | "error" | "closed";
 
-export interface HostSnapshot { status: HostStatus; error?: string; online: boolean; code: string; room: RoomView; members: MemberView[] }
+export interface HostSnapshot { status: HostStatus; error?: string; online: boolean; code: string; room: RoomView; members: MemberView[]; chat: ChatItem[] }
 export interface Reaction { slot: number | null; name: string; emoji: string; id: number }
 export interface FrameInfo { view: TableView; events: GameEvent[] }
+
+/** Everything needed to open a room again after the host left it: the table, the seats and the chat. Checked again before use. */
+export interface HostResume {
+  v: 1;
+  code: string;
+  rules: Partial<Rules>;
+  turnMs: number;
+  phase: "lobby" | "playing";
+  gameId: number;
+  n: number;
+  state: GameState | null;
+  playerSlots: number[];
+  slots: ({ kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string })[];
+  members: { id: string; name: string; host: boolean }[];
+  banned: string[];
+  chat: ChatItem[];
+  chatId: number;
+}
+
+const isId = (v: unknown): v is string => typeof v === "string" && v.length >= 1 && v.length <= 64 && /^[A-Za-z0-9_-]+$/.test(v);
+
+/** Checks a saved room from storage; anything unexpected means it is not used. */
+export const parseHostResume = (raw: unknown): HostResume | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (r.v !== 1 || typeof r.code !== "string" || !/^[A-Z0-9]{6}$/.test(r.code) || (r.phase !== "lobby" && r.phase !== "playing")) return null;
+  if (!Number.isInteger(r.gameId) || !Number.isInteger(r.n) || !Number.isInteger(r.turnMs) || !Array.isArray(r.slots) || r.slots.length !== MAX_SLOTS) return null;
+  const state = r.state === null ? null : parseGameState(r.state);
+  if (r.state !== null && !state) return null;
+  if (r.phase === "playing" && !state) return null;
+  const members = Array.isArray(r.members) ? r.members : null;
+  if (!members || members.length > MAX_MEMBERS) return null;
+  const cleanMembers = members.map(m => (m && typeof m === "object" && isId((m as { id: unknown }).id) && typeof (m as { name: unknown }).name === "string" ? { id: (m as { id: string }).id, name: cleanText((m as { name: string }).name, "Player"), host: (m as { host?: unknown }).host === true } : null));
+  if (cleanMembers.some(m => !m) || !cleanMembers.some(m => m?.host && m.id === HOST_ID)) return null;
+  const ids = new Set(cleanMembers.map(m => m!.id));
+  const slots: HostResume["slots"] = [];
+  for (const s of r.slots) {
+    const o = s as Record<string, unknown>;
+    if (!o || typeof o !== "object") return null;
+    if (o.kind === "empty") slots.push({ kind: "empty" });
+    else if (o.kind === "bot" && (o.level === "easy" || o.level === "normal" || o.level === "hard") && typeof o.name === "string") slots.push({ kind: "bot", level: o.level, name: cleanText(o.name, "Bot") });
+    else if (o.kind === "human" && isId(o.id) && ids.has(o.id)) slots.push({ kind: "human", id: o.id });
+    else return null;
+  }
+  const playerSlots = Array.isArray(r.playerSlots) ? r.playerSlots : [];
+  if (!playerSlots.every(x => Number.isInteger(x) && (x as number) >= 0 && (x as number) < MAX_SLOTS) || (state && playerSlots.length !== state.players.length)) return null;
+  const chat = Array.isArray(r.chat) ? (r.chat as ChatItem[]).filter(c => c && Number.isInteger(c.id) && typeof c.text === "string" && typeof c.name === "string").slice(-CHAT_HISTORY) : [];
+  return {
+    v: 1, code: r.code, rules: cleanRulesLoose((r.rules ?? {}) as Partial<Rules>), turnMs: Math.max(0, Math.min(300_000, r.turnMs as number)), phase: r.phase, gameId: r.gameId as number, n: r.n as number,
+    state, playerSlots: playerSlots as number[], slots, members: cleanMembers as HostResume["members"],
+    banned: Array.isArray(r.banned) ? r.banned.filter(isId).slice(0, 50) : [], chat, chatId: Number.isInteger(r.chatId) ? (r.chatId as number) : chat.length,
+  };
+};
 
 export interface HostOptions {
   network: Network;
@@ -35,6 +91,8 @@ export interface HostOptions {
   code?: string;
   /** How long a bot waits before acting; zero in tests. */
   botDelayMs?: number;
+  /** Reopen a room that was left: same code, seats, game and chat. */
+  resume?: HostResume;
 }
 
 /**
@@ -60,6 +118,8 @@ export class SkipBoHost {
   private error?: string;
   private online = true;
   private reactionId = 0;
+  private chat: ChatItem[] = [];
+  private chatId = 0;
   private botTimer: ReturnType<typeof setTimeout> | null = null;
   private listeners = new Set<(s: HostSnapshot) => void>();
   private frameListeners = new Set<(f: FrameInfo) => void>();
@@ -72,15 +132,59 @@ export class SkipBoHost {
     this.turnMs = opts.turnMs ?? DEFAULT_TURN_MS;
     this.now = opts.now ?? Date.now;
     this.code = opts.code ?? newRoomCode();
-    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0 });
+    this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, chatAt: [] });
     this.slots[0] = { kind: "human", id: HOST_ID };
+    const resume = opts.resume ? parseHostResume(opts.resume) : null;
+    if (resume) this.restore(resume);
+    this.refresh();
+  }
+
+  /** Puts a checked resume back. Everyone but the host is offline until they reconnect, and the table plays for them meanwhile. */
+  private restore(r: HostResume) {
+    this.code = r.code;
+    this.rules = { ...r.rules };
+    this.turnMs = r.turnMs;
+    this.phase = r.phase;
+    this.gameId = r.gameId;
+    this.n = r.n;
+    this.state = r.state;
+    this.playerSlots = [...r.playerSlots];
+    this.chat = [...r.chat];
+    this.chatId = r.chatId;
+    this.banned = new Set(r.banned);
+    this.members = new Map(r.members.map(m => [m.id, { id: m.id, name: m.name, host: m.host, chan: null, check: "", lastReact: 0, chatAt: [] }]));
+    this.slots = r.slots.map((s): Slot => (s.kind === "human" ? { kind: "human", id: s.id } : s.kind === "bot" ? { ...s } : { kind: "empty" }));
+    this.lastActionAt = this.now();
+    if (this.state) this.emitFrame([]);
+    this.scheduleBot();
+  }
+
+  /** A copy of the room that can be saved and opened again. Null once the room has been closed for good. */
+  exportResume(): HostResume | null {
+    if (this.status === "closed" && this.ended) return null;
+    return {
+      v: 1, code: this.code, rules: this.rules, turnMs: this.turnMs, phase: this.phase, gameId: this.gameId, n: this.n, state: this.state, playerSlots: this.playerSlots,
+      slots: this.slots.map(s => ({ ...s })), members: [...this.members.values()].map(m => ({ id: m.id, name: m.name, host: m.host })), banned: [...this.banned], chat: this.chat, chatId: this.chatId,
+    };
+  }
+
+  private ended = false;
+
+  /** Leaves the room open for later: connections close, guests wait for the host to come back. */
+  suspend() {
+    if (this.status === "closed") return;
+    if (this.botTimer) clearTimeout(this.botTimer);
+    for (const m of this.members.values()) { m.chan?.close(); m.chan = null; }
+    this.status = "closed";
+    this.endpoint?.close();
     this.refresh();
   }
 
   // ---- lifecycle ---------------------------------------------------------------------------
 
   async open(): Promise<void> {
-    for (let attempt = 0; attempt < 6; attempt++) {
+    const resumed = !!this.opts.resume && this.code === this.opts.resume.code;
+    for (let attempt = 0; attempt < (resumed ? 30 : 6); attempt++) {
       try {
         const endpoint = await this.opts.network.open(ROOM_ID_PREFIX + this.code);
         if (this.status === "closed") { endpoint.close(); return; }
@@ -91,7 +195,9 @@ export class SkipBoHost {
         this.refresh();
         return;
       } catch (e) {
-        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code) { this.code = newRoomCode(); continue; }
+        // the pairing service may still hold a resumed room's old id for a little while
+        if (resumed && e instanceof TransportError && e.kind === "unavailable-id" && attempt < 29) { await new Promise(r => setTimeout(r, 2000)); if (this.status === "closed") return; continue; }
+        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code && !resumed) { this.code = newRoomCode(); continue; }
         this.status = "error";
         this.error = e instanceof TransportError && e.kind === "network"
           ? "Could not reach the pairing service. Check your connection and try again." : "Could not open a room on this device.";
@@ -102,6 +208,7 @@ export class SkipBoHost {
   }
 
   close() {
+    this.ended = true;
     if (this.botTimer) clearTimeout(this.botTimer);
     if (this.status === "closed") return;
     for (const m of this.members.values()) { m.chan?.send({ t: "bye" } satisfies HostMsg); m.chan?.closeAfterSend(); }
@@ -153,7 +260,7 @@ export class SkipBoHost {
       old?.close();
     } else {
       if (this.members.size >= MAX_MEMBERS) { this.reject(chan, "full"); return null; }
-      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0 };
+      m = { id: msg.id, name: msg.name, host: false, chan, check: "", lastReact: 0, chatAt: [] };
       this.members.set(m.id, m);
       const free = this.slots.findIndex(s => s.kind === "empty");
       if (this.seatsOpen() && free >= 0) this.slots[free] = { kind: "human", id: m.id };
@@ -161,6 +268,7 @@ export class SkipBoHost {
     m.check = chan.check;
     this.refresh();
     this.broadcastRooms();
+    chan.send({ t: "chatlog", items: this.chat } satisfies HostMsg);
     return m;
   }
 
@@ -173,7 +281,8 @@ export class SkipBoHost {
       }
       case "name": m.name = msg.name; this.refresh(); this.broadcastRooms(); break;
       case "react": this.react(m, msg.emoji); break;
-      case "sync": m.chan?.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg); break;
+      case "chat": this.postChat(m, msg.text); break;
+      case "sync": m.chan?.send({ t: "room", room: this.roomFor(m) } satisfies HostMsg); m.chan?.send({ t: "chatlog", items: this.chat } satisfies HostMsg); break;
       case "bye": this.leave(m); break;
       case "join": break;
     }
@@ -389,6 +498,29 @@ export class SkipBoHost {
   }
   sendReaction(emoji: string) { this.react(this.members.get(HOST_ID)!, emoji); }
 
+  // ---- chat --------------------------------------------------------------------------------
+
+  /** Cleans, rate-limits (5 messages per 5 seconds each) and shares one chat message. Extra messages are dropped silently. */
+  private postChat(m: Member, raw: string) {
+    const text = cleanChat(raw);
+    if (!text || !this.members.has(m.id)) return;
+    const t = this.now();
+    m.chatAt = m.chatAt.filter(x => t - x < CHAT_WINDOW_MS);
+    if (m.chatAt.length >= CHAT_BURST) return;
+    m.chatAt.push(t);
+    const item: ChatItem = { id: ++this.chatId, slot: this.slotOf(m.id), name: m.name, text, at: t };
+    this.chat = [...this.chat, item].slice(-CHAT_HISTORY);
+    for (const o of this.members.values()) if (o.chan?.established) o.chan.send({ t: "chat", item } satisfies HostMsg);
+    this.refresh();
+  }
+
+  /** The host's own message. Returns false if it was empty or sent too fast. */
+  sendChat(text: string): boolean {
+    const before = this.chatId;
+    this.postChat(this.members.get(HOST_ID)!, text);
+    return this.chatId !== before;
+  }
+
   // ---- views -------------------------------------------------------------------------------
 
   private slotViews(): SlotView[] {
@@ -419,7 +551,7 @@ export class SkipBoHost {
   private refresh() {
     const host = this.members.get(HOST_ID)!;
     this.snapshot = {
-      status: this.status, error: this.error, online: this.online, code: this.code, room: this.roomFor(host),
+      status: this.status, error: this.error, online: this.online, code: this.code, room: this.roomFor(host), chat: this.chat,
       members: [...this.members.values()].map(m => ({ id: m.id, name: m.name, slot: this.slotOf(m.id), connected: m.host || !!m.chan?.open, check: m.check, host: m.host })),
     };
     this.listeners.forEach(cb => cb(this.snapshot));

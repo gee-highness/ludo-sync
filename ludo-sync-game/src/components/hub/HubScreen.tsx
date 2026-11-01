@@ -43,7 +43,7 @@ export default function HubScreen() {
     const cont: Tile[] = [];
     if (ludo) cont.push({ key: "c-ludo", href: "/play?resume=1", accent: "#E53E3E", title: "Continue Ludo", sub: ludo.state.players.map(p => p.name).join(" · ") });
     if (sb) cont.push({ key: "c-sb", href: "/skipbo/play?resume=1", accent: "#2563eb", title: "Continue Skip-Bo", sub: sb.state.players.map(p => p.name).join(" · ") });
-    if (room) cont.push({ key: "c-room", href: "/skipbo/online?rejoin=1", accent: "#2563eb", title: "Rejoin Skip-Bo room", sub: `Room ${room.code.slice(0, 3)}-${room.code.slice(3)}` });
+    if (room) cont.push({ key: "c-room", href: "/skipbo/online?rejoin=1", accent: "#2563eb", title: room.role === "host" ? "Reopen your Skip-Bo room" : "Rejoin Skip-Bo room", sub: `Room ${room.code.slice(0, 3)}-${room.code.slice(3)}` });
     const key = dateKey();
     const l = dailyChallenge(key), lr = loadDailyRecord(), s = skipBoDaily(key), sr = loadSbDaily();
     const state = (done: boolean, won: boolean, streak: number, blurb: string) => (done ? (won ? `Won today ✓${streak > 1 ? ` · ${streak} days in a row` : ""}` : "Played today. Try again for fun") : blurb);
@@ -61,7 +61,7 @@ export default function HubScreen() {
       pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="500px" spacing={5} py={4}>
         {level && (
-          <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} aria-label={`Your profile, level ${level.level}, ${level.into} of ${level.need} experience to the next level`}>
+          <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} title={`${level.into} of ${level.need} experience to the next level`}>
             <Flex w="42px" h="42px" borderRadius="full" bg="linear-gradient(135deg,#4c1d95,#1e3a8a)" border="3px solid #fde047" align="center" justify="center" fontWeight={900} flexShrink={0}>{level.level}</Flex>
             <Box flex={1} minW={0}>
               <Text fontSize="sm" fontWeight={800}>Level {level.level}</Text>
@@ -70,7 +70,7 @@ export default function HubScreen() {
             <Text fontSize="xs" color="gray.300">Profile ›</Text>
           </Flex>
         )}
-        <Heading size="2xl" letterSpacing="-0.02em">Ludo Sync</Heading>
+        <Heading as="h1" size="2xl" letterSpacing="-0.02em">Ludo Sync</Heading>
         <Text color="gray.300" textAlign="center">Classic games for you and your friends. Play on your own, with friends online, or with no internet at all.</Text>
         <OfflineBadge />
 
@@ -86,7 +86,7 @@ export default function HubScreen() {
             <Box as="li" key={g.id} w="100%">
               <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
                 _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
-                onClick={() => { sound.unlock(); sound.play("click"); }} aria-label={`${g.name}. ${g.tagline} ${g.players}${resume[g.id] ? ". A saved game is waiting." : ""}`}>
+                onClick={() => { sound.unlock(); sound.play("click"); }}>
                 <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} /></Box>
                 <VStack align="start" spacing={1} flex={1} minW={0}>
                   <HStack><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}</HStack>

@@ -93,7 +93,7 @@ export default function Table3DView({ award, floaters, badge, view, act, frame, 
           <HStack spacing={2}>
             <IconButton aria-label="Leave table" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" size="sm" onClick={onExit} />
             <VStack spacing={0} align="start" flex={1} minW={0}>
-              <Text fontWeight={800} noOfLines={1}>{title}</Text>
+              <Text as="h1" fontWeight={800} noOfLines={1}>{title}</Text>
               <Text fontSize="xs" color="whiteAlpha.800" noOfLines={1}>
                 {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}{badge ? ` · ${badge}` : ""}
                 {view.you !== null ? ` · ★ ${view.players[view.you].points}` : ""}

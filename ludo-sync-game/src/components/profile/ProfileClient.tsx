@@ -17,14 +17,14 @@ import { CardFace } from "../skipbo/CardFace";
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "-");
 
 const Medal = ({ icon, title, blurb, value, goal, done }: { icon: string; title: string; blurb: string; value: number; goal: number; done: boolean }) => (
-  <Flex gap={3} align="center" p={3} borderRadius="xl" bg={done ? "whiteAlpha.200" : "whiteAlpha.100"} opacity={done ? 1 : 0.8} border="1px solid" borderColor={done ? "yellow.400" : "transparent"}>
+  <Flex gap={3} align="center" p={3} borderRadius="xl" bg={done ? "whiteAlpha.200" : "whiteAlpha.100"} border="1px solid" borderColor={done ? "yellow.400" : "transparent"}>
     <Text fontSize="2xl" filter={done ? undefined : "grayscale(1)"} aria-hidden>{icon}</Text>
     <Box flex={1} minW={0}>
       <Text fontWeight={800} noOfLines={1}>{title}{done ? " ✓" : ""}</Text>
       <Text fontSize="xs" color="gray.300">{blurb}</Text>
       {!done && <Progress mt={1} size="xs" value={(value / goal) * 100} borderRadius="full" colorScheme="yellow" bg="whiteAlpha.200" aria-label={`${value} of ${goal}`} />}
     </Box>
-    {!done && <Text fontSize="xs" color="gray.400">{value}/{goal}</Text>}
+    {!done && <Text fontSize="xs" color="gray.300">{value}/{goal}</Text>}
   </Flex>
 );
 
@@ -46,7 +46,7 @@ export default function ProfileClient() {
       <VStack w="100%" maxW="680px" spacing={5} align="stretch">
         <HStack>
           <IconButton as={Link} href="/" aria-label="Back to games" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />
-          <Heading size="md">Your profile</Heading>
+          <Heading as="h1" size="md">Your profile</Heading>
         </HStack>
 
         <Flex gap={4} align="center" p={4} borderRadius="2xl" bg="linear-gradient(135deg,#4c1d95,#1e3a8a)" boxShadow="0 10px 30px rgba(0,0,0,.35)">
@@ -108,11 +108,11 @@ export default function ProfileClient() {
 
         <VStack align="stretch" spacing={2} as="section" aria-label="Achievements">
           <Heading size="sm">Achievements · {doneCount} of {total}</Heading>
-          <Text fontSize="xs" color="gray.400" textTransform="uppercase">Ludo</Text>
+          <Text fontSize="xs" color="gray.300" textTransform="uppercase">Ludo</Text>
           <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={2}>
             {ludoAch.map(a => <Medal key={a.achievement.id} icon={a.achievement.icon} title={a.achievement.title} blurb={a.achievement.blurb} value={a.value} goal={a.achievement.goal} done={a.done} />)}
           </Grid>
-          <Text fontSize="xs" color="gray.400" textTransform="uppercase" mt={2}>Skip-Bo</Text>
+          <Text fontSize="xs" color="gray.300" textTransform="uppercase" mt={2}>Skip-Bo</Text>
           <Grid templateColumns={{ base: "1fr", sm: "1fr 1fr" }} gap={2}>
             {sbAch.map(a => <Medal key={a.achievement.id} icon={a.achievement.icon} title={a.achievement.title} blurb={a.achievement.blurb} value={a.value} goal={a.achievement.goal} done={a.done} />)}
           </Grid>
@@ -120,7 +120,7 @@ export default function ProfileClient() {
 
         <VStack align="stretch" spacing={2} as="section" aria-label="Recent games">
           <Heading size="sm">Recent games</Heading>
-          {profile.recent.length === 0 && <Text fontSize="sm" color="gray.400">Play a game and it will show up here.</Text>}
+          {profile.recent.length === 0 && <Text fontSize="sm" color="gray.300">Play a game and it will show up here.</Text>}
           {profile.recent.map((g, i) => (
             <HStack key={i} p={3} borderRadius="lg" bg="whiteAlpha.100" justify="space-between">
               <Text fontSize="sm" fontWeight={700}>{g.game === "ludo" ? "Ludo" : "Skip-Bo"} · {g.won ? "won" : "played"}</Text>

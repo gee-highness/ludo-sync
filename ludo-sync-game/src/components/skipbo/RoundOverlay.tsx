@@ -3,9 +3,11 @@
 import { Badge, Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
 import { useEffect } from "react";
 import { sound } from "@/lib/client/audio";
+import { buzz } from "@/lib/client/haptics";
 import type { Action } from "@/lib/skipbo/types";
 import type { TableView } from "@/lib/skipbo/view";
 import type { Award } from "@/lib/client/profile";
+import { Confetti } from "./Confetti";
 
 interface Props {
   view: TableView;
@@ -23,12 +25,13 @@ export function RoundOverlay({ view, act, onExit, onRematch, rematchLabel = "Pla
   const over = view.phase === "over";
   const winner = over ? view.winner : view.roundWinner;
   const iWon = winner !== null && winner === view.you;
-  useEffect(() => { sound.play(iWon || view.you === null ? "win" : "error"); }, [iWon, view.you]);
+  useEffect(() => { sound.play(iWon || view.you === null ? "win" : "error"); if (iWon) buzz("win"); }, [iWon, view.you]);
   const order = view.players.map((p, i) => ({ p, i }))
     .sort((a, b) => (a.i === winner ? -1 : b.i === winner ? 1 : view.rules.tournament ? b.p.score - a.p.score : a.p.stockCount - b.p.stockCount));
   return (
     <Box position="absolute" inset={0} zIndex={20} bg="rgba(4,14,9,.82)" display="grid" placeItems="center" p={4} role="dialog" aria-modal="true" aria-label={over ? "Game over" : "Round over"}
       sx={{ animation: "sbFade .3s ease-out", "@keyframes sbFade": { from: { opacity: 0 }, to: { opacity: 1 } } }}>
+      {iWon && <Confetti />}
       <VStack w="100%" maxW="420px" spacing={3} p={5} borderRadius="2xl" bg="linear-gradient(180deg,#14573a,#0c3a27)" border="2px solid #fde047" boxShadow="0 20px 60px rgba(0,0,0,.6)">
         <Text fontSize="4xl" aria-hidden>{iWon ? "🏆" : over ? "🎉" : "🃏"}</Text>
         <Text fontSize="2xl" fontWeight={900} textAlign="center">
