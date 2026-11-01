@@ -79,11 +79,21 @@ export const parseGameState = (raw: unknown): GameState | null => {
   if (!isInt(raw.sixes, 0, 20)) return null;
   if (raw.earned !== null && raw.earned !== "six" && raw.earned !== "capture" && raw.earned !== "finish") return null;
   if (raw.winner !== null && !(isSeat(raw.winner) && players.some(p => p.seat === raw.winner))) return null;
-  if ((raw.phase === "over") !== (raw.winner !== null)) return null;
+  if (raw.phase === "over" && raw.winner === null) return null;
+  const finished: Seat[] = [];
+  if (raw.finished !== undefined) {
+    if (!Array.isArray(raw.finished) || raw.finished.length > 4) return null;
+    for (const f of raw.finished) {
+      if (!isSeat(f) || finished.includes(f) || !players.some(p => p.seat === f)) return null;
+      finished.push(f);
+    }
+  }
+  if (raw.winner !== null && raw.phase !== "over" && finished[0] !== raw.winner) return null;
+  if (finished.includes(players[raw.turn].seat) && raw.phase !== "over") return null;
   if (!isInt(raw.rng, 0, 0xffffffff) || !isInt(raw.seq, 0, Number.MAX_SAFE_INTEGER)) return null;
   const state: GameState = {
     version: 1, rules, players, turn: raw.turn, phase: raw.phase, dice, rolled, sixes: raw.sixes,
-    earned: raw.earned, winner: raw.winner as Seat | null, rng: raw.rng, seq: raw.seq,
+    earned: raw.earned, winner: raw.winner as Seat | null, finished, rng: raw.rng, seq: raw.seq,
   };
   if (rules.tycoon) {
     const tycoon = parseTycoon(raw.tycoon);

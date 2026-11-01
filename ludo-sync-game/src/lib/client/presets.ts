@@ -18,7 +18,7 @@ export const loadSavedPresets = (): RulePreset[] => {
     const probe = parseGameState({
       version: 1, rules, players: [
         { seat: 0, name: "a", kind: "human", tokens: [-1, -1, -1, -1] }, { seat: 1, name: "b", kind: "human", tokens: [-1, -1, -1, -1] },
-      ], turn: 0, phase: "roll", dice: [], rolled: [], sixes: 0, earned: null, winner: null, rng: 1, seq: 0,
+      ], turn: 0, phase: "roll", dice: [], rolled: [], sixes: 0, earned: null, winner: null, finished: [], rng: 1, seq: 0,
       ...((rules as Rules).tycoon ? { tycoon: { cash: [0, 0, 0, 0], owner: new Array(52).fill(-1), level: new Array(52).fill(0), pending: null } } : {}),
     });
     if (probe) out.push({ id, name: name.slice(0, 24), blurb: "Your preset", rules: probe.rules });

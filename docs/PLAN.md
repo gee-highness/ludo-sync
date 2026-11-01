@@ -125,7 +125,7 @@ Classic Ludo stays untouched. Tycoon is a setup option that adds an economy to t
   A shortfall auto-sells buildings then properties at half price; still short means bankrupt (forfeit).
 - Phase `decide` after a move for a pending purchase; actions `buy`, `pass`, `build`. Bots buy while keeping a
   cash reserve and complete colour sets first.
-- Game ends when someone brings all four tokens home or only one player is solvent. Winner is the highest net
+- Game ends when all but one player have brought every token home (the rest play on for places) or only one player is solvent. Winner is the highest net
   worth (cash + property + buildings), with the finisher getting +$500.
 - Monopoly look: pale mint board, cream tiles with a colour band on the inner side, owner flag and house pips,
   centre logo with Chance/Chest decks, corner "GO" banners. Also offered as a board theme for classic play.

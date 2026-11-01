@@ -37,7 +37,7 @@ export const createGame = (setups: PlayerSetup[], rules: Rules = DEFAULT_RULES, 
     }));
   return {
     version: 1, rules: { ...rules }, players, turn: 0, phase: "roll", dice: [], rolled: [], sixes: 0,
-    earned: null, winner: null, rng: seed >>> 0, seq: 0,
+    earned: null, winner: null, finished: [], rng: seed >>> 0, seq: 0,
     ...(rules.tycoon ? { tycoon: createTycoon(tuningOf(rules).startCash) } : {}),
   };
 };
@@ -127,8 +127,17 @@ export const legalMoves = (s: GameState): MoveOption[] => {
   return out;
 };
 
+/** The first player at or after `from` (wrapping) who has not finished; players who are home sit the rest of the game out. */
+const nextActiveIndex = (players: Player[], finished: readonly Seat[], from: number): number => {
+  for (let i = 0; i < players.length; i++) {
+    const idx = (from + i) % players.length;
+    if (!finished.includes(players[idx].seat)) return idx;
+  }
+  return from % players.length;
+};
+
 const nextTurn = (s: GameState, events: GameEvent[]): StepResult => {
-  const turn = (s.turn + 1) % s.players.length;
+  const turn = nextActiveIndex(s.players, s.finished, s.turn + 1);
   events.push({ type: "turn", seat: s.players[turn].seat });
   return { state: { ...s, turn, phase: "roll", dice: [], sixes: 0, earned: null }, events };
 };
@@ -197,8 +206,16 @@ const doMove = (s: GameState, token: number, die: number): StepResult | null => 
 
   let next: GameState = withSeq({ ...s, players, dice, earned });
   if (mine.tokens.filter(t => t === FINISH).length >= tuningOf(s.rules).winTokens) {
-    events.push({ type: "win", seat: me.seat });
-    return { state: { ...next, phase: "over", dice: [], earned: null, winner: me.seat }, events };
+    // this player is home: the others play on for the places that are left, until only one of them remains
+    const finished = [...s.finished, me.seat];
+    events.push({ type: "place", seat: me.seat, place: finished.length });
+    const waiting = players.filter(p => !finished.includes(p.seat));
+    if (waiting.length > 1) {
+      return nextTurn({ ...next, finished, winner: s.winner ?? me.seat, dice: [], earned: null }, events);
+    }
+    const final = waiting.length ? [...finished, waiting[0].seat] : finished;
+    events.push({ type: "win", seat: final[0] });
+    return { state: { ...next, finished: final, phase: "over", dice: [], earned: null, winner: final[0] }, events };
   }
   if (next.tycoon) {
     const eco = economyAfterMove(next, me.seat, option, events);
@@ -268,7 +285,7 @@ const doDecide = (s: GameState, kind: "buy" | "pass" | "build"): StepResult | nu
 const doForfeit = (s: GameState, seat: Seat): StepResult | null => {
   if (s.phase === "over") return null;
   const idx = s.players.findIndex(p => p.seat === seat);
-  if (idx < 0) return null;
+  if (idx < 0 || s.finished.includes(seat)) return null;
   const players = s.players.filter((_, i) => i !== idx);
   const events: GameEvent[] = [{ type: "forfeit", seat }];
   if (s.tycoon) {
@@ -276,13 +293,15 @@ const doForfeit = (s: GameState, seat: Seat): StepResult | null => {
     releaseSeat(t, seat);
     s = { ...s, tycoon: t };
   }
-  if (players.length === 1) {
-    events.push({ type: "win", seat: players[0].seat });
-    return { state: withSeq({ ...s, players, turn: 0, phase: "over", dice: [], earned: null, winner: players[0].seat }), events };
+  const waiting = players.filter(p => !s.finished.includes(p.seat));
+  if (waiting.length <= 1) {
+    const finished = waiting.length ? [...s.finished, waiting[0].seat] : s.finished;
+    events.push({ type: "win", seat: finished[0] });
+    return { state: withSeq({ ...s, players, finished, turn: 0, phase: "over", dice: [], earned: null, winner: finished[0] }), events };
   }
   if (idx < s.turn) return { state: withSeq({ ...s, players, turn: s.turn - 1 }), events };
   if (idx > s.turn) return { state: withSeq({ ...s, players }), events };
-  const turn = idx % players.length;
+  const turn = nextActiveIndex(players, s.finished, idx % players.length);
   events.push({ type: "turn", seat: players[turn].seat });
   return { state: withSeq({ ...s, players, turn, phase: "roll", dice: [], sixes: 0, earned: null }), events };
 };

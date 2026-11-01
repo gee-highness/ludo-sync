@@ -13,7 +13,7 @@ import type { Action, GameEvent, GameState, MoveOption } from "@/lib/ludo/types"
 import type { FrameBus, Frame } from "@/lib/client/frames";
 import type { AnimStep } from "@/lib/client/anim";
 import { stepMs } from "@/lib/client/anim";
-import { describeFrame, type LogLine } from "@/lib/client/describe";
+import { describeFrame, ordinal, type LogLine } from "@/lib/client/describe";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { useSettings, updateSettings } from "@/lib/client/settings";
@@ -237,6 +237,12 @@ export default function GameScreen(props: GameScreenProps) {
           if (e.other !== undefined) addFloater(e.other, `${e.amount < 0 ? "+" : "-"}$${Math.abs(e.amount)}`, e.amount < 0 ? "gain" : "loss");
           break;
         }
+        case "place": {
+          sound.play("home"); buzz("bonus");
+          const who = frame.state.players.find(p => p.seat === e.seat)?.name ?? "A player";
+          showBanner(`${who} finished ${ordinal(e.place)}`, "bonus", frame.state.phase === "over" ? undefined : "the rest play on");
+          break;
+        }
         case "capture":
           if (mine.current.includes(e.seat)) captures.current += 1;
           showBanner(`${frame.state.players.find(p => p.seat === e.victim)?.name ?? "A token"} was sent home`, "capture");
@@ -396,7 +402,7 @@ export default function GameScreen(props: GameScreenProps) {
   const panels = (
     <PlayerPanels
       players={shown.players} currentSeat={shown.phase !== "over" ? me.seat : null} mySeats={mySeats} cash={shown.tycoon?.cash} away={props.away} tags={props.tags}
-      compact={compact} twoColumns={!wide} floaters={floaters} next={nextSeat(shown)}
+      compact={compact} twoColumns={!wide} floaters={floaters} next={nextSeat(shown)} finished={shown.finished}
     />
   );
   const tycoonCard = iAct && shown.phase === "decide" ? <PropertyCard state={shown} act={act} wide={wide} /> : null;
