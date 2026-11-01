@@ -97,7 +97,7 @@ export default function IslandEditor() {
     <Flex minH="100dvh" bg="#303030" color="white" justify="center" px={3} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="980px" align="stretch" spacing={4} as="main">
         <HStack>
-          <IconButton as={Link} href="/" aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />
+          <IconButton as={Link} href="/ludo" aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />
           <Heading as="h1" size="md">Island maker</Heading>
         </HStack>
         <Text fontSize="sm" color="gray.300">Your island is the set of buildings that appear on the properties you own in a Tycoon game. Choose how they look.</Text>

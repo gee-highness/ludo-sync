@@ -12,6 +12,8 @@ export const getClientId = (): string => {
 
 export const shareLink = (code: string, origin = typeof location !== "undefined" ? location.origin : "") => `${origin}/online?join=${code}`;
 
+export const skipBoShareLink = (code: string, origin = typeof location !== "undefined" ? location.origin : "") => `${origin}/skipbo/online?join=${code}`;
+
 /** Pulls a room code out of whatever was pasted or scanned: a bare code, or one of our links. */
 export const extractRoomCode = (text: string): string | null => {
   const fromLink = /[?&]join=([^&#\s]+)/i.exec(text)?.[1];

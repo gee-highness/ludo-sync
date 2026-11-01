@@ -158,7 +158,7 @@ export default function NearbyClient() {
 
   useEffect(() => { setName(getSettings().playerName); setRtc(webRtcAvailable()); setReady(true); }, []);
 
-  const exit = useCallback(() => router.push("/"), [router]);
+  const exit = useCallback(() => router.push("/ludo"), [router]);
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 

@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 export const metadata: Metadata = {
   title: 'Ludo Sync',
   applicationName: 'Ludo Sync',
-  description: 'Classic Ludo for 2 to 4 players. Play bots, pass-and-play, or pair with friends online.',
+  description: 'Classic games for you and your friends: Ludo and Skip-Bo. Play bots, pass-and-play, or pair with friends online.',
   manifest: '/manifest.json',
   appleWebApp: { capable: true, title: 'Ludo Sync', statusBarStyle: 'black-translucent' },
   formatDetection: { telephone: false },
