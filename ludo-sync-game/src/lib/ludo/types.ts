@@ -116,7 +116,10 @@ export interface GameState {
   sixes: number;
   /** Why the player will roll again once this roll's dice are spent, if they will. */
   earned: BonusReason | null;
+  /** Who came first. Set the moment someone gets all their tokens home, though the others play on until one player is left. */
   winner: Seat | null;
+  /** Seats that have finished, in the order they did; once the game is over, everyone still playing is added last. */
+  finished: Seat[];
   /** Random-number generator state, so a game replays exactly. */
   rng: number;
   /** Counts every applied action. */
@@ -155,6 +158,7 @@ export type GameEvent =
   | { type: "bonus"; seat: Seat; reason: BonusReason }
   | { type: "turn"; seat: Seat }
   | { type: "forfeit"; seat: Seat }
+  | { type: "place"; seat: Seat; place: number }
   | { type: "win"; seat: Seat }
   | { type: "money"; seat: Seat; amount: number; note: string; other?: Seat }
   | { type: "buy"; seat: Seat; ring: number; price: number }

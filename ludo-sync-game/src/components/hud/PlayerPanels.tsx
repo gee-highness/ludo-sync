@@ -22,6 +22,8 @@ interface PanelProps {
   tag?: string;
   /** Plays after the current player. */
   next?: boolean;
+  /** Finishing place once all their tokens are home, while the others play on. */
+  place?: number;
   floaters: Floater[];
 }
 
@@ -40,7 +42,7 @@ const Avatar = ({ seat, size }: { seat: Seat; size: number }) => {
 };
 
 /** One player: a round avatar, a pointed ribbon in their colour with the name, and a white capsule with money or points. */
-export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, next, floaters }: PanelProps) => {
+export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, next, place, floaters }: PanelProps) => {
   const info = SEAT_INFO[player.seat];
   const home = tokensHome(player);
   const points = pointsOf(player);
@@ -49,7 +51,7 @@ export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, n
   return (
     <Box
       as="li" listStyleType="none" display="flex" alignItems="center" position="relative" minW={0} aria-current={current ? "true" : undefined}
-      opacity={away ? 0.55 : 1} transition="transform .25s, opacity .25s" transform={current ? (compact ? "scale(1.03)" : "translateX(-10px) scale(1.05)") : undefined}
+      opacity={away ? 0.55 : place ? 0.85 : 1} transition="transform .25s, opacity .25s" transform={current ? (compact ? "scale(1.03)" : "translateX(-10px) scale(1.05)") : undefined}
       transformOrigin="right center" zIndex={current ? 3 : 1}
       filter={current ? `drop-shadow(0 0 10px ${info.main})` : "drop-shadow(0 2px 4px rgba(0,0,0,.4))"}
     >
@@ -63,7 +65,7 @@ export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, n
           h={compact ? "22px" : "28px"} display="flex" alignItems="center" borderRadius="0 6px 6px 0" fontWeight={800} fontSize={compact ? "xs" : "sm"}
           fontStyle="italic" textShadow="0 1px 2px rgba(0,0,0,.6)" sx={{ clipPath: "polygon(0 0, 100% 0, 100% 100%, 8px 100%, 0 50%)" }}
         >
-          <Text as="span" noOfLines={1}>{player.name}{isMe ? " (you)" : ""}</Text>
+          <Text as="span" noOfLines={1}>{place ? `${["", "🥇", "🥈", "🥉", "4th"][place] ?? place} ` : ""}{player.name}{isMe ? " (you)" : ""}</Text>
         </Box>
         <Box
           bg="#fff" color="#151515" ml={compact ? "14px" : "18px"} h={compact ? "20px" : "26px"} px={2} display="flex" alignItems="center" justifyContent="space-between" gap={2}
@@ -74,9 +76,9 @@ export const PlayerPanel = ({ player, current, isMe, compact, cash, away, tag, n
             {player.tokens.map((t, i) => <Box key={i} as="span" w="7px" h="7px" borderRadius="full" bg={t === 57 ? "#eab308" : t === -1 ? "#d4d4d4" : info.main} />)}
           </Box>
         </Box>
-        {!compact && (bot || tag || away || next) && (
+        {!compact && (bot || tag || away || next || place) && (
           <Text fontSize="2xs" color="whiteAlpha.800" ml="18px" mt="2px" textShadow="0 1px 2px #000">
-            {[bot ? `Bot · ${LEVEL[player.level ?? "normal"]}` : null, tag, away ? "Away" : null, next ? "Next" : null].filter(Boolean).join(" · ")}
+            {[bot ? `Bot · ${LEVEL[player.level ?? "normal"]}` : null, tag, away ? "Away" : null, place ? "Finished" : null, next ? "Next" : null].filter(Boolean).join(" · ")}
           </Text>
         )}
       </Box>
@@ -103,11 +105,12 @@ interface Props {
   /** Phones in portrait lay the panels out two across. */
   twoColumns?: boolean;
   next?: Seat | null;
+  finished?: readonly Seat[];
   floaters: Floater[];
 }
 
 /** The players, as in the reference: a stack down the right of a wide screen, or two columns on a phone. */
-export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, compact, twoColumns, next, floaters }: Props) => (
+export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, compact, twoColumns, next, finished, floaters }: Props) => (
   <Box
     as="ul" m={0} p={0} role="list" aria-label="Players" display="grid" gap={compact ? 2 : 3}
     gridTemplateColumns={twoColumns ? "repeat(2, minmax(0, 1fr))" : "1fr"} pl={compact ? 0 : "24px"}
@@ -115,7 +118,7 @@ export const PlayerPanels = ({ players, currentSeat, mySeats, cash, away, tags, 
     {players.map(p => (
       <PlayerPanel
         key={p.seat} player={p} current={p.seat === currentSeat} isMe={mySeats.length === 1 && mySeats[0] === p.seat} compact={compact}
-        cash={cash?.[p.seat]} away={away?.has(p.seat)} tag={tags?.[p.seat]} next={p.seat === next && p.seat !== currentSeat} floaters={floaters}
+        cash={cash?.[p.seat]} away={away?.has(p.seat)} tag={tags?.[p.seat]} next={p.seat === next && p.seat !== currentSeat} place={finished && finished.includes(p.seat) ? finished.indexOf(p.seat) + 1 : undefined} floaters={floaters}
       />
     ))}
   </Box>

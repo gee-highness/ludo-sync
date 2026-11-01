@@ -36,5 +36,10 @@ export const describeLastMove = (m: LastMove, state: GameState): string => {
 /** Who plays after the current player. */
 export const nextSeat = (state: GameState): Seat | null => {
   if (state.phase === "over" || state.players.length < 2) return null;
-  return state.players[(state.turn + 1) % state.players.length].seat;
+  // players who are already home sit out
+  for (let i = 1; i < state.players.length; i++) {
+    const seat = state.players[(state.turn + i) % state.players.length].seat;
+    if (!state.finished.includes(seat)) return seat;
+  }
+  return null;
 };

@@ -26,9 +26,11 @@ interface Props {
   streak?: number;
 }
 
-/** Winner first, then by points. */
-export const rankPlayers = (state: GameState): Player[] =>
-  [...state.players].sort((a, b) => (b.seat === state.winner ? 1 : 0) - (a.seat === state.winner ? 1 : 0) || pointsOf(b) - pointsOf(a));
+/** In the order they finished; anyone not placed (a forfeit ended the game) follows by points. */
+export const rankPlayers = (state: GameState): Player[] => {
+  const place = (p: Player) => { const i = state.finished.indexOf(p.seat); return i < 0 ? (p.seat === state.winner ? -1 : 99) : i; };
+  return [...state.players].sort((a, b) => place(a) - place(b) || pointsOf(b) - pointsOf(a));
+};
 
 const STEP_H = [112, 82, 64, 52];
 /** On screen the second place stands left of the winner, third to the right, fourth beyond. */

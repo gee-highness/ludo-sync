@@ -182,6 +182,45 @@ describe("moving", () => {
     expect(r.events.at(-1)).toEqual({ type: "win", seat: 0 });
     expect(applyAction(r.state, { type: "roll" })).toBeNull();
   });
+
+  it("lets the others play on after the first player is home, skipping the finisher, until one is left", () => {
+    const g = scene({ seats: [0, 1, 2], dice: [1], tokens: { 0: [57, 57, 57, 56], 1: [10, -1, -1, -1], 2: [57, 57, 57, 40] } });
+    const r = applyAction(g, { type: "move", token: 3, die: 1 })!;
+    expect(r.state.phase).toBe("roll");
+    expect(r.state.winner).toBe(0);
+    expect(r.state.finished).toEqual([0]);
+    expect(r.events.map(e => e.type)).toEqual(["move", "finish", "place", "turn"]);
+    expect(currentPlayer(r.state).seat).toBe(1);
+    // seat 2 finishes next: seat 1 is the only one left, so the game ends with the full order
+    const g2 = { ...r.state, turn: 2, dice: [1], rolled: [1], phase: "move" as const, players: r.state.players.map(p => (p.seat === 2 ? { ...p, tokens: [57, 57, 57, 56] } : p)) };
+    const r2 = applyAction(g2, { type: "move", token: 3, die: 1 })!;
+    expect(r2.state.phase).toBe("over");
+    expect(r2.state.finished).toEqual([0, 2, 1]);
+    expect(r2.state.winner).toBe(0);
+    expect(r2.events.map(e => e.type)).toEqual(["move", "finish", "place", "win"]);
+  });
+
+  it("never gives a finished player another turn", () => {
+    let g = scene({ seats: [0, 1, 2], dice: [1], tokens: { 0: [57, 57, 57, 56] } });
+    g = applyAction(g, { type: "move", token: 3, die: 1 })!.state;
+    const seen = new Set<Seat>();
+    for (let i = 0; i < 40 && g.phase !== "over"; i++) {
+      seen.add(currentPlayer(g).seat);
+      const r = applyAction(g, autoAction(g)!)!;
+      g = r.state;
+    }
+    expect(seen.has(0)).toBe(false);
+  });
+
+  it("ends the game when everyone else leaves, and ignores a finished player leaving", () => {
+    let g = scene({ seats: [0, 1, 2], dice: [1], tokens: { 0: [57, 57, 57, 56] } });
+    g = applyAction(g, { type: "move", token: 3, die: 1 })!.state;
+    expect(applyAction(g, { type: "forfeit", seat: 0 })).toBeNull();
+    g = applyAction(g, { type: "forfeit", seat: 1 })!.state;
+    expect(g.phase).toBe("over");
+    expect(g.finished).toEqual([0, 2]);
+    expect(g.winner).toBe(0);
+  });
 });
 
 describe("captures", () => {

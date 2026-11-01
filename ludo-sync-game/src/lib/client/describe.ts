@@ -2,6 +2,8 @@ import { SEAT_INFO, YARD, type Seat } from "../ludo/board";
 import { SQUARES } from "../ludo/tycoon";
 import type { BonusReason, GameEvent, GameState } from "../ludo/types";
 
+export const ordinal = (n: number): string => ["", "1st", "2nd", "3rd", "4th"][n] ?? `${n}th`;
+
 export interface LogLine {
   /** Seat the line is about, for colouring. */
   seat: Seat;
@@ -25,6 +27,7 @@ export const describeEvent = (e: GameEvent, state: GameState): LogLine | null =>
     case "bonus": return { seat: e.seat, text: `${who} ${REASON[e.reason]} and rolls again` };
     case "turn": return { seat: e.seat, text: `${who}'s turn` };
     case "forfeit": return { seat: e.seat, text: `${who} left the game` };
+    case "place": return { seat: e.seat, text: `${who} finished ${ordinal(e.place)}` };
     case "win": return { seat: e.seat, text: `${who} wins!` };
     case "money": {
       const amt = `$${Math.abs(e.amount)}`;

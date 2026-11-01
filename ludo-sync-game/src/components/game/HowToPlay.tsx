@@ -19,7 +19,7 @@ export const HowToPlay = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
       <ModalCloseButton />
       <ModalBody pb={6}>
         <VStack align="stretch" spacing={4}>
-          <Text>Race all four of your tokens around the board and into the centre. First home wins.</Text>
+          <Text>Race all four of your tokens around the board and into the centre. First home wins, but the game carries on: everyone else keeps playing for the remaining places until only one player is left.</Text>
           <Section title="Getting out" items={[
             "Roll a 6 to move a token from your yard onto your coloured start square.",
             "Every 6 gives you another roll. Three sixes in a row lose your turn (a rule you can switch off).",
