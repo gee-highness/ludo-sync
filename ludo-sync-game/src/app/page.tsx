@@ -1,5 +1,5 @@
-import MenuScreen from "@/components/menu/MenuScreen";
+import HubScreen from "@/components/hub/HubScreen";
 
 export default function Home() {
-  return <MenuScreen />;
+  return <HubScreen />;
 }

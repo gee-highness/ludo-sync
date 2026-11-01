@@ -80,7 +80,7 @@ export default function PlayClient() {
     setStarted({ state: createGame(setups, rules, freshSeed()), humans: humansOf(setups), palette: getSettings().palette });
   }, []);
 
-  const exit = useCallback(() => router.push("/"), [router]);
+  const exit = useCallback(() => router.push("/ludo"), [router]);
   const key = useMemo(() => started?.state.seq === 0 ? `${started.state.rng}` : "game", [started]);
 
   if (!ready) return <Center h="100dvh" bg="#303030"><Spinner color="white" size="xl" /></Center>;

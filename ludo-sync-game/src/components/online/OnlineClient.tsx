@@ -131,7 +131,7 @@ export default function OnlineClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const exit = useCallback(() => router.push("/"), [router]);
+  const exit = useCallback(() => router.push("/ludo"), [router]);
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 

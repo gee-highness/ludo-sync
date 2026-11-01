@@ -2,7 +2,7 @@ import { getSettings } from "./settings";
 import { HORNS, barSeconds, engineVoice, musicBar, type Mood } from "./soundDesign";
 import type { VehicleId } from "./pieces";
 
-export type Sfx = "click" | "dice" | "hop" | "enter" | "capture" | "home" | "bonus" | "penalty" | "turn" | "start" | "win" | "pop" | "error" | "squeal" | "crash";
+export type Sfx = "click" | "dice" | "hop" | "enter" | "capture" | "home" | "bonus" | "penalty" | "turn" | "start" | "win" | "pop" | "error" | "squeal" | "crash" | "card" | "shuffle" | "flip";
 
 type Wave = OscillatorType;
 
@@ -238,6 +238,9 @@ class SoundEngine {
         [523, 523, 523, 659, 784, 659, 784, 1047].forEach((f, i) => this.tone(f, t + i * 0.13, 0.22, "triangle", 0.32));
         break;
       case "error": this.tone(180, t, 0.12, "square", 0.18); break;
+      case "card": this.burst(t, 0.06, 0.45, 2600); this.tone(300, t, 0.07, "triangle", 0.12, 180); break;
+      case "flip": this.burst(t, 0.05, 0.3, 3400); this.tone(620, t + 0.02, 0.08, "sine", 0.14, 900); break;
+      case "shuffle": for (let i = 0; i < 9; i++) this.burst(t + i * 0.055, 0.05, 0.28, 2200 + (i % 3) * 700); break;
       case "squeal": this.tone(1400, t, 0.35, "sawtooth", 0.09, 700); this.burst(t, 0.35, 0.25, 4200); break;
       case "crash": this.burst(t, 0.3, 0.8, 500); this.tone(110, t, 0.25, "square", 0.25, 40); break;
     }

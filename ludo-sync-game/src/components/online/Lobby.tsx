@@ -54,13 +54,13 @@ interface Props {
   invite?: React.ReactNode;
 }
 
-export const ShareCard = ({ code }: { code: string }) => {
+export const ShareCard = ({ code, link: given, game = "Ludo" }: { code: string; link?: string; game?: string }) => {
   const [copied, setCopied] = useState(false);
-  const link = shareLink(code);
+  const link = given ?? shareLink(code);
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* clipboard blocked */ }
   };
-  const share = () => { void navigator.share?.({ title: "Ludo Sync", text: `Join my Ludo game: ${formatRoomCode(code)}`, url: link }).catch(() => undefined); };
+  const share = () => { void navigator.share?.({ title: "Ludo Sync", text: `Join my ${game} game: ${formatRoomCode(code)}`, url: link }).catch(() => undefined); };
   return (
     <VStack bg="whiteAlpha.100" borderRadius="xl" p={4} spacing={3}>
       <Text fontSize="xs" textTransform="uppercase" color="gray.400">Room code</Text>

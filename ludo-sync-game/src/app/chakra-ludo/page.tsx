@@ -8,7 +8,7 @@ function Redirect() {
   const router = useRouter();
   const mode = useSearchParams().get("mode");
   useEffect(() => {
-    router.replace(mode === "local-friends" ? "/play?preset=local&quick=1" : mode === "play-with-bot" ? "/play?preset=bot&quick=1" : "/");
+    router.replace(mode === "local-friends" ? "/play?preset=local&quick=1" : mode === "play-with-bot" ? "/play?preset=bot&quick=1" : "/ludo");
   }, [mode, router]);
   return null;
 }

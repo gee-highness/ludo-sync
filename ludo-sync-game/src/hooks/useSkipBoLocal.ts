@@ -1,0 +1,87 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { chooseAction } from "@/lib/skipbo/bot";
+import { describeEvents } from "@/lib/skipbo/describe";
+import { applyAction, createGame } from "@/lib/skipbo/engine";
+import { freshSeed } from "@/lib/ludo/rng";
+import { recordGame, saveGame } from "@/lib/skipbo/save";
+import type { Action, GameEvent, GameState } from "@/lib/skipbo/types";
+import { viewOf, type TableView } from "@/lib/skipbo/view";
+import type { SpeedPref } from "@/lib/client/settings";
+
+export interface Feed { frame: { id: number; events: GameEvent[] }; log: string[] }
+
+const MAX_LOG = 60;
+
+/** Keeps a log of what happened and a counter that ticks for every new frame, for sounds and animation. */
+export const useFeed = () => {
+  const [feed, setFeed] = useState<Feed>({ frame: { id: 0, events: [] }, log: [] });
+  const counter = useRef(0);
+  const push = useCallback((events: GameEvent[], lines: string[]) => {
+    counter.current += 1;
+    const id = counter.current;
+    setFeed(f => ({ frame: { id, events }, log: [...f.log, ...lines].slice(-MAX_LOG) }));
+  }, []);
+  const reset = useCallback(() => setFeed({ frame: { id: ++counter.current, events: [] }, log: [] }), []);
+  return { feed, push, reset };
+};
+
+export interface LocalSkipBo {
+  state: GameState;
+  view: TableView;
+  feed: Feed;
+  act: (a: Action) => boolean;
+  rematch: () => void;
+}
+
+/** A game that lives entirely on this device: the engine runs here, bots play themselves, and every step is saved. */
+export const useSkipBoLocal = (initial: GameState, you: number, speed: SpeedPref): LocalSkipBo => {
+  const [state, setState] = useState(initial);
+  const ref = useRef(initial);
+  const { feed, push, reset } = useFeed();
+  const recorded = useRef(false);
+  const piles = useRef(0);
+
+  const act = useCallback((action: Action): boolean => {
+    const r = applyAction(ref.current, action);
+    if (!r) return false;
+    ref.current = r.state;
+    setState(r.state);
+    let mine = false;
+    for (const e of r.events) {
+      if (e.type === "play") mine = e.player === you;
+      else if (e.type === "pileDone" && mine) piles.current += 1;
+    }
+    push(r.events, describeEvents(r.events, viewOf(r.state, you)));
+    return true;
+  }, [push, you]);
+
+  useEffect(() => { saveGame(state, you); }, [state, you]);
+
+  useEffect(() => {
+    if (state.phase !== "over" || recorded.current) return;
+    recorded.current = true;
+    recordGame(state.winner === you, piles.current);
+  }, [state, you]);
+
+  // bots take their turns one move at a time, pausing like a person would
+  useEffect(() => {
+    if (state.phase !== "play" || state.players[state.turn].kind !== "bot") return;
+    const wait = speed === "instant" ? 0 : speed === "fast" ? 300 : 750;
+    const t = setTimeout(() => { const a = chooseAction(ref.current); if (a) act(a); }, wait);
+    return () => clearTimeout(t);
+  }, [state, act, speed]);
+
+  const rematch = useCallback(() => {
+    const fresh = createGame(ref.current.players.map(p => ({ name: p.name, kind: p.kind, level: p.level })), ref.current.rules, freshSeed());
+    ref.current = fresh;
+    recorded.current = false;
+    piles.current = 0;
+    setState(fresh);
+    reset();
+  }, [reset]);
+
+  const view = useMemo(() => viewOf(state, you), [state, you]);
+  return { state, view, feed, act, rematch };
+};
