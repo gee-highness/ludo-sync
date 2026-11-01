@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { sound } from "@/lib/client/audio";
 import type { Action } from "@/lib/skipbo/types";
 import type { TableView } from "@/lib/skipbo/view";
+import type { Award } from "@/lib/client/profile";
 
 interface Props {
   view: TableView;
@@ -13,10 +14,12 @@ interface Props {
   onRematch?: () => void;
   rematchLabel?: string;
   waitingText?: string;
+  /** What the game was worth to you, once it has been recorded. */
+  award?: Award | null;
 }
 
 /** The end of a round, or of the whole game: who won, what they scored, and the way on. */
-export function RoundOverlay({ view, act, onExit, onRematch, rematchLabel = "Play again", waitingText }: Props) {
+export function RoundOverlay({ view, act, onExit, onRematch, rematchLabel = "Play again", waitingText, award }: Props) {
   const over = view.phase === "over";
   const winner = over ? view.winner : view.roundWinner;
   const iWon = winner !== null && winner === view.you;
@@ -39,11 +42,19 @@ export function RoundOverlay({ view, act, onExit, onRematch, rematchLabel = "Pla
               <HStack><Text fontWeight={900} w="20px">{rank + 1}</Text><Text fontWeight={700} noOfLines={1}>{p.name}{i === view.you ? " (you)" : ""}</Text></HStack>
               <HStack spacing={2}>
                 <Badge colorScheme={p.stockCount === 0 ? "green" : "gray"}>{p.stockCount === 0 ? "stock empty" : `${p.stockCount} left`}</Badge>
+                <Text fontWeight={800} color="#fdba74" aria-label={`${p.points} points`}>★ {p.points}</Text>
                 {view.rules.tournament && <Text fontWeight={800} color="#fde047">{p.score}</Text>}
               </HStack>
             </HStack>
           ))}
         </VStack>
+        {over && award && (
+          <VStack spacing={1} w="100%" bg="blackAlpha.300" borderRadius="lg" p={3} aria-label="Experience earned">
+            <Text fontWeight={900} color="#fde047">+{award.gained} XP</Text>
+            <Box w="100%" h="8px" borderRadius="full" bg="whiteAlpha.300" overflow="hidden"><Box h="100%" w={`${Math.round(award.after.fraction * 100)}%`} bg="linear-gradient(90deg,#fde047,#f59e0b)" transition="width .8s ease" /></Box>
+            <Text fontSize="sm" color="whiteAlpha.800">Level {award.after.level}{award.leveledUp ? " · level up!" : ""} · {award.after.into} of {award.after.need} to the next</Text>
+          </VStack>
+        )}
         <HStack w="100%" spacing={2}>
           {!over && <Button flex={1} colorScheme="yellow" onClick={() => act({ type: "nextRound" })} isDisabled={view.you === null}>Next round</Button>}
           {over && onRematch && <Button flex={1} colorScheme="yellow" onClick={onRematch}>{rematchLabel}</Button>}

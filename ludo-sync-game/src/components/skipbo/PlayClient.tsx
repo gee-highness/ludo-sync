@@ -7,16 +7,19 @@ import { cleanName } from "@/lib/ludo/engine";
 import { freshSeed } from "@/lib/ludo/rng";
 import { getSettings } from "@/lib/client/settings";
 import { createGame, officialStock } from "@/lib/skipbo/engine";
+import { dateKey, skipBoDaily } from "@/lib/skipbo/daily";
+import type { BotStyle } from "@/lib/skipbo/types";
 import { clearSavedGame, loadGame, saveGame } from "@/lib/skipbo/save";
 import type { BotLevel, GameState, PlayerSetup } from "@/lib/skipbo/types";
 import { useSkipBoLocal } from "@/hooks/useSkipBoLocal";
 import { Table } from "./Table";
 
-function LocalTable({ initial, you, hotseat, onExit }: { initial: GameState; you: number; hotseat: boolean; onExit: () => void }) {
-  const { view, feed, act, rematch, covered, coverName, uncover } = useSkipBoLocal(initial, you, getSettings().speed, hotseat);
+function LocalTable({ initial, you, hotseat, daily, onExit }: { initial: GameState; you: number; hotseat: boolean; daily: boolean; onExit: () => void }) {
+  const { view, feed, act, rematch, covered, coverName, uncover } = useSkipBoLocal(initial, you, getSettings().speed, hotseat, daily);
   return (
     <>
-      <Table view={view} act={act} frame={feed.frame} log={feed.log} title={hotseat ? "Skip-Bo · pass and play" : "Skip-Bo"} onExit={onExit} onRematch={rematch} rematchLabel="Play again" />
+      <Table view={view} act={act} frame={feed.frame} log={feed.log} title={hotseat ? "Skip-Bo · pass and play" : "Skip-Bo"} onExit={onExit} onRematch={rematch} rematchLabel="Play again"
+        record={hotseat ? undefined : { daily }} badge={daily ? "Daily challenge" : undefined} />
       {covered && (
         <Center position="fixed" inset={0} zIndex={100} bg="#0c3a27" color="white" p={6} role="dialog" aria-modal="true" aria-label={`Pass the device to ${coverName}`}>
           <VStack spacing={4} textAlign="center" maxW="360px">
@@ -36,12 +39,12 @@ const oneOf = <T extends string>(v: string | null, list: readonly T[], d: T): T 
 export default function SkipBoPlayClient() {
   const router = useRouter();
   const params = useSearchParams();
-  const [started, setStarted] = useState<{ state: GameState; you: number; hotseat: boolean } | null>(null);
+  const [started, setStarted] = useState<{ state: GameState; you: number; hotseat: boolean; daily: boolean } | null>(null);
 
   useEffect(() => {
     if (params.get("resume") === "1") {
       const saved = loadGame();
-      if (saved) { setStarted({ state: saved.state, you: saved.you, hotseat: saved.hotseat }); return; }
+      if (saved) { setStarted({ state: saved.state, you: saved.you, hotseat: saved.hotseat, daily: saved.daily }); return; }
       router.replace("/skipbo");
       return;
     }
@@ -58,18 +61,26 @@ export default function SkipBoPlayClient() {
       ? Array.from({ length: players }, (_, i) => ({ name: cleanName(names[i] ?? "", `Player ${i + 1}`), kind: "human" as const }))
       : [
         { name: cleanName(params.get("name") ?? getSettings().playerName, "Player"), kind: "human" },
-        ...Array.from({ length: bots }, (_, i) => ({ name: ["Mia", "Leo", "Ava", "Max", "Zoe"][i], kind: "bot" as const, level })),
+        ...Array.from({ length: bots }, (_, i) => ({ name: ["Mia", "Leo", "Ava", "Max", "Zoe"][i], kind: "bot" as const, level, style: (["balanced", "blocker", "racer", "balanced", "blocker"] as BotStyle[])[i] })),
       ];
-    const state = createGame(setups, { stockSize, tournament }, freshSeed());
+    const daily = params.get("daily") === "1";
+    const today = skipBoDaily(dateKey());
+    const names5: { name: string; style: BotStyle }[] = [{ name: "Mia", style: "balanced" }, { name: "Leo", style: "blocker" }, { name: "Ava", style: "racer" }, { name: "Max", style: "balanced" }, { name: "Zoe", style: "blocker" }];
+    const finalSetups: PlayerSetup[] = daily
+      ? [setups[0], ...today.bots.map((b, i) => ({ name: names5[i].name, kind: "bot" as const, level: b.level, style: b.style }))]
+      : setups;
+    const state = daily
+      ? createGame(finalSetups, { stockSize: today.stockSize, tournament: today.tournament, target: today.target }, today.seed)
+      : createGame(finalSetups, { stockSize, tournament }, freshSeed());
     // the dealer is random, so the human may not go first: that is part of the game
     clearSavedGame();
-    saveGame(state, you, pass);
+    saveGame(state, you, pass, daily);
     router.replace("/skipbo/play?resume=1");
-    setStarted({ state, you, hotseat: pass });
+    setStarted({ state, you, hotseat: pass, daily });
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!started) return <Center minH="100dvh" bg="#14573a"><Spinner color="white" size="xl" /></Center>;
-  return <LocalTable initial={started.state} you={started.you} hotseat={started.hotseat} onExit={() => router.push("/skipbo")} />;
+  return <LocalTable initial={started.state} you={started.you} hotseat={started.hotseat} daily={started.daily} onExit={() => router.push("/skipbo")} />;
 }

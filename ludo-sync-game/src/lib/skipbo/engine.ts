@@ -9,6 +9,8 @@ export const MAX_PLAYERS = 6;
 export const STOCK_CHOICES = [10, 15, 20, 30] as const;
 export const DEFAULT_TARGET = 500;
 export const ROUND_BONUS = 25;
+/** Points for how you play. A card from the stock pile is worth the most: it is the one that wins. */
+export const POINTS = { hand: 1, discard: 2, stock: 3, pile: 10, bonusHand: 10, win: 25, perCardLeft: 5 } as const;
 export const POINTS_PER_CARD = 5;
 /** Passing this many turns in a row means nobody can move any more. */
 const STALL_ROUNDS = 2;
@@ -97,8 +99,8 @@ const drawUp = (s: GameState, events: GameEvent[], bonus: boolean) => {
 export const createGame = (setups: PlayerSetup[], rules: Partial<Rules> | undefined, seed: number): GameState => {
   if (setups.length < MIN_PLAYERS || setups.length > MAX_PLAYERS) throw new Error("Skip-Bo is for 2 to 6 players");
   const players: Player[] = setups.map((p, i) => ({
-    name: cleanName(p.name, `Player ${i + 1}`), kind: p.kind, level: p.kind === "bot" ? p.level ?? "normal" : undefined,
-    stock: [], hand: [], discards: Array.from({ length: DISCARD_PILES }, () => []), score: 0,
+    name: cleanName(p.name, `Player ${i + 1}`), kind: p.kind, level: p.kind === "bot" ? p.level ?? "normal" : undefined, ...(p.kind === "bot" && p.style && p.style !== "balanced" ? { style: p.style } : {}),
+    stock: [], hand: [], discards: Array.from({ length: DISCARD_PILES }, () => []), score: 0, points: 0,
   }));
   const rng0 = seed >>> 0;
   // the dealer is drawn at random, and play starts with the player on their left
@@ -163,6 +165,7 @@ const finishRound = (s: GameState, winner: number, events: GameEvent[]) => {
   const points = s.rules.tournament ? ROUND_BONUS + POINTS_PER_CARD * others : 0;
   s.roundWinner = winner;
   s.roundPoints = points;
+  s.players[winner].points += POINTS.win + POINTS.perCardLeft * others;
   s.players[winner].score += points;
   events.push({ type: "roundEnd", winner, points });
   if (!s.rules.tournament) {
@@ -189,8 +192,12 @@ const doPlay = (s: GameState, source: Source, to: number, events: GameEvent[]): 
   else me.discards[source.pile].pop();
   s.building[to].push(card);
   const value = s.building[to].length;
-  events.push({ type: "play", player: s.turn, source, card, to, value });
+  let earned = source.from === "stock" ? POINTS.stock : source.from === "discard" ? POINTS.discard : POINTS.hand;
   s.passes = 0;
+  if (value === TOP_VALUE) earned += POINTS.pile;
+  if (source.from === "hand" && me.hand.length === 0) earned += POINTS.bonusHand;
+  me.points += earned;
+  events.push({ type: "play", player: s.turn, source, card, to, value, points: earned });
   if (value === TOP_VALUE) {
     s.completed.push(...s.building[to]);
     s.building[to] = [];

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { WILD, type Card } from "@/lib/skipbo/types";
-import { cardColor } from "./CardFace";
+import { cardColor, markFor } from "./CardFace";
+import type { CardBack } from "@/lib/client/unlocks";
 
 const W = 256, H = 364;
 
@@ -19,7 +20,7 @@ const star = (g: CanvasRenderingContext2D, cx: number, cy: number, r: number) =>
 };
 
 /** Paints the face of a card. `asValue` puts a gold badge on a Skip-Bo that stands in for a number. */
-export const paintFace = (value: Card, asValue?: number): HTMLCanvasElement => {
+export const paintFace = (value: Card, asValue?: number, marks = false): HTMLCanvasElement => {
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const g = c.getContext("2d")!;
@@ -50,21 +51,22 @@ export const paintFace = (value: Card, asValue?: number): HTMLCanvasElement => {
     g.font = `900 ${value >= 10 ? 130 : 170}px system-ui, sans-serif`;
     g.fillText(String(value), W / 2, H / 2 + 8);
     g.font = "800 44px system-ui, sans-serif"; g.textAlign = "left"; g.textBaseline = "top"; g.fillText(String(value), 26, 24);
+    if (marks) { g.textAlign = "center"; g.textBaseline = "middle"; g.font = "800 46px system-ui, sans-serif"; g.fillText(markFor(value), W / 2, H - 58); g.textAlign = "left"; g.textBaseline = "top"; }
     g.save(); g.translate(W - 26, H - 24); g.rotate(Math.PI); g.fillText(String(value), 0, 0); g.restore();
   }
   return c;
 };
 
-export const paintBack = (): HTMLCanvasElement => {
+export const paintBack = (back: Pick<CardBack, "a" | "b" | "ring" | "mark">): HTMLCanvasElement => {
   const c = document.createElement("canvas");
   c.width = W; c.height = H;
   const g = c.getContext("2d")!;
   const bg = g.createRadialGradient(W / 2, H * 0.4, 10, W / 2, H / 2, 260);
-  bg.addColorStop(0, "#1d4ed8"); bg.addColorStop(1, "#172554");
+  bg.addColorStop(0, back.a); bg.addColorStop(1, back.b);
   g.fillStyle = "#f8fafc"; rounded(g, 0, 0, W, H, 26); g.fill();
   g.fillStyle = bg; rounded(g, 12, 12, W - 24, H - 24, 18); g.fill();
-  g.strokeStyle = "rgba(255,255,255,.55)"; g.lineWidth = 6; g.beginPath(); g.ellipse(W / 2, H / 2, 82, 118, -0.2, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = "#fde047"; g.font = "900 82px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
+  g.strokeStyle = back.ring + "99"; g.lineWidth = 6; g.beginPath(); g.ellipse(W / 2, H / 2, 82, 118, -0.2, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = back.mark; g.font = "900 82px system-ui, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle";
   g.save(); g.translate(W / 2, H / 2); g.rotate(-0.2); g.fillText("SB", 0, 4); g.restore();
   return c;
 };
@@ -72,7 +74,7 @@ export const paintBack = (): HTMLCanvasElement => {
 /** Textures are made once and shared by every card of that kind. */
 export class CardTextures {
   private cache = new Map<string, THREE.CanvasTexture>();
-  constructor(private maxAniso = 4) {}
+  constructor(private maxAniso = 4, private backStyle: Pick<CardBack, "a" | "b" | "ring" | "mark"> = { a: "#1d4ed8", b: "#172554", ring: "#ffffff", mark: "#fde047" }, private marks = false) {}
   private make(key: string, canvas: () => HTMLCanvasElement): THREE.CanvasTexture {
     let t = this.cache.get(key);
     if (!t) {
@@ -86,8 +88,8 @@ export class CardTextures {
     return t;
   }
   face(value: Card, asValue?: number): THREE.CanvasTexture {
-    return value === WILD && asValue ? this.make(`w${asValue}`, () => paintFace(WILD, asValue)) : this.make(`f${value}`, () => paintFace(value));
+    return value === WILD && asValue ? this.make(`w${asValue}`, () => paintFace(WILD, asValue)) : this.make(`f${value}`, () => paintFace(value, undefined, this.marks));
   }
-  back(): THREE.CanvasTexture { return this.make("back", paintBack); }
+  back(): THREE.CanvasTexture { return this.make("back", () => paintBack(this.backStyle)); }
   dispose() { this.cache.forEach(t => t.dispose()); this.cache.clear(); }
 }

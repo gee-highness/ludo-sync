@@ -7,11 +7,13 @@ import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { getSettings, updateSettings } from "@/lib/client/settings";
 import { cleanName } from "@/lib/ludo/engine";
-import { loadGame, loadStats, type SkipBoStats } from "@/lib/skipbo/save";
+import { loadGame } from "@/lib/skipbo/save";
+import { loadStats, type SkipBoStats } from "@/lib/skipbo/stats";
 import { clearSkipBoRoom, loadSkipBoRoom, type RoomRecord } from "@/hooks/useSkipBoOnline";
 import { CardFace } from "./CardFace";
 import { SettingsDrawer } from "@/components/game/SettingsDrawer";
 import { SkipBoHowToPlay } from "./HowToPlay";
+import { dailyDone, dateKey, loadDailyRecord, skipBoDaily, type SkipBoDaily, type SkipBoDailyRecord } from "@/lib/skipbo/daily";
 
 type Level = "easy" | "normal" | "hard";
 
@@ -27,6 +29,7 @@ export default function SkipBoMenu() {
   const [resume, setResume] = useState<string | null>(null);
   const [stats, setStats] = useState<SkipBoStats | null>(null);
   const [room, setRoom] = useState<RoomRecord | null>(null);
+  const [today, setToday] = useState<{ d: SkipBoDaily; rec: SkipBoDailyRecord; done: boolean } | null>(null);
   const [passNames, setPassNames] = useState<string[]>(["", ""]);
 
   useEffect(() => {
@@ -35,6 +38,8 @@ export default function SkipBoMenu() {
     setResume(saved ? saved.state.players.map(p => p.name).join(" · ") : null);
     setStats(loadStats());
     setRoom(loadSkipBoRoom());
+    const key = dateKey(), rec = loadDailyRecord();
+    setToday({ d: skipBoDaily(key), rec, done: dailyDone(rec, key) });
   }, []);
 
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
@@ -70,6 +75,15 @@ export default function SkipBoMenu() {
         </VStack>
 
         {resume && <Button colorScheme="orange" size="lg" h="auto" py={3} onClick={go("/skipbo/play?resume=1")}><VStack spacing={0}><Text>Resume game</Text><Text fontSize="xs" fontWeight={400}>{resume}</Text></VStack></Button>}
+
+        {today && (
+          <Button colorScheme="orange" variant="outline" color="white" borderColor="orange.300" size="lg" h="auto" py={3} onClick={go("/skipbo/play?daily=1")}>
+            <VStack spacing={0}>
+              <Text>Daily challenge: {today.d.title}</Text>
+              <Text fontSize="xs" fontWeight={400}>{today.done ? (today.rec.won ? `Won today ✓ · ${today.rec.streakDays} day${today.rec.streakDays === 1 ? "" : "s"} in a row` : "Played today. Try again for fun") : today.d.blurb}</Text>
+            </VStack>
+          </Button>
+        )}
 
         <VStack align="stretch" spacing={3} bg="blackAlpha.300" p={4} borderRadius="2xl" border="1px solid rgba(255,255,255,.15)">
           <Text fontWeight={800}>Play against bots</Text>
@@ -133,6 +147,7 @@ export default function SkipBoMenu() {
         )}
         <Button colorScheme="blue" size="lg" onClick={go("/skipbo/online")}>Play with friends online</Button>
         <Button colorScheme="cyan" size="lg" h="auto" py={3} onClick={go("/skipbo/nearby")}><VStack spacing={0}><Text>Play nearby</Text><Text fontSize="xs" fontWeight={400}>Phones in the same room, no internet needed</Text></VStack></Button>
+        <Button variant="outline" color="white" onClick={go("/profile")}>Profile, card backs and achievements</Button>
         <HStack spacing={3}><Button variant="outline" color="white" flex={1} onClick={help.onOpen}>How to play</Button><Button variant="outline" color="white" flex={1} onClick={prefs.onOpen}>Settings</Button></HStack>
         {stats && stats.played > 0 && <Text fontSize="sm" color="whiteAlpha.700" textAlign="center">{stats.played} played · {stats.won} won · {stats.piles} piles completed</Text>}
       </VStack>

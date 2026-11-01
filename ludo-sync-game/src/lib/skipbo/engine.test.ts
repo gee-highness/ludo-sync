@@ -138,6 +138,33 @@ describe("a turn", () => {
   });
 });
 
+describe("points", () => {
+  it("pay more for a stock card than a discard, and more again for finishing a pile or the whole hand", () => {
+    let g = scene({ hand: [1], stock: [5, 1], discards: [[2], [], [], []], building: [0, 0, 0, 0] });
+    const play = (src: Parameters<typeof applyAction>[1] & { type: "play" }) => { const r = applyAction(g, src)!; g = r.state; return r; };
+    expect(play({ type: "play", source: { from: "stock" }, to: 0 }).events.find(e => e.type === "play")).toMatchObject({ points: 3 });
+    expect(g.players[0].points).toBe(3);
+    expect(play({ type: "play", source: { from: "discard", pile: 0 }, to: 0 }).events.find(e => e.type === "play")).toMatchObject({ points: 2 });
+    // the last hand card: 1 for the card and 10 for playing the whole hand
+    g.building = [[1, 2, 3], [], [], []];
+    const r = play({ type: "play", source: { from: "hand", index: 0 }, to: 1 });
+    expect(r.events.find(e => e.type === "play")).toMatchObject({ points: 11 });
+    g.building = [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], [], [], []];
+    g.players[0].hand = [12, 4];
+    expect(play({ type: "play", source: { from: "hand", index: 0 }, to: 0 }).events.find(e => e.type === "play")).toMatchObject({ points: 11 });
+  });
+  it("add 25 and 5 a card for winning the round in any kind of game, and accumulate across rounds", () => {
+    const g = scene({ stock: [1], building: [0, 0, 0, 0], others: [10] });
+    const r = applyAction(g, { type: "play", source: { from: "stock" }, to: 0 })!;
+    expect(r.state.players[0].points).toBe(3 + 25 + 50);
+    expect(r.state.players[0].score).toBe(0);
+    const t = scene({ stock: [1], building: [0, 0, 0, 0], others: [10], tournament: true });
+    const tr = applyAction(t, { type: "play", source: { from: "stock" }, to: 0 })!;
+    const next = applyAction(tr.state, { type: "nextRound" })!.state;
+    expect(next.players[0].points).toBe(3 + 25 + 50);
+  });
+});
+
 describe("winning and scoring", () => {
   it("ends a casual game the moment the stock is empty", () => {
     const g = scene({ stock: [1], building: [0, 0, 0, 0] });

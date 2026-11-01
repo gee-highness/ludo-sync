@@ -140,6 +140,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
     const over = room.view.phase === "over";
     return (
       <Table
+        record={room.slots.filter(x => x.kind === "human").length > 1 ? { withFriends: true } : undefined}
         view={room.view} act={session.act} frame={feed.frame} log={feed.log} title={`Room ${room.code.slice(0, 3)}-${room.code.slice(3)}`} onExit={onExit}
         note={snap.online ? undefined : "Pairing service offline"} away={new Set(room.away)}
         onRematch={over ? session.rematch : undefined} rematchLabel="Rematch"
@@ -167,6 +168,7 @@ function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string;
   if (room.phase === "playing" && snap.view) {
     return (
       <Table
+        record={{ withFriends: true }}
         view={snap.view} act={client.act} frame={feed.frame} log={feed.log} rejected={snap.rejected} title={`${room.hostName}'s room`} away={away}
         onExit={() => { quitForGood(); onExit(); }} note={snap.status === "reconnecting" ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…"
         footer={<Reactions items={reactions} onSend={e => client.react(e)} />}

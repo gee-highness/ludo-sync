@@ -6,6 +6,7 @@ import { CARD_H, CARD_T, CARD_W, CLUSTER, handSlots, layoutTable, seatOrder, sta
 import { WILD, type Card, type GameEvent, type Source } from "@/lib/skipbo/types";
 import type { PlayerView, TableView } from "@/lib/skipbo/view";
 import { CardTextures } from "./cardTextures";
+import { backById, feltById } from "@/lib/client/unlocks";
 
 export type Pick = { kind: "hand"; index: number } | { kind: "stock" } | { kind: "discard"; pile: number } | { kind: "build"; pile: number };
 
@@ -19,12 +20,15 @@ export interface SceneInput {
   /** Building piles the picked-up card can go on. */
   targets: number[];
   camera: "tilt" | "top" | "follow" | "drone";
+  /** Card back and felt chosen in the settings, and shapes on the numbers. */
+  look: { back: string; felt: string; marks: boolean };
   reduceMotion: boolean;
   insets?: { top: number; right: number; bottom: number; left: number };
 }
 
 export interface SceneOptions {
   quality: Tier;
+  look: { back: string; felt: string; marks: boolean };
   onPick: (p: Pick) => void;
   onTier: (dir: "down" | "up") => void;
   onContextLost: () => void;
@@ -98,6 +102,7 @@ export class SkipBoScene {
   private camera = new THREE.PerspectiveCamera(FOV, 1, 0.5, 200);
   private world = new THREE.Group();
   private tex = new CardTextures(4);
+  private felt = feltById(undefined);
   private edge = new THREE.MeshStandardMaterial({ color: 0xf4efe2, roughness: 0.7 });
   private slotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false });
   private topMats = new Map<string, THREE.MeshBasicMaterial | THREE.MeshStandardMaterial>();
@@ -153,7 +158,8 @@ export class SkipBoScene {
     this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = spec.shadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.tex = new CardTextures(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+    this.tex = new CardTextures(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()), backById(opts.look.back), opts.look.marks);
+    this.felt = feltById(opts.look.felt);
     const canvas = this.renderer.domElement;
     canvas.style.cssText = "width:100%;height:100%;display:block;touch-action:none;outline:none";
     canvas.addEventListener("webglcontextlost", this.onContextLost);
@@ -206,7 +212,7 @@ export class SkipBoScene {
     const cx = (l.bounds.maxX + l.bounds.minX) / 2, cz = (l.bounds.maxZ + l.bounds.minZ) / 2;
     const c = document.createElement("canvas"); c.width = c.height = 256;
     const g = c.getContext("2d")!;
-    g.fillStyle = "#1c6b47"; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = this.felt.base; g.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 2600; i++) { g.fillStyle = `rgba(${i % 2 ? "255,255,255" : "0,0,0"},${0.02 + Math.random() * 0.04})`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); }
     const felt = new THREE.CanvasTexture(c);
     felt.wrapS = felt.wrapT = THREE.RepeatWrapping; felt.repeat.set(w / 2.5, d / 2.5); felt.colorSpace = THREE.SRGBColorSpace;

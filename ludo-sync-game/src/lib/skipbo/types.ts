@@ -22,7 +22,10 @@ export interface Rules {
   target: number;
 }
 
-export interface PlayerSetup { name: string; kind: PlayerKind; level?: BotLevel }
+/** How a bot likes to play: balanced, a blocker who keeps piles stalled for rivals, or a racer who spends cards freely. */
+export type BotStyle = "balanced" | "blocker" | "racer";
+
+export interface PlayerSetup { name: string; kind: PlayerKind; level?: BotLevel; style?: BotStyle }
 
 export interface Player extends PlayerSetup {
   /** The stock pile: the last card is the face-up one. */
@@ -30,7 +33,10 @@ export interface Player extends PlayerSetup {
   hand: Card[];
   /** Four personal discard piles, the last card of each being the one on top. */
   discards: Card[][];
+  /** Tournament score: 25 plus 5 a card for every round won, and the thing a tournament is played for. */
   score: number;
+  /** Points earned for how you play, in every kind of game; they turn into experience when the game ends. */
+  points: number;
 }
 
 export interface GameState {
@@ -71,7 +77,7 @@ export type GameEvent =
   | { type: "deal"; round: number }
   | { type: "draw"; player: number; count: number; bonus: boolean }
   | { type: "reshuffle" }
-  | { type: "play"; player: number; source: Source; card: Card; to: number; value: number }
+  | { type: "play"; player: number; source: Source; card: Card; to: number; value: number; points: number }
   | { type: "flip"; player: number }
   | { type: "pileDone"; to: number }
   | { type: "discard"; player: number; card: Card; pile: number }

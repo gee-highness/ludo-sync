@@ -5,7 +5,7 @@ import { chooseAction } from "@/lib/skipbo/bot";
 import { describeEvents } from "@/lib/skipbo/describe";
 import { applyAction, createGame } from "@/lib/skipbo/engine";
 import { freshSeed } from "@/lib/ludo/rng";
-import { recordGame, saveGame } from "@/lib/skipbo/save";
+import { saveGame } from "@/lib/skipbo/save";
 import type { Action, GameEvent, GameState } from "@/lib/skipbo/types";
 import { viewOf, type TableView } from "@/lib/skipbo/view";
 import type { SpeedPref } from "@/lib/client/settings";
@@ -40,12 +40,10 @@ export interface LocalSkipBo {
 }
 
 /** A game that lives entirely on this device: the engine runs here, bots play themselves, and every step is saved. */
-export const useSkipBoLocal = (initial: GameState, you: number, speed: SpeedPref, hotseat = false): LocalSkipBo => {
+export const useSkipBoLocal = (initial: GameState, you: number, speed: SpeedPref, hotseat = false, daily = false): LocalSkipBo => {
   const [state, setState] = useState(initial);
   const ref = useRef(initial);
   const { feed, push, reset } = useFeed();
-  const recorded = useRef(false);
-  const piles = useRef(0);
   // pass and play: the screen shows whoever is to play, and hides their hand until they tap, so the one before cannot be seen
   const [unlocked, setUnlocked] = useState<number | null>(hotseat ? null : you);
   const lastViewer = useRef(you);
@@ -55,22 +53,11 @@ export const useSkipBoLocal = (initial: GameState, you: number, speed: SpeedPref
     if (!r) return false;
     ref.current = r.state;
     setState(r.state);
-    let mine = false;
-    for (const e of r.events) {
-      if (e.type === "play") mine = e.player === you;
-      else if (e.type === "pileDone" && mine) piles.current += 1;
-    }
     push(r.events, describeEvents(r.events, viewOf(r.state, you)));
     return true;
   }, [push, you]);
 
-  useEffect(() => { saveGame(state, you, hotseat); }, [state, you, hotseat]);
-
-  useEffect(() => {
-    if (state.phase !== "over" || recorded.current) return;
-    recorded.current = true;
-    if (!hotseat) recordGame(state.winner === you, piles.current);
-  }, [state, you, hotseat]);
+  useEffect(() => { saveGame(state, you, hotseat, daily); }, [state, you, hotseat, daily]);
 
   // bots take their turns one move at a time, pausing like a person would
   useEffect(() => {
@@ -83,8 +70,6 @@ export const useSkipBoLocal = (initial: GameState, you: number, speed: SpeedPref
   const rematch = useCallback(() => {
     const fresh = createGame(ref.current.players.map(p => ({ name: p.name, kind: p.kind, level: p.level })), ref.current.rules, freshSeed());
     ref.current = fresh;
-    recorded.current = false;
-    piles.current = 0;
     setState(fresh);
     reset();
   }, [reset]);

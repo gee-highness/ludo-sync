@@ -34,6 +34,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
     return (
       <>
         <Table
+          record={room.slots.filter(x => x.kind === "human").length > 1 ? { withFriends: true } : undefined}
           view={room.view} act={session.act} frame={feed.frame} log={feed.log} title={TITLE} onExit={leave} away={new Set(room.away)}
           onRematch={room.view.phase === "over" ? session.rematch : undefined} rematchLabel="Rematch"
           headerExtra={<Button size="xs" colorScheme="cyan" onClick={invites.onOpen} aria-label="Invite or reconnect a player">Invite</Button>}
@@ -79,6 +80,7 @@ function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit
     return (
       <>
         <Table
+          record={{ withFriends: true }}
           view={snap.view} act={client.act} frame={feed.frame} log={feed.log} rejected={snap.rejected} title={TITLE} away={away}
           onExit={() => { quitForGood(); leave(); }} note={reconnecting ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…"
           footer={<Reactions items={reactions} onSend={e => client.react(e)} />}

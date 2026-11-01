@@ -20,7 +20,7 @@ export const ServiceWorker = () => {
     };
 
     // on a menu nothing can be lost, so a new version simply takes over; in the middle of a game the player is asked
-    const MENUS = new Set(["/", "/ludo", "/skipbo", "/garage", "/pieces", "/island"]);
+    const MENUS = new Set(["/", "/profile", "/ludo", "/skipbo", "/garage", "/pieces", "/island"]);
     const announce = (worker: ServiceWorker) => {
       if (MENUS.has(window.location.pathname)) { worker.postMessage({ type: "SKIP_WAITING" }); return; }
       toast({

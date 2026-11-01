@@ -12,7 +12,7 @@ const listPublic = (dir: string): string[] => {
 /** The service worker, generated per build so its caches are versioned and the model list stays current. */
 export function GET() {
   const version = process.env.NEXT_PUBLIC_BUILD_ID ?? "dev";
-  const shell = ["/", "/ludo", "/play", "/nearby", "/garage", "/skipbo", "/skipbo/play", "/skipbo/online", "/skipbo/nearby", "/manifest.json", "/icon.svg", ...listPublic("icons")];
+  const shell = ["/", "/profile", "/ludo", "/play", "/nearby", "/garage", "/skipbo", "/skipbo/play", "/skipbo/online", "/skipbo/nearby", "/manifest.json", "/icon.svg", ...listPublic("icons")];
   const models = listPublic("models");
   const body = `
 const VERSION = ${JSON.stringify(version)};
