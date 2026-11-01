@@ -1,5 +1,5 @@
 import { canEndTurn, currentPlayer, discardTop, fits, heightOf, stockTop, targetsFor } from "./engine";
-import { BUILDING_PILES, DISCARD_PILES, WILD, type Action, type BotLevel, type Card, type GameState, type Source } from "./types";
+import { BUILDING_PILES, DISCARD_PILES, WILD, type Action, type BotLevel, type BotStyle, type Card, type GameState, type Source } from "./types";
 
 interface Play { source: Source; card: Card; to: number }
 
@@ -99,6 +99,7 @@ const chooseDiscard = (s: GameState, level: BotLevel): Action => {
 export const chooseAction = (s: GameState, level: BotLevel = currentPlayer(s).level ?? "normal"): Action | null => {
   if (s.phase !== "play") return null;
   const me = currentPlayer(s);
+  const style: BotStyle = me.style ?? "balanced";
   const plays = allPlays(s);
 
   // the stock pile is what wins the game: play that card whenever it fits
@@ -117,7 +118,7 @@ export const chooseAction = (s: GameState, level: BotLevel = currentPlayer(s).le
     // other plays: discard tops first (they free a pile), then the hand; wildcards are kept back
     const rank = (p: Play) => (p.card === WILD ? 3 : p.source.from === "discard" ? 0 : 1);
     const sensible = plays
-      .filter(p => p.card !== WILD && !(level === "hard" && helpsOpponent(s, p.to)))
+      .filter(p => (p.card !== WILD || (style === "racer" && me.hand.length <= 2)) && !((level === "hard" || style === "blocker") && helpsOpponent(s, p.to)))
       .sort((a, b) => rank(a) - rank(b) || b.card - a.card);
     // with a full hand of choices, spare wildcards are still worth using to clear the hand when they sweep several cards
     if (sensible.length) return { type: "play", source: sensible[0].source, to: sensible[0].to };

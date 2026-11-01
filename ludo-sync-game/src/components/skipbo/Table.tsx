@@ -11,6 +11,11 @@ import { updateSettings, useSettings } from "@/lib/client/settings";
 import { RoundOverlay } from "./RoundOverlay";
 import Table3DView, { slowThisSession } from "./Table3DView";
 import { sameSource, useTableInput, type Frame } from "./useTableInput";
+import { useSkipBoRewards, type RecordOptions } from "@/hooks/useSkipBoRewards";
+import type { Award } from "@/lib/client/profile";
+import { PointsFloaters, usePointsFloaters, type Floater } from "./PointsFloaters";
+import { feltById } from "@/lib/client/unlocks";
+import { usePrefs } from "@/lib/skipbo/prefs";
 
 export type { Frame };
 
@@ -33,9 +38,16 @@ export interface TableProps {
   streakText?: string;
   /** Names of people who are away, by player index. */
   away?: ReadonlySet<number>;
+  /** Record the result (stats, experience, achievements) when the game ends. Left out for pass and play. */
+  record?: RecordOptions;
+  /** Today's challenge: shown in the header. */
+  badge?: string;
 }
 
-const useSizes = (): { hand: CardSize; pile: CardSize; side: CardSize } => {
+/** Added by the wrapper to whichever table is showing. */
+export interface TableExtras { award: Award | null; floaters: Floater[] }
+
+const useSizes = (large = false): { hand: CardSize; pile: CardSize; side: CardSize } => {
   const [w, setW] = useState(390);
   useEffect(() => {
     const on = () => setW(window.innerWidth);
@@ -43,14 +55,16 @@ const useSizes = (): { hand: CardSize; pile: CardSize; side: CardSize } => {
     window.addEventListener("resize", on);
     return () => window.removeEventListener("resize", on);
   }, []);
-  if (w >= 900) return { hand: "lg", pile: "lg", side: "md" };
-  if (w >= 420) return { hand: "md", pile: "lg", side: "md" };
-  return { hand: "md", pile: "md", side: "sm" };
+  if (w >= 900) return { hand: "lg", pile: "lg", side: large ? "lg" : "md" };
+  if (w >= 420) return large ? { hand: "lg", pile: "lg", side: "md" } : { hand: "md", pile: "lg", side: "md" };
+  return large ? { hand: "lg", pile: "md", side: "md" } : { hand: "md", pile: "md", side: "sm" };
 };
 
 /** The whole table: other players across the top, the shared piles in the middle, and your own cards at the bottom. */
-function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, away }: TableProps) {
-  const sizes = useSizes();
+function FlatTable({ award, floaters, view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, away, badge }: TableProps & TableExtras) {
+  const prefs = usePrefs();
+  const felt = feltById(prefs.felt);
+  const sizes = useSizes(prefs.large);
   const input = useTableInput(view, act, frame, rejected);
   const { me, myTurn, selected, setSelected, banner, popped, cardOf, targets, picked, tryPlay, onHand, onStock, onDiscard, onBuilding, wantHint, hintSrc, hintTarget, mustEnd, status } = input;
   const [dropOver, setDropOver] = useState<string | null>(null);
@@ -82,7 +96,8 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
 
   const others = useMemo(() => view.players.map((p, i) => ({ p, i })).filter(x => x.i !== view.you), [view.players, view.you]);
   return (
-    <Box minH="100dvh" color="white" position="relative" overflow="hidden" bg="radial-gradient(ellipse at 50% 30%, #1f7a4d 0%, #14573a 55%, #0c3a27 100%)">
+    <Box minH="100dvh" color="white" position="relative" overflow="hidden" bg={`radial-gradient(ellipse at 50% 30%, ${felt.base} 0%, ${felt.base} 35%, ${felt.dark} 100%)`}>
+    <PointsFloaters items={floaters} />
     <Flex direction="column" minH="100dvh" maxW="900px" mx="auto" position="relative"
       pt="max(8px, env(safe-area-inset-top))" pb="max(10px, env(safe-area-inset-bottom))" px={2}>
       <Box position="absolute" inset={0} opacity={0.16} pointerEvents="none" bgImage="repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 2px, transparent 2px 14px)" />
@@ -90,9 +105,9 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
       <HStack position="relative" zIndex={2} spacing={2} mb={2}>
         <IconButton aria-label="Leave table" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" size="sm" onClick={onExit} />
         <VStack spacing={0} align="start" flex={1} minW={0}>
-          <Text fontWeight={800} noOfLines={1}>{title}</Text>
+          <Text as="h1" fontWeight={800} noOfLines={1}>{title}</Text>
           <Text fontSize="xs" color="whiteAlpha.800">
-            {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}
+            {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}{badge ? ` · ${badge}` : ""}
           </Text>
         </VStack>
         {note && <Badge colorScheme="orange">{note}</Badge>}
@@ -110,7 +125,7 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
       <VStack position="relative" zIndex={1} spacing={3} py={2} borderRadius="2xl" bg="rgba(0,0,0,.2)" border="1px solid rgba(255,255,255,.12)" mb={2}>
         <HStack spacing={sizes.pile === "lg" ? 4 : 2.5} justify="center" wrap="wrap" align="flex-start">
           <VStack spacing={1}>
-            <Box position="relative" aria-label={`Draw pile, ${view.drawCount} cards`}>
+            <Box position="relative" role="img" aria-label={`Draw pile, ${view.drawCount} cards`}>
               {view.drawCount > 0 ? <CardFace faceDown size={sizes.pile} /> : <Slot size={sizes.pile} label="∅" />}
             </Box>
             <Text fontSize="xs" color="whiteAlpha.800">Draw · {view.drawCount}</Text>
@@ -145,7 +160,7 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
         <VStack position="relative" zIndex={1} spacing={2} p={2} mt="auto" borderRadius="2xl" bg={myTurn ? "rgba(253,224,71,.12)" : "rgba(0,0,0,.18)"} border="2px solid" borderColor={myTurn ? "#fde047" : "rgba(255,255,255,.14)"} transition="all .2s">
           <HStack w="100%" justify="space-between" px={1}>
             <Text fontWeight={800} noOfLines={1}>{me.name}{myTurn ? " · your turn" : ""}</Text>
-            {view.rules.tournament && <Badge colorScheme="yellow">{me.score} pts</Badge>}
+            <HStack spacing={2}><Badge colorScheme="orange" aria-label={`${me.points} points`}>★ {me.points}</Badge>{view.rules.tournament && <Badge colorScheme="yellow">{me.score} score</Badge>}</HStack>
           </HStack>
           <HStack spacing={3} align="flex-end" justify="center" wrap="wrap">
             <VStack spacing={1}>
@@ -208,7 +223,7 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
       )}
 
       {(view.phase === "roundOver" || view.phase === "over") && (
-        <RoundOverlay view={view} act={act} onExit={onExit} onRematch={onRematch} rematchLabel={rematchLabel} waitingText={waitingText} />
+        <RoundOverlay view={view} act={act} onExit={onExit} onRematch={onRematch} rematchLabel={rematchLabel} waitingText={waitingText} award={award} />
       )}
     </Flex>
     </Box>
@@ -217,6 +232,9 @@ function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra
 
 /** Picks flat or 3D. If 3D cannot start, runs slowly or loses its context, play carries on on the flat table without interruption. */
 export function Table(props: TableProps) {
+  const award = useSkipBoRewards(props.view, props.frame, props.record);
+  const floaters = usePointsFloaters(props.view);
+  const lastLine = props.log[props.log.length - 1] ?? "";
   const [settings] = useSettings();
   const caps = useCapabilities();
   const [failed, setFailed] = useState(false);
@@ -227,13 +245,19 @@ export function Table(props: TableProps) {
   const toggle = can3d ? (
     <Button size="sm" variant="outline" color="white" aria-label={use3d ? "Switch to the flat table" : "Switch to the 3D table"} onClick={() => updateSettings({ renderer: use3d ? "2d" : "3d" })}>{use3d ? "2D" : "3D"}</Button>
   ) : null;
-  if (use3d) return <Table3DView {...props} toggle={toggle} onFail={() => setFailed(true)} />;
-  return <FlatTable {...props} headerExtra={<>{toggle}{props.headerExtra}</>} />;
+  return (
+    <>
+      <Box position="absolute" w="1px" h="1px" overflow="hidden" clipPath="inset(50%)" role="status" aria-live="polite">{lastLine}</Box>
+      {use3d
+        ? <Table3DView {...props} award={award} floaters={floaters} toggle={toggle} onFail={() => setFailed(true)} />
+        : <FlatTable {...props} award={award} floaters={floaters} headerExtra={<>{toggle}{props.headerExtra}</>} />}
+    </>
+  );
 }
 
 function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView; active: boolean; dealer: boolean; tournament: boolean; away?: boolean; size: CardSize }) {
   return (
-    <VStack spacing={1} p={2} borderRadius="xl" flex="1 1 150px" maxW="230px" minW="140px" bg={active ? "rgba(253,224,71,.14)" : "rgba(0,0,0,.2)"} border="2px solid" borderColor={active ? "#fde047" : "rgba(255,255,255,.12)"}
+    <VStack role="group" spacing={1} p={2} borderRadius="xl" flex="1 1 150px" maxW="230px" minW="140px" bg={active ? "rgba(253,224,71,.14)" : "rgba(0,0,0,.2)"} border="2px solid" borderColor={active ? "#fde047" : "rgba(255,255,255,.12)"}
       transition="all .2s" opacity={away ? 0.6 : 1} aria-label={`${p.name}${active ? ", their turn" : ""}`}>
       <HStack w="100%" justify="space-between" spacing={1}>
         <Text fontWeight={800} fontSize="sm" noOfLines={1}>{p.name}</Text>
@@ -250,10 +274,11 @@ function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView
         </VStack>
         <VStack spacing={0.5} align="flex-start">
           <Text fontSize="xs" color="whiteAlpha.800">Hand {p.handCount}</Text>
-          {tournament && <Text fontSize="xs" color="#fde047" fontWeight={800}>{p.score} pts</Text>}
+          <Text fontSize="xs" color="#fdba74" fontWeight={800} aria-label={`${p.points} points`}>★ {p.points}</Text>
+          {tournament && <Text fontSize="xs" color="#fde047" fontWeight={800}>{p.score} score</Text>}
         </VStack>
       </HStack>
-      <HStack spacing="3px" align="flex-end" justify="center" aria-label={`${p.name}'s discard piles`}>
+      <HStack spacing="3px" align="flex-end" justify="center" role="group" aria-label={`${p.name}'s discard piles`}>
         {p.discards.map((d, i) => d.length ? <CardFace key={i} value={d.at(-1)!} size="xs" count={d.length} /> : <Slot key={i} size="xs" />)}
       </HStack>
     </VStack>

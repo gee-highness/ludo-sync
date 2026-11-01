@@ -14,8 +14,8 @@ test("menu loads and a quick bot game can be played for a few turns", async ({ p
   page.on("pageerror", e => errors.push(e.message));
   page.on("console", m => { if (m.type() === "error" && !/Failed to load resource|GL Driver Message|GPU stall/.test(m.text())) errors.push(m.text()); });
 
-  await page.goto("/");
-  await expect(page.getByText("Ludo Sync").first()).toBeVisible();
+  await page.goto("/ludo");
+  await expect(page.getByText("Ludo").first()).toBeVisible();
 
   await page.goto("/play?preset=bot&quick=1");
   const roll = page.getByRole("button", { name: "Roll the dice" });
@@ -42,10 +42,10 @@ test("piece maker edits a piece and saves it", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(String(e)));
   await page.goto("/pieces");
-  await page.getByRole("button", { name: "Crown", exact: true }).click();
+  await page.getByRole("button", { name: "Taxi", exact: true }).click();
   await expect(page.getByRole("img", { name: "2D preview of the piece" })).toBeVisible();
   const saved = await page.evaluate(() => localStorage.getItem("ludo-sync:v1:pieces"));
-  expect(saved).toContain("crown");
+  expect(saved).toContain("taxi");
   expect(errors).toEqual([]);
 });
 
@@ -87,7 +87,7 @@ test("an online game that was left can be rejoined from the menu, and forgotten"
       localStorage.setItem("ludo-sync:v1:room", JSON.stringify({ role: "guest", code: "ABC234", name: "Pat", savedAt: Date.now() }));
     }
   });
-  await page.goto("/", { waitUntil: "networkidle" });
+  await page.goto("/ludo", { waitUntil: "networkidle" });
   const rejoin = page.getByRole("button", { name: /Rejoin online game/ });
   await expect(rejoin).toBeVisible();
   await expect(rejoin).toContainText("ABC-234");

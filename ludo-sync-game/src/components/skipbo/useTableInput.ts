@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
+import { buzz } from "@/lib/client/haptics";
 import { turnLine } from "@/lib/skipbo/describe";
 import { WILD, type Action, type Card, type GameEvent, type Source } from "@/lib/skipbo/types";
 import { hintFor, type TableView } from "@/lib/skipbo/view";
@@ -45,9 +46,9 @@ export function useTableInput(view: TableView, act: (a: Action) => boolean, fram
     if (frame.id === 0) return;
     for (const e of frame.events) {
       if (e.type === "deal") sound.play("shuffle");
-      else if (e.type === "play") { sound.play("card"); setPopped({ pile: e.to, id: frame.id }); }
+      else if (e.type === "play") { sound.play("card"); if (e.player === view.you) buzz("tap"); setPopped({ pile: e.to, id: frame.id }); }
       else if (e.type === "discard") sound.play("flip");
-      else if (e.type === "pileDone") { sound.play("home"); say("Pile complete!", "good"); }
+      else if (e.type === "pileDone") { sound.play("home"); buzz("bonus"); say("Pile complete!", "good"); }
       else if (e.type === "draw" && e.bonus) { sound.play("bonus"); say(e.player === view.you ? "All five played! Draw five more" : `${view.players[e.player]?.name} plays on`, "good"); }
       else if (e.type === "reshuffle") { sound.play("shuffle"); say("Shuffling the finished piles"); }
       else if (e.type === "turn" && e.player === view.you) { sound.play("turn"); say("Your turn"); }

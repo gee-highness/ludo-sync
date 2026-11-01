@@ -2,7 +2,7 @@ import { SecureChannel } from "../../net/secure";
 import { TransportError, type Endpoint, type Network } from "../../net/transport";
 import type { Action, GameEvent } from "../types";
 import type { TableView } from "../view";
-import { PROTOCOL, ROOM_ID_PREFIX, parseHostMsg, type ClientMsg, type RoomView } from "./protocol";
+import { CHAT_HISTORY, PROTOCOL, ROOM_ID_PREFIX, cleanChat, parseHostMsg, type ChatItem, type ClientMsg, type RoomView } from "./protocol";
 import type { FrameInfo, Reaction } from "./host";
 
 export type GuestStatus = "connecting" | "connected" | "reconnecting" | "host-left" | "kicked" | "error";
@@ -15,6 +15,8 @@ export interface GuestSnapshot {
   check: string;
   view: TableView | null;
   rejected?: string;
+  /** The last messages in the room's chat, oldest first. */
+  chat: ChatItem[];
 }
 
 export interface GuestOptions {
@@ -50,7 +52,7 @@ export class SkipBoGuest {
   private chan?: SecureChannel;
   private gameId = -1;
   private n: number | null = null;
-  private snap: GuestSnapshot = { status: "connecting", room: null, check: "", view: null };
+  private snap: GuestSnapshot = { status: "connecting", room: null, check: "", view: null, chat: [] };
   private listeners = new Set<(s: GuestSnapshot) => void>();
   private frameListeners = new Set<(f: FrameInfo) => void>();
   private reactionListeners = new Set<(r: Reaction) => void>();
@@ -126,6 +128,8 @@ export class SkipBoGuest {
       case "room": this.onRoom(msg.room); break;
       case "frame": this.handleFrame(msg); break;
       case "reaction": this.reactionListeners.forEach(cb => cb({ slot: msg.slot, name: msg.name, emoji: msg.emoji, id: ++this.reactionId })); break;
+      case "chat": if (!this.snap.chat.some(c => c.id === msg.item.id)) this.set({ chat: [...this.snap.chat, msg.item].slice(-CHAT_HISTORY) }); break;
+      case "chatlog": this.set({ chat: msg.items }); break;
       case "reject": this.set({ rejected: msg.reason }); break;
       case "kicked": this.finish({ status: "kicked" }); break;
       case "bye": this.finish({ status: "host-left" }); break;
@@ -167,6 +171,13 @@ export class SkipBoGuest {
     return true;
   };
   react(emoji: string) { this.send({ t: "react", emoji }); }
+  /** Says something in the room's chat. The host cleans it and sends it to everyone, this device included. */
+  sendChat(text: string): boolean {
+    const clean = cleanChat(text);
+    if (!clean || this.snap.status !== "connected") return false;
+    this.send({ t: "chat", text: clean });
+    return true;
+  }
   rename(name: string) { this.send({ t: "name", name }); }
 
   /** Leaves. In a running game this is a soft leave (the seat is kept for a rejoin); `forfeit` hands the cards to a bot. */

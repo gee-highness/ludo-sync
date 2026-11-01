@@ -1,11 +1,12 @@
 import { chooseAction } from "./bot";
-import { HAND_SIZE, type Action, type BotLevel, type Card, type GameState, type Phase, type PlayerKind, type Rules } from "./types";
+import { HAND_SIZE, type Action, type BotLevel, type BotStyle, type Card, type GameState, type Phase, type PlayerKind, type Rules } from "./types";
 
 /** One player as another person at the table can see them: hands and the stock under the top card stay hidden. */
 export interface PlayerView {
   name: string;
   kind: PlayerKind;
   level?: BotLevel;
+  style?: BotStyle;
   stockCount: number;
   stockTop: Card | null;
   /** Your own hand; null for everyone else, whose hand is only a count. */
@@ -14,6 +15,7 @@ export interface PlayerView {
   /** Discard piles are open to everyone. */
   discards: Card[][];
   score: number;
+  points: number;
 }
 
 /** Everything one viewer is allowed to know about a game. This, not the full state, is what crosses the network. */
@@ -38,10 +40,10 @@ export interface TableView {
 export const viewOf = (s: GameState, you: number | null): TableView => ({
   rules: s.rules,
   players: s.players.map((p, i) => ({
-    name: p.name, kind: p.kind, ...(p.level ? { level: p.level } : {}),
+    name: p.name, kind: p.kind, ...(p.level ? { level: p.level } : {}), ...(p.style ? { style: p.style } : {}),
     stockCount: p.stock.length, stockTop: p.stock.length ? p.stock[p.stock.length - 1] : null,
     hand: i === you ? [...p.hand] : null, handCount: p.hand.length,
-    discards: p.discards.map(d => [...d]), score: p.score,
+    discards: p.discards.map(d => [...d]), score: p.score, points: p.points,
   })),
   you, turn: s.turn, dealer: s.dealer, drawCount: s.draw.length, completedCount: s.completed.length,
   building: s.building.map(b => [...b]), phase: s.phase, round: s.round, roundWinner: s.roundWinner, roundPoints: s.roundPoints,
@@ -56,7 +58,7 @@ export const hintFor = (v: TableView): Action | null => {
     version: 1, rules: v.rules, turn: v.turn, dealer: v.dealer, draw: [], completed: [], building: v.building, phase: v.phase, round: v.round,
     roundWinner: v.roundWinner, roundPoints: v.roundPoints, winner: v.winner, passes: 0, rng: v.seq, seq: v.seq,
     players: v.players.map((p, i) => ({
-      name: p.name, kind: p.kind, level: p.level, score: p.score, discards: p.discards,
+      name: p.name, kind: p.kind, level: p.level, style: p.style, score: p.score, points: p.points, discards: p.discards,
       stock: p.stockTop === null ? [] : [...Array.from({ length: Math.max(0, p.stockCount - 1) }, () => 1), p.stockTop],
       hand: i === v.you ? [...(p.hand ?? [])] : Array.from({ length: p.handCount }, () => 1),
     })),
@@ -76,7 +78,7 @@ export const parseView = (raw: unknown): TableView | null => {
   const players: PlayerView[] = [];
   for (const p of raw.players) {
     if (!isObj(p) || typeof p.name !== "string" || (p.kind !== "human" && p.kind !== "bot")) return null;
-    if (!isInt(p.stockCount, 0, 100) || !isInt(p.handCount, 0, HAND_SIZE) || !isInt(p.score, 0, 1_000_000)) return null;
+    if (!isInt(p.stockCount, 0, 100) || !isInt(p.handCount, 0, HAND_SIZE) || !isInt(p.score, 0, 1_000_000) || !isInt(p.points ?? 0, 0, 1_000_000)) return null;
     if (p.stockTop !== null && !isCard(p.stockTop)) return null;
     if ((p.stockTop === null) !== (p.stockCount === 0)) return null;
     if (!Array.isArray(p.discards) || p.discards.length !== 4) return null;
@@ -85,9 +87,10 @@ export const parseView = (raw: unknown): TableView | null => {
     const hand = p.hand === null ? null : cards(p.hand, HAND_SIZE);
     if (p.hand !== null && !hand) return null;
     const level = p.level === "easy" || p.level === "normal" || p.level === "hard" ? p.level : undefined;
+    const style = p.style === "blocker" || p.style === "racer" ? p.style : undefined;
     players.push({
-      name: p.name.slice(0, 24), kind: p.kind, ...(level ? { level } : {}), stockCount: p.stockCount, stockTop: p.stockTop as Card | null,
-      hand, handCount: p.handCount, discards: discards as Card[][], score: p.score,
+      name: p.name.slice(0, 24), kind: p.kind, ...(level ? { level } : {}), ...(style ? { style } : {}), stockCount: p.stockCount, stockTop: p.stockTop as Card | null,
+      hand, handCount: p.handCount, discards: discards as Card[][], score: p.score, points: (p.points as number | undefined) ?? 0,
     });
   }
   const rules = raw.rules;

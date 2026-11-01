@@ -8,6 +8,7 @@ import { SkipBoScene, type Pick, type SceneInput } from "./SkipBoScene";
 
 interface Props {
   input: SceneInput;
+  look: { back: string; felt: string; marks: boolean };
   quality: Tier;
   onPick: (p: Pick) => void;
   onTier: (dir: "down" | "up") => void;
@@ -16,7 +17,7 @@ interface Props {
 }
 
 /** The canvas of the 3D table: it owns the scene for as long as it is on screen and hands it every new position. */
-export default function Table3DCanvas({ input, quality, onPick, onTier, onFail, onReady }: Props) {
+export default function Table3DCanvas({ input, look, quality, onPick, onTier, onFail, onReady }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SkipBoScene | null>(null);
   const cb = useRef({ onPick, onTier, onFail, onReady });
@@ -32,7 +33,7 @@ export default function Table3DCanvas({ input, quality, onPick, onTier, onFail, 
     let scene: SkipBoScene;
     try {
       scene = new SkipBoScene(el, {
-        quality,
+        quality, look,
         onPick: p => cb.current.onPick(p),
         onTier: d => cb.current.onTier(d),
         onContextLost: () => cb.current.onFail(),
@@ -46,7 +47,9 @@ export default function Table3DCanvas({ input, quality, onPick, onTier, onFail, 
     scene.update(inputRef.current);
     registerSnapshot(() => scene.snapshot());
     return () => { registerSnapshot(null); scene.dispose(); sceneRef.current = null; };
-  }, [quality]);
+    // a new look (or quality) means a new scene: the textures are painted once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quality, look.back, look.felt, look.marks]);
 
   useEffect(() => { sceneRef.current?.update(input); }, [input]);
 

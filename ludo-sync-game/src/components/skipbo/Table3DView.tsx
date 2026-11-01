@@ -10,24 +10,27 @@ import { detectStartTier, recalledTier, rememberTier, stepDown, stepUp, type Tie
 import { updateSettings, useSettings } from "@/lib/client/settings";
 import { RoundOverlay } from "./RoundOverlay";
 import type { Pick, SceneInput } from "./SkipBoScene";
-import type { TableProps } from "./Table";
+import type { TableExtras, TableProps } from "./Table";
+import { PointsFloaters } from "./PointsFloaters";
 import { useTableInput } from "./useTableInput";
+import { usePrefs } from "@/lib/skipbo/prefs";
 
 const Canvas = dynamic(() => import("./Table3DCanvas"), { ssr: false });
 
 export const SLOW_KEY = "ludo-sync:slow3d";
 export const slowThisSession = () => { try { return sessionStorage.getItem(SLOW_KEY) === "1"; } catch { return false; } };
 
-interface Props extends TableProps {
+interface Props extends TableProps, TableExtras {
   toggle: React.ReactNode;
   onFail: () => void;
 }
 
 /** The 3D table: the picture fills the screen, and the controls float over it. */
-export default function Table3DView({ view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, toggle, onFail }: Props) {
+export default function Table3DView({ award, floaters, badge, view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, toggle, onFail }: Props) {
   const input = useTableInput(view, act, frame, rejected);
   const { myTurn, selected, hintSrc, hintTarget, targets, picked, banner, status, mustEnd, hintLine } = input;
   const [settings] = useSettings();
+  const prefs = usePrefs();
   const caps = useCapabilities();
   const toast = useToast();
   const [showLog, setShowLog] = useState(false);
@@ -68,8 +71,8 @@ export default function Table3DView({ view, act, frame, log, rejected, title, on
 
   const reduceMotion = settings.motion === "reduce" || (settings.motion === "auto" && !!caps?.reducedMotion);
   const sceneInput: SceneInput = useMemo(() => ({
-    view, frame, selected, hintSrc, hintTarget, targets: picked !== undefined ? targets(picked) : [], camera: settings.camera, reduceMotion, insets,
-  }), [view, frame, selected, hintSrc, hintTarget, targets, picked, settings.camera, reduceMotion, insets]);
+    view, frame, selected, hintSrc, hintTarget, targets: picked !== undefined ? targets(picked) : [], camera: settings.camera, look: { back: prefs.back, felt: prefs.felt, marks: prefs.marks }, reduceMotion, insets,
+  }), [view, frame, prefs.back, prefs.felt, prefs.marks, selected, hintSrc, hintTarget, targets, picked, settings.camera, reduceMotion, insets]);
 
   const onPick = (p: Pick) => {
     if (p.kind === "hand") input.onHand(p.index);
@@ -82,16 +85,18 @@ export default function Table3DView({ view, act, frame, log, rejected, title, on
   const topCamera = settings.camera === "top";
   return (
     <Box position="relative" minH="100dvh" h="100dvh" color="white" overflow="hidden" bg="#07140e">
-      <Canvas input={sceneInput} quality={quality} onPick={onPick} onTier={onTier} onFail={onFail} onReady={() => undefined} />
+      <PointsFloaters items={floaters} />
+      <Canvas input={sceneInput} look={{ back: prefs.back, felt: prefs.felt, marks: prefs.marks }} quality={quality} onPick={onPick} onTier={onTier} onFail={onFail} onReady={() => undefined} />
 
       <Box position="absolute" inset={0} display="flex" flexDirection="column" pointerEvents="none">
         <Box ref={topRef} pointerEvents="auto" pt="max(8px, env(safe-area-inset-top))" px={2} pb={2} bg="linear-gradient(180deg, rgba(4,14,9,.82), rgba(4,14,9,0))">
           <HStack spacing={2}>
             <IconButton aria-label="Leave table" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" size="sm" onClick={onExit} />
             <VStack spacing={0} align="start" flex={1} minW={0}>
-              <Text fontWeight={800} noOfLines={1}>{title}</Text>
+              <Text as="h1" fontWeight={800} noOfLines={1}>{title}</Text>
               <Text fontSize="xs" color="whiteAlpha.800" noOfLines={1}>
-                {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}
+                {view.rules.tournament ? `Round ${view.round} · first to ${view.rules.target}` : "First to empty their stock wins"}{streakText ? ` · ${streakText}` : ""}{badge ? ` · ${badge}` : ""}
+                {view.you !== null ? ` · ★ ${view.players[view.you].points}` : ""}
               </Text>
             </VStack>
             {note && <Badge colorScheme="orange">{note}</Badge>}
@@ -131,7 +136,7 @@ export default function Table3DView({ view, act, frame, log, rejected, title, on
         </Box>
       )}
       {(view.phase === "roundOver" || view.phase === "over") && (
-        <RoundOverlay view={view} act={act} onExit={onExit} onRematch={onRematch} rematchLabel={rematchLabel} waitingText={waitingText} />
+        <RoundOverlay view={view} act={act} onExit={onExit} onRematch={onRematch} rematchLabel={rematchLabel} waitingText={waitingText} award={award} />
       )}
     </Box>
   );

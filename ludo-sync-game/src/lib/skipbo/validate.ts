@@ -13,13 +13,14 @@ export const parseGameState = (raw: unknown): GameState | null => {
   const n = raw.players.length;
   const players: GameState["players"] = [];
   for (const p of raw.players) {
-    if (!isObj(p) || typeof p.name !== "string" || (p.kind !== "human" && p.kind !== "bot") || !int(p.score, 0, 1_000_000)) return null;
+    if (!isObj(p) || typeof p.name !== "string" || (p.kind !== "human" && p.kind !== "bot") || !int(p.score, 0, 1_000_000) || !int(p.points ?? 0, 0, 1_000_000)) return null;
     const stock = cards(p.stock, 30), hand = cards(p.hand, 5);
     if (!stock || !hand || !Array.isArray(p.discards) || p.discards.length !== 4) return null;
     const discards = p.discards.map(d => cards(d, 162));
     if (discards.some(d => !d)) return null;
     const level = p.level === "easy" || p.level === "normal" || p.level === "hard" ? p.level : undefined;
-    players.push({ name: p.name.slice(0, 24), kind: p.kind, level, stock, hand, discards: discards as number[][], score: p.score });
+    const style = p.style === "blocker" || p.style === "racer" ? p.style : undefined;
+    players.push({ name: p.name.slice(0, 24), kind: p.kind, level, ...(style ? { style } : {}), stock, hand, discards: discards as number[][], score: p.score, points: (p.points as number | undefined) ?? 0 });
   }
   const draw = cards(raw.draw, 162), completed = cards(raw.completed, 162);
   if (!draw || !completed || !Array.isArray(raw.building) || raw.building.length !== 4) return null;
