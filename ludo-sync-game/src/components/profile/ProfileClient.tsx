@@ -5,7 +5,7 @@ import { ChevronLeftIcon } from "@chakra-ui/icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ACHIEVEMENTS, evaluate as evaluateLudo } from "@/lib/client/achievements";
-import { levelFor, loadProfile, type Profile } from "@/lib/client/profile";
+import { levelFor, lifetimeTotal, loadProfile, rankFor, RANKS, type Profile } from "@/lib/client/profile";
 import { loadStats as loadLudoStats, type Stats } from "@/lib/client/stats";
 import { CARD_BACKS, FELTS, isUnlocked } from "@/lib/client/unlocks";
 import { evaluate as evaluateSkipBo } from "@/lib/skipbo/achievements";
@@ -37,6 +37,8 @@ export default function ProfileClient() {
   useEffect(() => { setProfile(loadProfile()); setLudo(loadLudoStats()); setSb(loadSkipBoStats()); setDaily(loadDailyRecord()); }, []);
   if (!profile || !ludo || !sb) return null;
   const lv = levelFor(profile.xp);
+  const life = lifetimeTotal(profile);
+  const rk = rankFor(life);
   const ludoAch = evaluateLudo(ludo), sbAch = evaluateSkipBo(sb);
   const doneCount = ludoAch.filter(a => a.done).length + sbAch.filter(a => a.done).length;
   const total = ACHIEVEMENTS.length + sbAch.length;
@@ -61,6 +63,34 @@ export default function ProfileClient() {
             <Text fontSize="xs" color="whiteAlpha.700">Every point you score in a game becomes XP when it ends. {profile.today.date && profile.today.played ? `${profile.today.played} game${profile.today.played === 1 ? "" : "s"} today.` : ""}</Text>
           </Box>
         </Flex>
+
+        <Box as="section" aria-label="Lifetime points" p={4} borderRadius="2xl" bg="whiteAlpha.100" border="1px solid" borderColor="whiteAlpha.300">
+          <Flex align="center" gap={3} wrap="wrap">
+            <Text fontSize="3xl" aria-hidden>{rk.rank.icon}</Text>
+            <Box flex={1} minW="180px">
+              <Text fontSize="xs" textTransform="uppercase" color="gray.300" fontWeight={800}>Lifetime points</Text>
+              <Text fontSize="3xl" fontWeight={900} lineHeight={1.1}>★ {life.toLocaleString()}</Text>
+              <Text fontWeight={800} color="yellow.200">{rk.rank.name}</Text>
+            </Box>
+            <Box textAlign="right" fontSize="sm" color="gray.200">
+              <Text>Ludo: ★ {profile.lifetime.ludo.toLocaleString()}</Text>
+              <Text>Skip-Bo: ★ {profile.lifetime.skipbo.toLocaleString()}</Text>
+              <Text color="gray.300">Best game: ★ {Math.max(profile.best.ludo, profile.best.skipbo)}</Text>
+            </Box>
+          </Flex>
+          {rk.next ? (
+            <>
+              <Progress mt={3} value={rk.fraction * 100} borderRadius="full" h="8px" colorScheme="orange" bg="blackAlpha.400" aria-label={`${rk.into} of ${rk.need} points to ${rk.next.name}`} />
+              <Text fontSize="sm" color="gray.200" mt={1}>{(rk.next.at - life).toLocaleString()} more points to reach {rk.next.icon} {rk.next.name}</Text>
+            </>
+          ) : <Text fontSize="sm" color="gray.200" mt={2}>You have reached the top rank. Thank you for playing.</Text>}
+          <HStack mt={3} spacing={2} wrap="wrap" aria-label="All ranks">
+            {RANKS.map((r, i) => (
+              <Text key={r.name} fontSize="xs" px={2} py="2px" borderRadius="full" bg={i <= rk.index ? "yellow.400" : "whiteAlpha.200"} color={i <= rk.index ? "black" : "gray.200"} fontWeight={700}>{r.icon} {r.name} · {r.at.toLocaleString()}</Text>
+            ))}
+          </HStack>
+          <Text fontSize="xs" color="gray.300" mt={2}>Every point you score in a game is added here and never taken away. Experience (above) is made from the same points.</Text>
+        </Box>
 
         <SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
           <Box p={4} borderRadius="xl" bg="whiteAlpha.100" borderLeft="6px solid #E53E3E">

@@ -291,7 +291,8 @@ export default function GameScreen(props: GameScreenProps) {
         const hardest = frame.state.players.filter(p => p.kind === "bot" && p.level).reduce<"easy" | "normal" | "hard" | undefined>((m, p) => (!m || rank[p.level!] > rank[m] ? p.level : m), undefined);
         const mineP = frame.state.players.find(p => mine.current.includes(p.seat));
         const award = awardGame({ game: "ludo", won, players: frame.state.players.length, botLevel: hardest, tournament: !!frame.state.rules.tycoon, daily: props.daily, withFriends: frame.state.players.filter(p => p.kind === "human").length > 1, points: mineP ? pointsOf(mineP) : 0 });
-        toast({ title: `+${award.gained} XP`, description: award.leveledUp ? `Level ${award.after.level}${unlockedAt(award.after.level).length ? ` · unlocked ${unlockedAt(award.after.level).map(u => u.name).join(", ")}` : ""}` : `Level ${award.after.level}: ${award.after.into} of ${award.after.need}`, status: award.leveledUp ? "success" : "info", duration: award.leveledUp ? 8000 : 4000, isClosable: true, position: "top" });
+        if (award.rankedUp) toast({ title: `${award.rankAfter.rank.icon} ${award.rankAfter.rank.name}`, description: `New rank: ${award.lifetime.toLocaleString()} lifetime points`, status: "success", duration: 8000, isClosable: true, position: "top" });
+        toast({ title: `+${award.gained} XP · ★ +${award.pointsGained}`, description: award.leveledUp ? `Level ${award.after.level}${unlockedAt(award.after.level).length ? ` · unlocked ${unlockedAt(award.after.level).map(u => u.name).join(", ")}` : ""}` : `Level ${award.after.level}: ${award.after.into} of ${award.after.need}`, status: award.leveledUp ? "success" : "info", duration: award.leveledUp ? 8000 : 4000, isClosable: true, position: "top" });
         setStreak(after.streak);
         if (props.daily) {
           const day = recordDaily(dateKey(), won);

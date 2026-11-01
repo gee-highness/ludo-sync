@@ -56,6 +56,9 @@ export function RoundOverlay({ view, act, onExit, onRematch, rematchLabel = "Pla
             <Text fontWeight={900} color="#fde047">+{award.gained} XP</Text>
             <Box w="100%" h="8px" borderRadius="full" bg="whiteAlpha.300" overflow="hidden"><Box h="100%" w={`${Math.round(award.after.fraction * 100)}%`} bg="linear-gradient(90deg,#fde047,#f59e0b)" transition="width .8s ease" /></Box>
             <Text fontSize="sm" color="whiteAlpha.800">Level {award.after.level}{award.leveledUp ? " · level up!" : ""} · {award.after.into} of {award.after.need} to the next</Text>
+            <Text fontSize="sm" color="#fdba74" fontWeight={800} aria-label={`${award.pointsGained} points added to your lifetime total of ${award.lifetime}`}>
+              ★ +{award.pointsGained} lifetime points · total ★ {award.lifetime.toLocaleString()} · {award.rankAfter.rank.icon} {award.rankAfter.rank.name}{award.newBest ? " · your best game!" : ""}
+            </Text>
           </VStack>
         )}
         <HStack w="100%" spacing={2}>

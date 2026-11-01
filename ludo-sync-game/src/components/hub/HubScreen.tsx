@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { GAMES } from "@/lib/games";
 import { dailyChallenge, dailyDone, dateKey, loadDailyRecord } from "@/lib/client/daily";
-import { levelFor, loadProfile, type LevelInfo } from "@/lib/client/profile";
+import { levelFor, lifetimeTotal, loadProfile, rankFor, type LevelInfo, type RankInfo } from "@/lib/client/profile";
 import { loadGame as loadLudo } from "@/lib/client/save";
 import { loadGame as loadSkipBo } from "@/lib/skipbo/save";
 import { dailyDone as sbDailyDone, loadDailyRecord as loadSbDaily, skipBoDaily } from "@/lib/skipbo/daily";
@@ -33,11 +33,14 @@ const TileLink = ({ t }: { t: Tile }) => (
 
 export default function HubScreen() {
   const [level, setLevel] = useState<LevelInfo | null>(null);
+  const [rank, setRank] = useState<RankInfo | null>(null);
   const [resume, setResume] = useState<Record<string, boolean>>({});
   const [tiles, setTiles] = useState<{ continue: Tile[]; today: Tile[] }>({ continue: [], today: [] });
 
   useEffect(() => {
-    setLevel(levelFor(loadProfile().xp));
+    const prof = loadProfile();
+    setLevel(levelFor(prof.xp));
+    setRank(rankFor(lifetimeTotal(prof)));
     const ludo = loadLudo(), sb = loadSkipBo(), room = loadSkipBoRoom();
     setResume({ ludo: !!ludo, skipbo: !!sb });
     const cont: Tile[] = [];
@@ -64,7 +67,7 @@ export default function HubScreen() {
           <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} title={`${level.into} of ${level.need} experience to the next level`}>
             <Flex w="42px" h="42px" borderRadius="full" bg="linear-gradient(135deg,#4c1d95,#1e3a8a)" border="3px solid #fde047" align="center" justify="center" fontWeight={900} flexShrink={0}>{level.level}</Flex>
             <Box flex={1} minW={0}>
-              <Text fontSize="sm" fontWeight={800}>Level {level.level}</Text>
+              <Text fontSize="sm" fontWeight={800}>Level {level.level}{rank ? ` · ${rank.rank.icon} ${rank.rank.name} · ★ ${rank.points.toLocaleString()}` : ""}</Text>
               <Progress value={level.fraction * 100} size="xs" borderRadius="full" colorScheme="yellow" bg="whiteAlpha.300" aria-hidden />
             </Box>
             <Text fontSize="xs" color="gray.300">Profile ›</Text>

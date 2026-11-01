@@ -83,6 +83,10 @@ test("the profile shows a level, achievements and card backs, and a locked back 
   await page.goto("/profile");
   await expect(page.getByLabel(/^Level 1$/)).toBeVisible();
   await expect(page.getByRole("heading", { name: /Achievements · 0 of/ })).toBeVisible();
+  const life = page.getByRole("region", { name: "Lifetime points" });
+  await expect(life).toContainText("★ 0");
+  await expect(life).toContainText("Rookie");
+  await expect(life).toContainText("500 more points");
   const gold = page.getByRole("radio", { name: /Gold leaf, unlocks at level/ });
   await expect(gold).toBeDisabled();
   await page.getByRole("radio", { name: "Classic blue" }).click();

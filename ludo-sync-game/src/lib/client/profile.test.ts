@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyResult, levelFor, xpFor, xpToReach, type Profile } from "./profile";
+import { applyResult, levelFor, lifetimeTotal, parseProfile, rankFor, xpFor, xpToReach, type Profile } from "./profile";
 import { CARD_BACKS, FELTS, allowed, unlockedAt } from "./unlocks";
 
-const fresh = (): Profile => ({ xp: 0, games: { ludo: { played: 0, won: 0 }, skipbo: { played: 0, won: 0 } }, today: { date: "", played: 0 }, recent: [] });
+const fresh = (): Profile => ({ xp: 0, games: { ludo: { played: 0, won: 0 }, skipbo: { played: 0, won: 0 } }, today: { date: "", played: 0 }, recent: [], lifetime: { ludo: 0, skipbo: 0 }, best: { ludo: 0, skipbo: 0 } });
 
 describe("levels", () => {
   it("climb with a growing cost", () => {
@@ -60,5 +60,49 @@ describe("unlocks", () => {
   it("start with something for everyone", () => {
     expect(CARD_BACKS[0].level).toBe(1);
     expect(FELTS[0].level).toBe(1);
+  });
+});
+
+describe("lifetime points", () => {
+  it("only ever go up, by game, and remember the best game", () => {
+    let p = fresh();
+    const play = (game: "ludo" | "skipbo", points: number) => { const a = applyResult(p, { game, won: true, players: 2, points }, new Date(2026, 5, 1)); p = a.profile; return a; };
+    const a = play("skipbo", 120);
+    expect(a.pointsGained).toBe(120);
+    expect(a.lifetime).toBe(120);
+    expect(a.newBest).toBe(false);
+    play("ludo", 80);
+    const c = play("skipbo", 150);
+    expect(p.lifetime).toEqual({ ludo: 80, skipbo: 270 });
+    expect(lifetimeTotal(p)).toBe(350);
+    expect(c.newBest).toBe(true);
+    expect(p.best).toEqual({ ludo: 80, skipbo: 150 });
+    // a bad game still adds, and never takes away
+    play("skipbo", 0);
+    expect(lifetimeTotal(p)).toBe(350);
+    // points above the experience cap still count in full for the lifetime total
+    expect(play("skipbo", 400).lifetime).toBe(750);
+  });
+  it("earn ranks at the thresholds, and say when one was reached", () => {
+    expect(rankFor(0).rank.name).toBe("Rookie");
+    expect(rankFor(499).rank.name).toBe("Rookie");
+    expect(rankFor(500)).toMatchObject({ rank: { name: "Regular" }, into: 0, need: 1500, next: { name: "Sharp" } });
+    expect(rankFor(1_000_000)).toMatchObject({ rank: { name: "Legend" }, next: null, fraction: 1 });
+    expect(rankFor(NaN).rank.name).toBe("Rookie");
+    let p = fresh();
+    p = { ...p, lifetime: { ludo: 0, skipbo: 450 } };
+    const a = applyResult(p, { game: "skipbo", won: false, players: 2, points: 60 }, new Date(2026, 5, 1));
+    expect(a.rankedUp).toBe(true);
+    expect(a.rankAfter.rank.name).toBe("Regular");
+    expect(applyResult(a.profile, { game: "skipbo", won: false, players: 2, points: 10 }, new Date(2026, 5, 1)).rankedUp).toBe(false);
+  });
+  it("start from the games on record for a profile saved before this existed", () => {
+    const old = { xp: 300, games: { ludo: { played: 2, won: 1 }, skipbo: { played: 1, won: 1 } }, today: { date: "", played: 0 },
+      recent: [{ game: "skipbo", date: "2026-05-01", points: 90, xp: 50, won: true }, { game: "ludo", date: "2026-05-01", points: 40, xp: 30, won: false }, { game: "ludo", date: "2026-04-30", points: 70, xp: 30, won: true }] };
+    const p = parseProfile(old as never);
+    expect(p.lifetime).toEqual({ ludo: 110, skipbo: 90 });
+    expect(p.best).toEqual({ ludo: 70, skipbo: 90 });
+    expect(parseProfile(null).lifetime).toEqual({ ludo: 0, skipbo: 0 });
+    expect(parseProfile({ ...old, lifetime: { ludo: 5, skipbo: -3 } } as never).lifetime).toEqual({ ludo: 5, skipbo: 0 });
   });
 });

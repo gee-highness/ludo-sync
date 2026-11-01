@@ -65,6 +65,7 @@ export function useSkipBoRewards(view: TableView, frame: { id: number; events: G
       toast({ title: won ? "📅 Daily challenge won" : "📅 Daily challenge finished", description: won ? `${day.streakDays} day${day.streakDays === 1 ? "" : "s"} in a row` : "Come back tomorrow for a new one", status: won ? "success" : "info", duration: 6000, isClosable: true, position: "top" });
     }
     for (const x of newlyUnlocked(before, after)) toast({ title: `${x.icon} ${x.title}`, description: x.blurb, status: "success", duration: 6000, isClosable: true, position: "top" });
+    if (a.rankedUp) toast({ title: `${a.rankAfter.rank.icon} ${a.rankAfter.rank.name}`, description: `New rank: ${a.lifetime.toLocaleString()} lifetime points`, status: "success", duration: 8000, isClosable: true, position: "top" });
     if (a.leveledUp) {
       const gifts = unlockedAt(a.after.level);
       toast({ title: `⭐ Level ${a.after.level}`, description: gifts.length ? `Unlocked: ${gifts.map(g => g.name).join(", ")}` : "Keep playing to unlock more", status: "success", duration: 8000, isClosable: true, position: "top" });
