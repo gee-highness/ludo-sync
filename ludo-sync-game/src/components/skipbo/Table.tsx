@@ -2,17 +2,19 @@
 
 import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sound } from "@/lib/client/audio";
-import { turnLine } from "@/lib/skipbo/describe";
-import { WILD, type Action, type Card, type GameEvent, type Source } from "@/lib/skipbo/types";
-import { hintFor, type PlayerView, type TableView } from "@/lib/skipbo/view";
+import { useEffect, useMemo, useState } from "react";
+import { WILD, type Action, type Source } from "@/lib/skipbo/types";
+import type { PlayerView, TableView } from "@/lib/skipbo/view";
 import { CardFace, Slot, type CardSize } from "./CardFace";
+import { useCapabilities, resolveRenderer } from "@/lib/client/device";
+import { updateSettings, useSettings } from "@/lib/client/settings";
 import { RoundOverlay } from "./RoundOverlay";
+import Table3DView, { slowThisSession } from "./Table3DView";
+import { sameSource, useTableInput, type Frame } from "./useTableInput";
 
-export interface Frame { id: number; events: GameEvent[] }
+export type { Frame };
 
-interface Props {
+export interface TableProps {
   view: TableView;
   act: (a: Action) => boolean;
   frame: Frame;
@@ -33,9 +35,6 @@ interface Props {
   away?: ReadonlySet<number>;
 }
 
-const same = (a: Source | null, b: Source | null) =>
-  !!a && !!b && a.from === b.from && (a.from === "hand" ? a.index === (b as typeof a).index : a.from === "discard" ? a.pile === (b as typeof a).pile : true);
-
 const useSizes = (): { hand: CardSize; pile: CardSize; side: CardSize } => {
   const [w, setW] = useState(390);
   useEffect(() => {
@@ -49,103 +48,14 @@ const useSizes = (): { hand: CardSize; pile: CardSize; side: CardSize } => {
   return { hand: "md", pile: "md", side: "sm" };
 };
 
-const hintText = (v: TableView, a: Action): string => {
-  const me = v.players[v.you!];
-  if (a.type === "discard") return `Discard your ${me.hand?.[a.index] === WILD ? "Skip-Bo" : me.hand?.[a.index]} to end your turn`;
-  if (a.type === "endTurn") return "You have no cards left in your hand: end your turn";
-  if (a.type !== "play") return "";
-  const card = a.source.from === "hand" ? me.hand?.[a.source.index] : a.source.from === "stock" ? me.stockTop : me.discards[a.source.pile].at(-1);
-  const from = a.source.from === "stock" ? "from your stock pile" : a.source.from === "discard" ? "from a discard pile" : "from your hand";
-  return `Play ${card === WILD ? "a Skip-Bo" : card} ${from} on pile ${a.to + 1}`;
-};
-
 /** The whole table: other players across the top, the shared piles in the middle, and your own cards at the bottom. */
-export function Table({ view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, away }: Props) {
+function FlatTable({ view, act, frame, log, rejected, title, onExit, headerExtra, footer, note, onRematch, rematchLabel, waitingText, streakText, away }: TableProps) {
   const sizes = useSizes();
-  const me = view.you !== null ? view.players[view.you] : null;
-  const myTurn = view.phase === "play" && view.you !== null && view.turn === view.you;
-  const [selected, setSelected] = useState<Source | null>(null);
-  const [hint, setHint] = useState<Action | null>(null);
-  const [banner, setBanner] = useState<{ id: number; text: string; tone: "good" | "info" } | null>(null);
-  const [popped, setPopped] = useState<{ pile: number; id: number } | null>(null);
+  const input = useTableInput(view, act, frame, rejected);
+  const { me, myTurn, selected, setSelected, banner, popped, cardOf, targets, picked, tryPlay, onHand, onStock, onDiscard, onBuilding, wantHint, hintSrc, hintTarget, mustEnd, status } = input;
   const [dropOver, setDropOver] = useState<string | null>(null);
-  const bannerId = useRef(0);
   const [showLog, setShowLog] = useState(false);
-
-  const say = useCallback((text: string, tone: "good" | "info" = "info") => {
-    const id = ++bannerId.current;
-    setBanner({ id, text, tone });
-    setTimeout(() => setBanner(b => (b?.id === id ? null : b)), 1800);
-  }, []);
-
-  // what just happened: sound, the pile that took a card, and a word about the big moments
-  useEffect(() => {
-    if (frame.id === 0) return;
-    for (const e of frame.events) {
-      if (e.type === "deal") sound.play("shuffle");
-      else if (e.type === "play") { sound.play("card"); setPopped({ pile: e.to, id: frame.id }); }
-      else if (e.type === "discard") sound.play("flip");
-      else if (e.type === "pileDone") { sound.play("home"); say("Pile complete!", "good"); }
-      else if (e.type === "draw" && e.bonus) { sound.play("bonus"); say(e.player === view.you ? "All five played! Draw five more" : `${view.players[e.player]?.name} plays on`, "good"); }
-      else if (e.type === "reshuffle") { sound.play("shuffle"); say("Shuffling the finished piles"); }
-      else if (e.type === "turn" && e.player === view.you) { sound.play("turn"); say("Your turn"); }
-      else if (e.type === "roundEnd" || e.type === "gameOver") sound.duck(2.5);
-    }
-    // only when a new frame arrives
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frame.id]);
-
-  // a new position clears the picked-up card and any hint
-  useEffect(() => { setSelected(null); setHint(null); }, [view.seq, view.turn]);
-  useEffect(() => {
-    if (!hint) return;
-    const t = setTimeout(() => setHint(null), 6000);
-    return () => clearTimeout(t);
-  }, [hint]);
-  useEffect(() => { if (rejected) say("That move was not allowed"); }, [rejected, say]);
-
-  const cardOf = useCallback((src: Source | null): Card | undefined => {
-    if (!src || !me) return undefined;
-    if (src.from === "hand") return me.hand?.[src.index];
-    if (src.from === "stock") return me.stockTop ?? undefined;
-    return me.discards[src.pile].at(-1);
-  }, [me]);
-
-  const fitsOn = useCallback((card: Card | undefined, pile: number) => card !== undefined && (card === WILD || card === view.building[pile].length + 1), [view.building]);
-  const targets = useCallback((card: Card | undefined): number[] => [0, 1, 2, 3].filter(i => fitsOn(card, i)), [fitsOn]);
-  const picked = cardOf(selected);
-
-  const tryPlay = (src: Source, to: number): boolean => {
-    if (!myTurn || !fitsOn(cardOf(src), to)) { sound.play("error"); return false; }
-    return act({ type: "play", source: src, to });
-  };
-
-  const onHand = (index: number) => {
-    if (!myTurn) return;
-    const src: Source = { from: "hand", index };
-    if (same(selected, src)) {
-      // a second tap plays the card if there is only one sensible place for it
-      const t = [...new Set(targets(cardOf(src)).map(i => view.building[i].length))];
-      if (t.length === 1) tryPlay(src, targets(cardOf(src))[0]);
-      else setSelected(null);
-    } else setSelected(src);
-  };
-  const onStock = () => {
-    if (!myTurn || me?.stockTop == null) return;
-    const src: Source = { from: "stock" };
-    if (same(selected, src)) {
-      const t = targets(me.stockTop);
-      if (t.length) tryPlay(src, t[0]); else setSelected(null);
-    } else setSelected(src);
-  };
-  const onDiscard = (pile: number) => {
-    if (!myTurn || !me) return;
-    if (selected?.from === "hand") { act({ type: "discard", index: selected.index, pile }); return; }
-    if (!me.discards[pile].length) return;
-    const src: Source = { from: "discard", pile };
-    setSelected(same(selected, src) ? null : src);
-  };
-  const onBuilding = (pile: number) => { if (selected) tryPlay(selected, pile); };
+  const hint = input.hintLine;
 
   // drag and drop on a computer; touch screens use tap
   const dragStart = (src: Source) => (e: React.DragEvent) => {
@@ -168,23 +78,9 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
       else if (s.from === "hand") act({ type: "discard", index: s.index, pile: i });
     },
   });
-
-  const wantHint = () => {
-    const a = hintFor(view);
-    if (a) { setHint(a); setSelected(null); } else say("Nothing to suggest right now");
-  };
-  const hintSrc: Source | null = hint?.type === "play" ? hint.source : hint?.type === "discard" ? { from: "hand", index: hint.index } : null;
-  const hintTarget = hint?.type === "play" ? `build${hint.to}` : hint?.type === "discard" ? `discard${hint.pile}` : null;
+  void cardOf;
 
   const others = useMemo(() => view.players.map((p, i) => ({ p, i })).filter(x => x.i !== view.you), [view.players, view.you]);
-  const mustEnd = myTurn && me !== null && me.handCount === 0;
-  const status = (() => {
-    if (view.phase !== "play") return turnLine(view);
-    if (view.you === null) return `${view.players[view.turn].name} is playing`;
-    if (myTurn) return me!.handCount === 0 ? "You have no cards in hand: play from your stock or discards, or end your turn" : picked !== undefined ? (targets(picked).length ? "Tap a glowing pile to play it" : "That card does not fit yet. Tap a discard pile to discard it, or pick another") : "Play onto the middle piles, then discard one card to end your turn";
-    return `${view.players[view.turn].name} is ${view.players[view.turn].kind === "bot" ? "thinking…" : "playing…"}`;
-  })();
-
   return (
     <Box minH="100dvh" color="white" position="relative" overflow="hidden" bg="radial-gradient(ellipse at 50% 30%, #1f7a4d 0%, #14573a 55%, #0c3a27 100%)">
     <Flex direction="column" minH="100dvh" maxW="900px" mx="auto" position="relative"
@@ -240,7 +136,7 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
           })}
         </HStack>
         <Text fontSize="sm" textAlign="center" px={3} minH="40px" aria-live="polite" color={rejected ? "orange.200" : "whiteAlpha.900"}>
-          {hint ? <b>{hintText(view, hint)}</b> : status}
+          {hint ? <b>{hint}</b> : status}
         </Text>
       </VStack>
 
@@ -255,7 +151,7 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
             <VStack spacing={1}>
               <Box role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Your stock pile, top card ${me.stockTop === WILD ? "Skip-Bo" : me.stockTop}, ${me.stockCount} cards`} cursor={myTurn ? "pointer" : "default"}
                 onClick={onStock} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onStock(); }} draggable={myTurn && me.stockTop !== null} onDragStart={dragStart({ from: "stock" })}>
-                {me.stockTop !== null && <CardFace value={me.stockTop} size={sizes.pile} selected={same(selected, { from: "stock" })} glow={same(hintSrc, { from: "stock" })} />}
+                {me.stockTop !== null && <CardFace value={me.stockTop} size={sizes.pile} selected={sameSource(selected, { from: "stock" })} glow={sameSource(hintSrc, { from: "stock" })} />}
               </Box>
               <Text fontSize="xs" color="#fde047" fontWeight={800}>Stock · {me.stockCount}</Text>
             </VStack>
@@ -271,7 +167,7 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
                       draggable={myTurn && top !== undefined} onDragStart={dragStart({ from: "discard", pile: i })} {...dropOn("discard", i)}
                       borderRadius="8px" transform={dropOver === `discard${i}` ? "scale(1.08)" : undefined} transition="transform .15s">
                       {top !== undefined
-                        ? <CardFace value={top} size={sizes.side} selected={same(selected, { from: "discard", pile: i })} glow={same(hintSrc, { from: "discard", pile: i }) || hintTarget === `discard${i}`} count={d.length} />
+                        ? <CardFace value={top} size={sizes.side} selected={sameSource(selected, { from: "discard", pile: i })} glow={sameSource(hintSrc, { from: "discard", pile: i }) || hintTarget === `discard${i}`} count={d.length} />
                         : <Slot size={sizes.side} hot={(myTurn && dropHot) || hintTarget === `discard${i}`}>{myTurn && dropHot ? "+" : ""}</Slot>}
                     </Box>
                   </VStack>
@@ -285,7 +181,7 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
               <Box key={`${i}-${c}`} role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Hand card ${i + 1}: ${c === WILD ? "Skip-Bo" : c}`} cursor={myTurn ? "pointer" : "default"} onClick={() => onHand(i)}
                 onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onHand(i); }} draggable={myTurn} onDragStart={dragStart({ from: "hand", index: i })}
                 sx={{ animation: "sbDeal .3s ease-out backwards", animationDelay: `${i * 40}ms`, "@keyframes sbDeal": { from: { transform: "translateY(26px) scale(.8)", opacity: 0 }, to: { transform: "none", opacity: 1 } } }}>
-                <CardFace value={c} size={sizes.hand} selected={same(selected, { from: "hand", index: i })} glow={same(hintSrc, { from: "hand", index: i })} dim={!myTurn} />
+                <CardFace value={c} size={sizes.hand} selected={sameSource(selected, { from: "hand", index: i })} glow={sameSource(hintSrc, { from: "hand", index: i })} dim={!myTurn} />
               </Box>
             ))}
             {me.hand?.length === 0 && <Text color="whiteAlpha.700" fontSize="sm">{me.handCount === 0 ? "Your hand is empty" : ""}</Text>}
@@ -317,6 +213,22 @@ export function Table({ view, act, frame, log, rejected, title, onExit, headerEx
     </Flex>
     </Box>
   );
+}
+
+/** Picks flat or 3D. If 3D cannot start, runs slowly or loses its context, play carries on on the flat table without interruption. */
+export function Table(props: TableProps) {
+  const [settings] = useSettings();
+  const caps = useCapabilities();
+  const [failed, setFailed] = useState(false);
+  const [skip, setSkip] = useState(false);
+  useEffect(() => { setSkip(slowThisSession()); }, []);
+  const can3d = !!caps?.webgl2 && !failed && !skip;
+  const use3d = resolveRenderer(settings.renderer, caps) === "3d" && can3d;
+  const toggle = can3d ? (
+    <Button size="sm" variant="outline" color="white" aria-label={use3d ? "Switch to the flat table" : "Switch to the 3D table"} onClick={() => updateSettings({ renderer: use3d ? "2d" : "3d" })}>{use3d ? "2D" : "3D"}</Button>
+  ) : null;
+  if (use3d) return <Table3DView {...props} toggle={toggle} onFail={() => setFailed(true)} />;
+  return <FlatTable {...props} headerExtra={<>{toggle}{props.headerExtra}</>} />;
 }
 
 function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView; active: boolean; dealer: boolean; tournament: boolean; away?: boolean; size: CardSize }) {
