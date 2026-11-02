@@ -167,11 +167,31 @@ export const allMoves = (pos: Position): CAction[] => {
 
 // ---- the game ------------------------------------------------------------------------------------
 
-const deckIds = () => Array.from({ length: 52 }, (_, i) => i);
+/** The pack: all 52 cards, or the 40 of South African Casino with the picture cards taken out. */
+const deckIds = (rules: RuleValues) => Array.from({ length: 52 }, (_, i) => i).filter(i => pick(rules, "deck") === "52" || rankOf(i) <= 10);
+
+/** How many cards are dealt each time and how many go face up on the table, by the chosen deal. */
+export const dealPlan = (rules: RuleValues, n: number): { hand: number; table: number; refill: boolean } => {
+  const mode = pick(rules, "dealMode");
+  if (mode === "african") return { hand: n === 3 ? 13 : 10, table: n === 3 ? 1 : 0, refill: false };
+  if (mode === "crazy") return { hand: 8, table: 0, refill: true };
+  return { hand: num(rules, "handSize"), table: num(rules, "tableCards"), refill: false };
+};
+
+const step = (rules: RuleValues) => (pick(rules, "direction") === "anti" ? -1 : 1);
+/** The player after p, in the direction of play. */
+export const nextFrom = (rules: RuleValues, n: number, p: number) => (((p + step(rules)) % n) + n) % n;
+
+/** The score that ends the match: the chosen one, or 11 for two sides and 7 when three or four play alone. */
+export const targetOf = (rules: RuleValues, n: number): number => {
+  const t = num(rules, "target");
+  if (t > 0) return t;
+  return unitOf(rules, n, n - 1) === n - 1 && !(flag(rules, "teams") && n === 4) && n >= 3 ? 7 : 11;
+};
 
 export const create = (seats: SeatInfo[], rules: RuleValues, seed: number): CState => {
   const n = seats.length;
-  const sh = shuffled(deckIds(), seed >>> 0);
+  const sh = shuffled(deckIds(rules), seed >>> 0);
   const s: CState = {
     rules, n, names: seats.map(x => x.name), hands: seats.map(() => []), deck: sh.value, table: [], piles: seats.map(() => []), sweeps: seats.map(() => 0),
     score: seats.map(() => 0), dealer: 0, turn: 0, lastCapture: -1, deal: 1, phase: "play", nextBuild: 0, rng: sh.rng, summary: [],
@@ -181,20 +201,20 @@ export const create = (seats: SeatInfo[], rules: RuleValues, seed: number): CSta
 };
 
 const dealHands = (s: CState) => {
-  const k = num(s.rules, "handSize");
+  const k = dealPlan(s.rules, s.n).hand;
   for (let r = 0; r < k; r++) for (let p = 0; p < s.n; p++) { const c = s.deck.pop(); if (c !== undefined) s.hands[p].push(c); }
 };
 
 const startDeal = (s: CState, first: boolean) => {
   if (first) {
-    const sh = shuffled(deckIds(), s.rng);
+    const sh = shuffled(deckIds(s.rules), s.rng);
     s.deck = sh.value; s.rng = sh.rng;
     s.table = [];
-    for (let i = 0; i < num(s.rules, "tableCards"); i++) { const c = s.deck.pop(); if (c !== undefined) s.table.push({ id: c, cards: [c], build: false, value: 0, owner: -1 }); }
+    for (let i = 0; i < dealPlan(s.rules, s.n).table; i++) { const c = s.deck.pop(); if (c !== undefined) s.table.push({ id: c, cards: [c], build: false, value: 0, owner: -1 }); }
     s.piles = s.names.map(() => []); s.sweeps = s.names.map(() => 0); s.lastCapture = -1;
   }
   dealHands(s);
-  s.turn = (s.dealer + 1) % s.n;
+  s.turn = nextFrom(s.rules, s.n, s.dealer);
 };
 
 export const positionOf = (s: CState, me: number): Position => ({ rules: s.rules, n: s.n, me, hand: s.hands[me], table: s.table, pileTops: s.piles.map(p => (p.length ? p[p.length - 1] : null)) });
@@ -228,7 +248,7 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
   if (s.phase === "over") return null;
   if (a.type === "next") {
     if (s.phase !== "dealOver") return null;
-    s.dealer = (s.dealer + 1) % s.n; s.deal += 1; s.phase = "play"; s.summary = [];
+    s.dealer = nextFrom(s.rules, s.n, s.dealer); s.deal += 1; s.phase = "play"; s.summary = [];
     startDeal(s, true);
     events.push({ type: "deal", deal: s.deal });
     return { state: s, events };
@@ -254,7 +274,8 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
       hand.splice(hand.indexOf(a.card), 1);
       removeTaken(s, items);
       const got = [a.card, ...items.flatMap(i => i.cards)];
-      s.piles[by].push(...got);
+      // the new cards go on the pile with the lowest on top, which is the card an opponent may take
+      s.piles[by].push(...[...got].sort((x, y) => rankOf(y) - rankOf(x)));
       s.lastCapture = by;
       events.push({ type: "capture", p: by, card: a.card, cards: got.slice(1) });
       if (s.table.length === 0 && (!lastPlay || flag(s.rules, "sweepLast"))) { s.sweeps[unit] += 1; events.push({ type: "sweep", p: by }); }
@@ -268,13 +289,15 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
     }
   }
 
+  // Crazy Casino: draw back up to a full hand after every turn
+  if (dealPlan(s.rules, s.n).refill) { while (s.hands[by].length < dealPlan(s.rules, s.n).hand && s.deck.length) s.hands[by].push(s.deck.pop()!); }
   // next player; deal again when hands are empty
   if (s.hands.every(h => h.length === 0)) {
-    if (s.deck.length > 0) { dealHands(s); events.push({ type: "redeal" }); s.turn = (s.dealer + 1) % s.n; }
+    if (s.deck.length > 0) { dealHands(s); events.push({ type: "redeal" }); s.turn = nextFrom(s.rules, s.n, s.dealer); }
     else { endDeal(s, events); return { state: s, events }; }
   } else {
-    let t = (by + 1) % s.n;
-    for (let i = 0; i < s.n && s.hands[t].length === 0; i++) t = (t + 1) % s.n;
+    let t = nextFrom(s.rules, s.n, by);
+    for (let i = 0; i < s.n && s.hands[t].length === 0; i++) t = nextFrom(s.rules, s.n, t);
     s.turn = t;
   }
   return { state: s, events };
@@ -301,8 +324,8 @@ const endDeal = (s: CState, events: GameEvent[]) => {
     const add = (pts: number, text: string) => { if (pts > 0) { total += pts; lines.push(`${text} +${pts}`); } };
     if (mostCards === u) add(num(s.rules, "ptsCards"), `Most cards (${mine.length})`);
     if (mostSpades === u) add(num(s.rules, "ptsSpades"), `Most spades (${mine.filter(c => suitOf(c) === 3).length})`);
-    if (mine.includes(BIG)) add(num(s.rules, "ptsBig"), "Big Casino");
-    if (mine.includes(LITTLE)) add(num(s.rules, "ptsLittle"), "Little Casino");
+    if (mine.includes(BIG)) add(num(s.rules, "ptsBig"), "Mummy (10♦)");
+    if (mine.includes(LITTLE)) add(num(s.rules, "ptsLittle"), "Spy Two (2♠)");
     const aces = mine.filter(c => rankOf(c) === 1).length;
     if (aces) add(aces * num(s.rules, "ptsAce"), `Aces (${aces})`);
     if (s.sweeps[u]) add(s.sweeps[u] * num(s.rules, "ptsSweep"), `Sweeps (${s.sweeps[u]})`);
@@ -311,7 +334,7 @@ const endDeal = (s: CState, events: GameEvent[]) => {
   for (const x of s.summary) s.score[x.unit] += x.total;
   const best = Math.max(...units.map(u => s.score[u]));
   const leaders = units.filter(u => s.score[u] === best);
-  s.phase = best >= num(s.rules, "target") && leaders.length === 1 ? "over" : "dealOver";
+  s.phase = best >= targetOf(s.rules, s.n) && leaders.length === 1 ? "over" : "dealOver";
   events.push({ type: "dealEnd", summary: s.summary });
 };
 

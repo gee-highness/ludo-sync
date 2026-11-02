@@ -38,7 +38,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
       if (!m) return;
       setRules(loadLastRules(gameId, m.driver.schema));
       setName(getSettings().playerName);
-      setBots(Math.min(Math.max(1, m.driver.minPlayers - 1), m.driver.maxPlayers - 1));
+      setBots(Math.min(Math.max(m.driver.minPlayers === 1 ? 1 : 1, m.driver.minPlayers - 1), m.driver.maxPlayers - 1));
       setPassNames(Array.from({ length: m.driver.minPlayers }, () => ""));
       const s = loadSaved(gameId);
       setResume(s ? s.seats.map(x => x.name).join(" · ") : null);
@@ -67,7 +67,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
   const lines = describeRules(d.schema, rules);
 
   return (
-    <Shell title={d.name} onBack={() => router.push("/")} accent={mod.accent}>
+    <Shell title={d.name} onBack={() => router.push("/")} accent={mod.accent} pinId={gameId}>
       <Text color="gray.300">{mod.tagline}</Text>
       <HStack wrap="wrap">
         <Badge colorScheme="purple">{d.minPlayers} to {d.maxPlayers} players</Badge>
@@ -84,7 +84,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         <Input value={name} maxLength={20} onChange={e => setName(e.target.value)} bg="gray.700" border="none" aria-label="Your name" placeholder="Your name" />
         <HStack>
           <Select bg="gray.700" aria-label="Number of bots" value={bots} onChange={e => setBots(Number(e.target.value))}>
-            {Array.from({ length: d.maxPlayers - 1 }, (_, i) => i + 1).filter(n => n + 1 >= d.minPlayers).map(n => <option key={n} value={n}>{n} bot{n === 1 ? "" : "s"}</option>)}
+            {Array.from({ length: d.maxPlayers }, (_, i) => i).filter(n => n + 1 >= d.minPlayers && n <= d.maxPlayers - 1).map(n => <option key={n} value={n}>{n === 0 ? "No bots (solo)" : `${n} bot${n === 1 ? "" : "s"}`}</option>)}
           </Select>
           <Select bg="gray.700" aria-label="Bot level" value={level} onChange={e => setLevel(e.target.value as BotLevel)}>
             <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
@@ -103,6 +103,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         </Collapse>
       </VStack>
 
+      {!d.noHotseat && d.maxPlayers > 1 && (
       <VStack align="stretch" spacing={2} bg="whiteAlpha.100" borderRadius="xl" p={4} as="section" aria-label="Pass and play">
         <Text fontWeight={800}>Pass and play on one device</Text>
         {passNames.map((n, i) => <Input key={i} value={n} maxLength={20} placeholder={`Player ${i + 1}`} bg="gray.700" border="none" aria-label={`Player ${i + 1} name`} onChange={e => setPassNames(l => l.map((x, j) => (j === i ? e.target.value : x)))} />)}
@@ -112,6 +113,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         </HStack>
         <Button colorScheme="blue" onClick={playPass}>Start pass and play</Button>
       </VStack>
+      )}
 
       <Button colorScheme="teal" size="lg" onClick={go(`/g/${gameId}/online`)}>Play with friends online</Button>
       <Button variant="outline" color="white" onClick={help.onOpen}>How to play</Button>

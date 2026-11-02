@@ -134,7 +134,7 @@ test("Casino: set a rule, play a card against a bot, and the bot answers", async
   page.on("pageerror", e => errors.push(e.message));
   await page.goto("/g/casino");
   await page.getByRole("button", { name: "Change" }).click();
-  await page.getByRole("button", { name: "African Casino" }).click();
+  await page.getByRole("button", { name: "South African (40)", exact: true }).click();
   await page.getByRole("combobox", { name: "Bot level" }).selectOption("easy");
   await page.getByRole("button", { name: "Done" }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
@@ -178,4 +178,119 @@ test("4 Colors: play and draw against a bot with a changed rule", async ({ page 
     await page.waitForTimeout(1500);
   }
   expect(errors).toEqual([]);
+});
+
+test("Snakes and Ladders: choose the classic board, roll, and the bot rolls back", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/snakes");
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Classic", exact: true }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("img", { name: /Board of 100 squares/ })).toBeVisible({ timeout: 15_000 });
+  for (let i = 0; i < 4; i++) {
+    const roll = page.getByRole("button", { name: /Roll the dice|Roll again/ });
+    await expect(roll).toBeEnabled({ timeout: 20_000 });
+    await roll.click();
+    await page.waitForTimeout(1500);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("Memory Match: solo, flip cards and the game is saved", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/memory");
+  await page.getByRole("combobox", { name: "Number of bots" }).selectOption("0");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("grid", { name: "Cards" })).toBeVisible({ timeout: 15_000 });
+  const cards = page.getByRole("gridcell");
+  await expect(cards).toHaveCount(20);
+  await cards.nth(0).click();
+  await cards.nth(1).click();
+  await expect(page.getByText(/found/).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("Crazy Eights: pick a preset, play or draw against a bot", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/crazyeights");
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Action", exact: true }).click();
+  await page.getByRole("combobox", { name: "Bot level" }).selectOption("easy");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Your hand" })).toBeVisible({ timeout: 15_000 });
+  for (let turn = 0; turn < 4; turn++) {
+    await expect(page.getByRole("status").filter({ hasText: /Your turn|Draw \d/ })).toBeVisible({ timeout: 20_000 });
+    const cards = page.getByRole("group", { name: "Your hand" }).getByRole("button");
+    if (await cards.count()) {
+      await cards.first().click();
+      const suit = page.getByRole("button", { name: "hearts", exact: true });
+      if (await suit.isVisible().catch(() => false)) await suit.click();
+    } else {
+      const more = page.getByRole("button", { name: /^Draw \d+$/ });
+      if (await more.isVisible().catch(() => false)) await more.click(); else await page.getByRole("button", { name: "Draw a card" }).click();
+    }
+    await page.waitForTimeout(1500);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("pinning a game puts it at the top of the home screen, and it stays after a reload", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Pinned games" })).toHaveCount(0);
+  const pin = page.getByRole("button", { name: "Pin Casino to the top" });
+  await pin.click();
+  const pinned = page.getByRole("region", { name: "Pinned games" });
+  await expect(pinned).toBeVisible();
+  await expect(pinned.getByRole("link", { name: /Casino/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unpin Casino" })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Pinned games" }).getByRole("link", { name: /Casino/ })).toBeVisible();
+  // pin a second game: it goes after the first
+  await page.getByRole("button", { name: "Pin Four in a Row to the top" }).click();
+  const names = await page.getByRole("region", { name: "Pinned games" }).getByRole("heading").allTextContents();
+  expect(names).toEqual(["Casino", "Four in a Row"]);
+  // pinning also works from the game's own menu, and unpinning removes the section
+  await page.getByRole("button", { name: "Unpin Casino" }).click();
+  await page.getByRole("button", { name: "Unpin Four in a Row" }).click();
+  await expect(page.getByRole("region", { name: "Pinned games" })).toHaveCount(0);
+  await page.goto("/g/fourcolors");
+  await page.getByRole("button", { name: /Pin 4 Colors to the top/ }).click();
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Pinned games" }).getByRole("link", { name: /4 Colors/ })).toBeVisible();
+});
+
+test("Solitaire: solo Klondike, turn a card, undo, hint, and give up ends the game", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/solitaire");
+  await expect(page.getByRole("button", { name: "Play with friends online" })).toBeVisible();
+  await expect(page.getByText("Pass and play on one device")).toHaveCount(0); // every seat plays at once, so there is no pass and play
+  await page.getByRole("combobox", { name: "Number of bots" }).selectOption("0");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Tableau" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("group", { name: /^Column \d, \d+ cards?$/ })).toHaveCount(7);
+  await page.getByRole("button", { name: "Turn a card from the stock" }).click();
+  await expect(page.getByText(/Moves 1/)).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Hint" }).click();
+  await page.getByRole("button", { name: "Give up" }).click();
+  await expect(page.getByRole("dialog", { name: "Game over" })).toBeVisible({ timeout: 10_000 });
+  expect(errors).toEqual([]);
+});
+
+test("Solitaire: FreeCell and Spider deal their own layouts", async ({ page }) => {
+  for (const [preset, columns] of [["FreeCell", 8], ["Spider (1 suit)", 10]] as const) {
+    await page.goto("/g/solitaire");
+    await page.getByRole("button", { name: "Change" }).click();
+    await page.getByRole("button", { name: preset, exact: true }).click();
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("combobox", { name: "Number of bots" }).selectOption("0");
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("group", { name: /^Column \d+, \d+ cards?$/ })).toHaveCount(columns, { timeout: 15_000 });
+  }
 });

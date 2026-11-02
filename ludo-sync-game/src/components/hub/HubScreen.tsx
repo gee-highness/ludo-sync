@@ -1,11 +1,12 @@
 "use client";
 
-import { Box, Flex, HStack, Heading, Image, Progress, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, HStack, Heading, IconButton, Image, Progress, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { GAMES } from "@/lib/games";
 import { hasSaved } from "@/components/platform/useLocalTable";
+import { orderByPins, usePins } from "@/lib/client/pins";
 import { headline, loadBook } from "@/lib/client/streak";
 import { dailyChallenge, dailyDone, dateKey, loadDailyRecord } from "@/lib/client/daily";
 import { levelFor, lifetimeTotal, loadProfile, rankFor, type LevelInfo, type RankInfo } from "@/lib/client/profile";
@@ -39,6 +40,27 @@ export default function HubScreen() {
   const [resume, setResume] = useState<Record<string, boolean>>({});
   const [streaks, setStreaks] = useState<Record<string, { n: number; level: string }>>({});
   const [tiles, setTiles] = useState<{ continue: Tile[]; today: Tile[] }>({ continue: [], today: [] });
+
+  const { pins, isPinned, toggle } = usePins();
+  const { pinned, others } = orderByPins(GAMES, pins);
+
+  const renderCard = (g: (typeof GAMES)[number]) => (
+    <Box as="li" key={g.id} w="100%" position="relative">
+      <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} pr={14} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
+        _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
+        onClick={() => { sound.unlock(); sound.play("click"); }}>
+        <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} icon={g.icon} /></Box>
+        <VStack align="start" spacing={1} flex={1} minW={0}>
+          <HStack wrap="wrap"><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}{(streaks[g.id]?.n ?? 0) >= 2 && <Text as="span" fontSize="xs" fontWeight={800} bg="red.500" color="white" borderRadius="full" px={2} py="1px" aria-label={`${streaks[g.id].n} wins in a row against ${streaks[g.id].level} bots`}>🔥 {streaks[g.id].n}</Text>}</HStack>
+          <Text fontSize="sm" color="gray.300">{g.tagline}</Text>
+          <Text fontSize="xs" color="gray.400">{g.players}</Text>
+        </VStack>
+      </Flex>
+      <IconButton aria-label={isPinned(g.id) ? `Unpin ${g.name}` : `Pin ${g.name} to the top`} aria-pressed={isPinned(g.id)} title={isPinned(g.id) ? "Unpin" : "Pin to the top"}
+        position="absolute" top={2} right={2} size="md" variant="ghost" fontSize="xl" color={isPinned(g.id) ? "yellow.300" : "gray.400"} icon={<span aria-hidden>{isPinned(g.id) ? "★" : "☆"}</span>}
+        _hover={{ bg: "whiteAlpha.300", color: "yellow.200" }} onClick={() => { sound.play("click"); toggle(g.id); }} />
+    </Box>
+  );
 
   useEffect(() => {
     const prof = loadProfile();
@@ -89,21 +111,15 @@ export default function HubScreen() {
           </VStack>
         )}
 
-        <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">
-          {GAMES.map(g => (
-            <Box as="li" key={g.id} w="100%">
-              <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
-                _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
-                onClick={() => { sound.unlock(); sound.play("click"); }}>
-                <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} icon={g.icon} /></Box>
-                <VStack align="start" spacing={1} flex={1} minW={0}>
-                  <HStack><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}{(streaks[g.id]?.n ?? 0) >= 2 && <Text as="span" fontSize="xs" fontWeight={800} bg="red.500" color="white" borderRadius="full" px={2} py="1px" aria-label={`${streaks[g.id].n} wins in a row against ${streaks[g.id].level} bots`}>🔥 {streaks[g.id].n}</Text>}</HStack>
-                  <Text fontSize="sm" color="gray.300">{g.tagline}</Text>
-                  <Text fontSize="xs" color="gray.400">{g.players}</Text>
-                </VStack>
-              </Flex>
-            </Box>
-          ))}
+        {pinned.length > 0 && (
+          <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="Pinned games">
+            <Text fontSize="xs" textTransform="uppercase" color="yellow.200" fontWeight={800}>★ Your favourites</Text>
+            <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none">{pinned.map(renderCard)}</VStack>
+          </VStack>
+        )}
+        <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="All games">
+          {pinned.length > 0 && <Text fontSize="xs" textTransform="uppercase" color="gray.400" fontWeight={800}>All games</Text>}
+          <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">{others.map(renderCard)}</VStack>
         </VStack>
 
         {tiles.today.length > 0 && (

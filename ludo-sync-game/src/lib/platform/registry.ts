@@ -7,6 +7,10 @@ export const PLATFORM_GAMES: readonly GameMeta[] = [
   { id: "fourinrow", name: "Four in a Row", tagline: "Drop discs and connect a line. Change the board, the line length, add PopOut, bombs and more.", accent: "#eab308", icon: "🟡", players: "2 to 4 players", category: "Board" },
   { id: "casino", name: "Casino", tagline: "The South African card game of capturing, building and trailing. Every rule is yours to set.", accent: "#16a34a", icon: "♠️", players: "2 to 4 players", category: "Cards" },
   { id: "fourcolors", name: "4 Colors", tagline: "Match the colour or number, play action cards, be first out. Every rule and even the deck is yours to change.", accent: "#dc2626", icon: "🎴", players: "2 to 10 players", category: "Cards" },
+  { id: "snakes", name: "Snakes and Ladders", tagline: "Race to the last square. Change the board, the dice, the finish and the twists.", accent: "#16a34a", icon: "🐍", players: "2 to 6 players", category: "Dice" },
+  { id: "memory", name: "Memory Match", tagline: "Flip cards and find the matches. Solo or with friends, pairs or triples, with the pictures and scoring you choose.", accent: "#6366f1", icon: "🧠", players: "1 to 6 players", category: "Puzzle" },
+  { id: "crazyeights", name: "Crazy Eights", tagline: "Match suit or rank, eights are wild. Choose what every rank does.", accent: "#7c3aed", icon: "8️⃣", players: "2 to 8 players", category: "Cards" },
+  { id: "solitaire", name: "Solitaire", tagline: "Klondike, FreeCell and Spider, every rule adjustable. Solo, or race friends on the same deal.", accent: "#0ea5e9", icon: "🃏", players: "1 to 4 players", category: "Cards" },
 ];
 
 export const metaOf = (id: string): GameMeta | undefined => PLATFORM_GAMES.find(g => g.id === id);
@@ -16,6 +20,10 @@ type Loader = () => Promise<{ default: GameModule<never, never, never> }>;
 const LOADERS: Record<string, Loader> = {
   fourinrow: () => import("@/components/games/fourinrow/module") as unknown as ReturnType<Loader>,
   fourcolors: () => import("@/components/games/fourcolors/module") as unknown as ReturnType<Loader>,
+  snakes: () => import("@/components/games/snakes/module") as unknown as ReturnType<Loader>,
+  memory: () => import("@/components/games/memory/module") as unknown as ReturnType<Loader>,
+  crazyeights: () => import("@/components/games/crazyeights/module") as unknown as ReturnType<Loader>,
+  solitaire: () => import("@/components/games/solitaire/module") as unknown as ReturnType<Loader>,
   casino: () => import("@/components/games/casino/module") as unknown as ReturnType<Loader>,
 };
 

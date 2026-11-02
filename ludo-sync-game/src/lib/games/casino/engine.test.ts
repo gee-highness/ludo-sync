@@ -9,8 +9,10 @@ import { SCHEMA } from "./rules";
 const card = (rank: number, suit = 0) => suit * 13 + rank - 1; // rank 1 = ace
 const loose = (c: number): Item => ({ id: c, cards: [c], build: false, value: 0, owner: -1 });
 
+/** The existing cases were written for classic Cassino, so they start from its rules; the South African defaults have their own tests below. */
+const CLASSIC = { deck: "52", direction: "clock", dealMode: "classic", target: 21, ptsCards: 3, ptsSpades: 1, ptsSweep: 1, stealPileTop: false, ace: "either", teams: false };
 const mk = (rules: Record<string, unknown> = {}, n = 2): CState => {
-  const t = new GameTable(d, Array.from({ length: n }, (_, i) => ({ name: `P${i + 1}`, kind: "human" as const })), rules, 5);
+  const t = new GameTable(d, Array.from({ length: n }, (_, i) => ({ name: `P${i + 1}`, kind: "human" as const })), { ...CLASSIC, ...rules }, 5);
   const s = t.state;
   s.hands = s.hands.map(() => []); s.table = []; s.piles = s.piles.map(() => []); s.deck = []; s.turn = 0; s.lastCapture = -1;
   return s;
@@ -176,9 +178,9 @@ describe("views and parsing", () => {
     const v = d.view(t.state, 0);
     const text = JSON.stringify(v);
     expect(v.hand).toEqual(t.state.hands[0]);
-    expect(v.handCounts).toEqual([4, 4]);
+    expect(v.handCounts).toEqual([10, 10]);
     expect(text).not.toContain(`"hands"`);
-    expect(text).not.toContain(`"deck"`);
+    expect(text).not.toMatch(/"deck":\[/);
     expect(d.view(t.state, null).hand).toEqual([]);
   });
   it("parses only well-formed actions", () => {
@@ -229,8 +231,79 @@ describe("rules schema", () => {
   it("fills defaults and clamps", () => {
     const v = sanitizeRules(SCHEMA, { target: 1000, ace: "huge", ptsCards: -4 });
     expect(v.target).toBe(101);
-    expect(v.ace).toBe("either");
+    expect(v.ace).toBe("low");
     expect(v.ptsCards).toBe(0);
     expect(v.faces).toBe("pair");
+    expect(v.deck).toBe("52");
+  });
+});
+
+describe("South African Casino", () => {
+  const sa = (n: number, rules: Record<string, unknown> = {}) => new GameTable(d, Array.from({ length: n }, (_, i) => ({ name: `P${i + 1}`, kind: "human" as const })), rules, 9).state;
+  it("can use the 40-card pack with no picture cards, while 52 is the default", () => {
+    const s = sa(2, { deck: "40" });
+    const all = [...s.deck, ...s.hands.flat(), ...s.table.flatMap(t => t.cards)];
+    expect(all.length).toBe(40);
+    expect(all.every(c => (c % 13) + 1 <= 10)).toBe(true);
+    expect(sa(2).deck.length + 20).toBe(52); // the default pack is the full 52
+    expect(sa(2, { deck: "40" }).deck.length + 20).toBe(40);
+  });
+  it("deals 10 each and an empty table for 2 or 4 players, 13 each and one card for 3", () => {
+    const two = sa(2); expect(two.hands.map(h => h.length)).toEqual([10, 10]); expect(two.table.length).toBe(0);
+    const four = sa(4); expect(four.hands.map(h => h.length)).toEqual([10, 10, 10, 10]); expect(four.table.length).toBe(0);
+    const three = sa(3); expect(three.hands.map(h => h.length)).toEqual([13, 13, 13]); expect(three.table.length).toBe(1);
+  });
+  it("plays anticlockwise by default, clockwise when chosen", () => {
+    const s = sa(3);
+    const first = s.turn;
+    s.hands[first] = [card(2)]; s.table = [];
+    const t = act(s, { type: "trail", card: card(2) });
+    expect(t.turn).toBe((first + 2) % 3);
+    const c = sa(3, { direction: "clock" });
+    c.hands[c.turn] = [card(2)]; c.table = [];
+    expect(act(c, { type: "trail", card: card(2) }).turn).toBe((c.turn + 1) % 3);
+  });
+  it("targets 11 for two sides and 7 for three or four playing alone", () => {
+    const end = (n: number, rules: Record<string, unknown>) => { const s = sa(n, rules); s.hands = s.hands.map(() => []); s.hands[s.turn] = [card(7, 3)]; s.table = [loose(card(7, 2))]; s.piles = s.piles.map(() => []); s.score = s.score.map(() => 0); s.piles[s.turn] = [BIG, card(1), card(1, 1), card(1, 2), card(1, 3)]; s.deck = []; s.lastCapture = s.turn; return act(s, { type: "capture", card: card(7, 3), take: [card(7, 2)] }); };
+    expect(end(3, {}).score.some(x => x >= 7)).toBe(true);
+    expect(end(3, {}).phase).toBe("over");
+    expect(end(2, {}).phase).toBe("dealOver");
+    expect(end(4, { teams: false }).phase).toBe("over");
+    expect(end(4, {}).phase).toBe("dealOver");
+  });
+  it("scores the Mummy 2, most cards 2, most spades 2, Spy Two 1 and each ace 1: 11 in all", () => {
+    const s = sa(2); s.turn = 0; s.hands = [[card(7, 3)], []]; s.table = [loose(card(7, 2))]; s.deck = []; s.lastCapture = 0;
+    s.piles = [[BIG, card(1), card(1, 1), card(3, 3), card(4, 3), card(5, 3)], [LITTLE, card(1, 2), card(1, 3), card(6), card(8), card(9)]];
+    const t = act(s, { type: "capture", card: card(7, 3), take: [card(7, 2)] });
+    const sum = t.summary.map(x => x.total);
+    expect(sum[0] + sum[1]).toBe(11);
+    expect(t.summary[0].lines.some(l => l.startsWith("Mummy"))).toBe(true);
+    expect(t.summary[1].lines.some(l => l.startsWith("Spy Two"))).toBe(true);
+  });
+  it("puts the lowest card of a capture on top of the pile, and an opponent can take it", () => {
+    const s = sa(2); s.hands = [[card(9), card(2, 1)], [card(8, 1), card(3, 1)]]; s.table = [loose(card(4)), loose(card(5, 1)), loose(card(4, 3))]; s.turn = 0;
+    const t = act(s, { type: "capture", card: card(9), take: [card(4), card(5, 1)] });
+    expect(t.piles[0][t.piles[0].length - 1]).toBe(card(4)); // 9, 5, then the 4 on top
+    expect(d.view(t, 1).pileTops[0]).toBe(card(4));
+    // the other player adds the 4 on top of the pile to the 4 on the table to make 8
+    const u = act(t, { type: "capture", card: card(8, 1), take: [200 + 0, card(4, 3)] });
+    expect(u.piles[0]).toEqual([card(9), card(5, 1)]);
+    expect(u.piles[1].length).toBe(3);
+  });
+  it("Crazy Casino refills the hand after every turn and forbids trailing with a build", () => {
+    const s = sa(2, { dealMode: "crazy" });
+    expect(s.hands[0].length).toBe(8);
+    const before = s.deck.length;
+    const c = s.hands[s.turn][0];
+    const t = act(s, { type: "trail", card: c });
+    expect(t.hands[s.turn].length).toBe(8);
+    expect(t.deck.length).toBe(before - 1);
+  });
+  it("offers the regional variants as presets", () => {
+    const swazi = SCHEMA.presets.find(p => p.id === "swazi")!;
+    const v = sanitizeRules(SCHEMA, swazi.values);
+    expect(v.deck).toBe("52"); expect(v.faces).toBe("rank"); expect(v.ace).toBe("either");
+    expect(sanitizeRules(SCHEMA, SCHEMA.presets.find(p => p.id === "sa")!.values).deck).toBe("40");
+    expect(SCHEMA.presets.map(p => p.id)).toEqual(expect.arrayContaining(["full", "sa", "swazi", "sotho", "crazy", "classic"]));
   });
 });

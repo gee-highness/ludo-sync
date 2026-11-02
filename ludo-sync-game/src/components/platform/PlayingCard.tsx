@@ -17,6 +17,8 @@ interface Props {
   id?: number;
   faceDown?: boolean;
   size?: keyof typeof SIZES;
+  /** Exact width in pixels, instead of a size, for layouts that fit the screen. */
+  width?: number;
   selected?: boolean;
   glow?: boolean;
   dim?: boolean;
@@ -26,8 +28,8 @@ interface Props {
 }
 
 /** A standard playing card painted in CSS: rank and suit in the corners, a big suit in the middle. Four-colour suits are never the only cue: the symbol is always there. */
-export function PlayingCard({ id, faceDown, size = "md", selected, glow, dim, onClick, label, children }: Props) {
-  const z = SIZES[size];
+export function PlayingCard({ id, faceDown, size = "md", width, selected, glow, dim, onClick, label, children }: Props) {
+  const z = width ? { w: width, h: Math.round(width * 1.42), f: Math.max(9, Math.round(width * 0.36)) } : SIZES[size];
   const suit = id === undefined ? 0 : Math.floor(id / 13);
   const rank = id === undefined ? 0 : (id % 13) + 1;
   const red = suit === 1 || suit === 2;

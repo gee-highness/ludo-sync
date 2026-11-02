@@ -17,6 +17,8 @@ export interface GameDriver<S = unknown, A = unknown, V = unknown> {
   minPlayers: number;
   maxPlayers: number;
   schema: RuleSchema;
+  /** True for games where every seat plays at once on its own board: pass and play on one device makes no sense. */
+  noHotseat?: boolean;
   /** True when players hold secrets (a hand, a face-down card): pass and play covers the screen and online views are filtered. */
   hidden: boolean;
   create(seats: SeatInfo[], rules: RuleValues, seed: number): S;
