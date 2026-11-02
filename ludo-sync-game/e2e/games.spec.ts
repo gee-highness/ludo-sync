@@ -212,3 +212,29 @@ test("Memory Match: solo, flip cards and the game is saved", async ({ page }) =>
   await expect(page.getByText(/found/).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("Crazy Eights: pick a preset, play or draw against a bot", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/crazyeights");
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Action", exact: true }).click();
+  await page.getByRole("combobox", { name: "Bot level" }).selectOption("easy");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Your hand" })).toBeVisible({ timeout: 15_000 });
+  for (let turn = 0; turn < 4; turn++) {
+    await expect(page.getByRole("status").filter({ hasText: /Your turn|Draw \d/ })).toBeVisible({ timeout: 20_000 });
+    const cards = page.getByRole("group", { name: "Your hand" }).getByRole("button");
+    if (await cards.count()) {
+      await cards.first().click();
+      const suit = page.getByRole("button", { name: "hearts", exact: true });
+      if (await suit.isVisible().catch(() => false)) await suit.click();
+    } else {
+      const more = page.getByRole("button", { name: /^Draw \d+$/ });
+      if (await more.isVisible().catch(() => false)) await more.click(); else await page.getByRole("button", { name: "Draw a card" }).click();
+    }
+    await page.waitForTimeout(1500);
+  }
+  expect(errors).toEqual([]);
+});
