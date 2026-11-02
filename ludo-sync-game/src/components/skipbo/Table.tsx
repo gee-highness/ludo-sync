@@ -2,6 +2,7 @@
 
 import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
+import { MenuLauncher } from "../platform/InGameMenu";
 import { useEffect, useMemo, useState } from "react";
 import { WILD, type Action, type Source } from "@/lib/skipbo/types";
 import type { PlayerView, TableView } from "@/lib/skipbo/view";
@@ -113,6 +114,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
         {note && <Badge colorScheme="orange">{note}</Badge>}
         {headerExtra}
         <Button size="sm" variant="outline" color="white" onClick={() => setShowLog(v => !v)} aria-pressed={showLog}>Log</Button>
+        <MenuLauncher c={{ name: "Skip-Bo", log }} />
         <Button size="sm" colorScheme="yellow" onClick={wantHint} isDisabled={!myTurn} aria-label="Show a hint">Hint</Button>
       </HStack>
 

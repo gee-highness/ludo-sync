@@ -3,6 +3,7 @@
 import { Badge, Box, Button, HStack, IconButton, Text, VStack, useToast } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
 import dynamic from "next/dynamic";
+import { MenuLauncher } from "../platform/InGameMenu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resetCameraView } from "@/lib/client/cameraView";
 import { useCapabilities } from "@/lib/client/device";
@@ -103,6 +104,7 @@ export default function Table3DView({ award, floaters, badge, view, act, frame, 
             {headerExtra}
             {toggle}
             <Button size="sm" variant="outline" color="white" onClick={() => setShowLog(v => !v)} aria-pressed={showLog}>Log</Button>
+            <MenuLauncher c={{ name: "Skip-Bo", log }} />
             <Button size="sm" colorScheme="yellow" onClick={input.wantHint} isDisabled={!myTurn} aria-label="Show a hint">Hint</Button>
           </HStack>
           <HStack spacing={2} mt={2} justify="flex-end">

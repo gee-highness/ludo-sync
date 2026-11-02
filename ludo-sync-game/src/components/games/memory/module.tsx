@@ -2,6 +2,7 @@
 
 import { Badge, Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { useEffect, useRef } from "react";
+import { CardBackFace } from "../../platform/cards/CardBack";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { pick } from "@/lib/platform/rules";
@@ -70,7 +71,7 @@ function Table({ base, view, act, frame }: TableProps<MView, MAction>) {
             <Box key={i} role="gridcell" as="button" type="button" w={`${size}px`} h={`${size * 1.15}px`} position="relative" style={{ perspective: "600px" }} disabled={!myTurn || up}
               aria-label={up ? `card ${i + 1}: ${sym!.text}` : `card ${i + 1}, face down`} onClick={() => act({ type: "flip", pos: i })} cursor={myTurn && !up ? "pointer" : "default"} _focusVisible={{ outline: "3px solid #fde047" }}>
               <Box position="absolute" inset={0} style={{ transformStyle: "preserve-3d", transition: "transform .35s", transform: up ? "rotateY(180deg)" : "none" }}>
-                <Box position="absolute" inset={0} borderRadius="10px" style={{ backfaceVisibility: "hidden" }} bg="repeating-linear-gradient(45deg,#4338ca,#4338ca 6px,#6366f1 6px,#6366f1 12px)" border="3px solid #e0e7ff" boxShadow="0 2px 5px rgba(0,0,0,.5)" />
+                <Box position="absolute" inset={0} borderRadius="10px" overflow="hidden" style={{ backfaceVisibility: "hidden" }} border="3px solid #e0e7ff" boxShadow="0 2px 5px rgba(0,0,0,.5)"><CardBackFace /></Box>
                 <Box position="absolute" inset={0} borderRadius="10px" display="grid" placeItems="center" fontSize={`${size * 0.5}px`} lineHeight={1} fontWeight={900}
                   bg={matched ? "#bbf7d0" : "#f8fafc"} color={sym?.colour ?? "#0f172a"} border="3px solid" borderColor={matched ? "#16a34a" : "#cbd5e1"} style={{ backfaceVisibility: "hidden", transform: "rotateY(180deg)" }} aria-hidden>{sym?.text}</Box>
               </Box>

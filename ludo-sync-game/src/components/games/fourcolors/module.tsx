@@ -7,11 +7,27 @@ import { buzz } from "@/lib/client/haptics";
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { K, fourColors, type FAction, type FView } from "@/lib/games/fourcolors/driver";
-import { COLOUR_HEX, COLOUR_NAMES, ColourCard, SHAPES } from "../../platform/ColourCard";
+import { COLOUR_HEX, COLOUR_NAMES, ColourCard, SHAPES, cardName } from "../../platform/ColourCard";
+import { useMotion } from "../../platform/useMotion";
+import { Draggable, DropZone } from "../../platform/interact/Parts";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const me = view.me;
+  const root = useRef<HTMLDivElement>(null);
+  useMotion(root, frame, {
+    me,
+    // a card someone else played flies in from their hand; cards I draw or am dealt come from the draw pile
+    enter: (key, events) => {
+      const id = Number(key.slice(1));
+      const play = events.find(e => e.type === "play" && e.p !== me && ((e.card as number | undefined) === id || (e.cards as number[] | undefined)?.includes(id)));
+      if (play) return `hand-${play.p}`;
+      return events.some(e => e.type === "round" || e.type === "deal" || ((e.type === "draw" || e.type === "drawPenalty") && e.p === me)) ? "deck" : null;
+    },
+    // an opponent drawing has no card on screen: a card back flies from the pile to their hand
+    fly: events => events.filter(e => (e.type === "draw" || e.type === "drawPenalty" || e.type === "catch") && e.p !== me && e.p !== undefined).map(e => ({ from: "deck", to: `hand-${e.p}`, count: typeof e.cards === "number" ? e.cards : 1 })),
+  });
   const myTurn = me !== null && view.turn === me && view.phase === "play";
   const [chooser, setChooser] = useState<{ card: number; swap?: number } | null>(null);
   const [swapFor, setSwapFor] = useState<number | null>(null);
@@ -45,16 +61,20 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
     void out;
   };
   const clickable = new Set([...(myTurn ? view.playable : []), ...view.jumpable]);
+  useHotkeys({
+    d: () => { if (myTurn && view.pending === 0 && view.drawn === null) act({ type: "draw" }); },
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [String(i + 1), () => { const c = view.hand[i]; if (c && clickable.has(c.id)) playCard(c.id); }])),
+  }, me !== null && view.phase === "play");
   const dirIcon = view.dir === 1 ? "↻" : "↺";
   const topColour = view.color;
 
   return (
-    <VStack spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between">
+    <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
       <HStack spacing={2} overflowX="auto" align="start" role="list" aria-label="Opponents">
         {base.players.map((p, i) => i === me ? null : (
           <VStack key={i} role="listitem" spacing={1} minW="86px" p={2} borderRadius="lg" bg={view.turn === i && view.phase === "play" ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={view.turn === i && view.phase === "play" ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "transparent"}>
             <Text fontSize="xs" fontWeight={800} noOfLines={1}>{p.name}</Text>
-            <Text fontSize="2xl" fontWeight={900} lineHeight={1} aria-label={`${view.handCounts[i]} cards`}>🂠 {view.handCounts[i]}</Text>
+            <Text data-anchor={`hand-${i}`} fontSize="2xl" fontWeight={900} lineHeight={1} aria-label={`${view.handCounts[i]} cards`}>🂠 {view.handCounts[i]}</Text>
             {view.handCounts[i] === 1 && <Badge colorScheme={view.called[i] ? "green" : "red"}>{view.called[i] ? "Last card!" : "uncalled"}</Badge>}
             {catchTarget === i && <Button size="xs" colorScheme="red" onClick={() => act({ type: "catch", target: i })}>Catch!</Button>}
           </VStack>
@@ -64,11 +84,11 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
       <VStack spacing={2}>
         <HStack spacing={6} align="center" justify="center">
           <VStack spacing={0}>
-            <Box as="button" aria-label="Draw a card" onClick={() => myTurn && view.pending === 0 && view.drawn === null && act({ type: "draw" })} opacity={myTurn ? 1 : 0.7}><ColourCard faceDown size="md" glow={myTurn && view.pending === 0 && view.playable.length === 0} /></Box>
+            <Box as="button" data-anchor="deck" aria-label="Draw a card" onClick={() => myTurn && view.pending === 0 && view.drawn === null && act({ type: "draw" })} opacity={myTurn ? 1 : 0.7}><ColourCard faceDown size="md" glow={myTurn && view.pending === 0 && view.playable.length === 0} /></Box>
             <Text fontSize="2xs" color="gray.400">Draw ({view.deckCount})</Text>
           </VStack>
           <VStack spacing={0}>
-            {view.top && <ColourCard card={view.top} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}
+            <DropZone id="discard" accepts={d => typeof d === "number" && clickable.has(d)} onDrop={d => playCard(d as number)} p="4px">{view.top && <ColourCard card={view.top} mk={`c${view.top.id}`} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}</DropZone>
             <HStack spacing={1} mt="6px" aria-label={`Colour in play: ${COLOUR_NAMES[topColour]}`}>
               <Box w="16px" h="16px" borderRadius="50%" bg={COLOUR_HEX[topColour]} border="2px solid white" />
               <Text fontSize="xs" fontWeight={800}>{SHAPES[topColour]} {COLOUR_NAMES[topColour]}</Text>
@@ -95,12 +115,12 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
             {myTurn && view.drawn !== null && !flag(view.rules, "mustPlayDrawn") && <Button size="sm" variant="outline" color="white" onClick={() => act({ type: "pass" })}>Keep it and pass</Button>}
             {mayCall && <Button size="sm" colorScheme="yellow" onClick={() => act({ type: "call" })}>Last card!</Button>}
           </HStack>
-          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand">
+          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand" onKeyDown={roveKeys}>
             <Box display="flex" w="fit-content" mx="auto" px={2}>
               {view.hand.map((c, i) => (
-                <Box key={c.id} ml={i ? "-16px" : 0} zIndex={i}>
-                  <ColourCard card={c} size="md" glow={clickable.has(c.id)} dim={!clickable.has(c.id) && (myTurn || view.jumpable.length > 0)} onClick={clickable.has(c.id) ? () => playCard(c.id) : undefined} />
-                </Box>
+                <Draggable key={c.id} id={`hand${c.id}`} data={c.id} label={cardName(c)} disabled={!clickable.has(c.id)} ml={i ? "-16px" : 0} zIndex={i}>
+                  <ColourCard card={c} mk={`c${c.id}`} size="md" glow={clickable.has(c.id)} dim={!clickable.has(c.id) && (myTurn || view.jumpable.length > 0)} onClick={clickable.has(c.id) ? () => playCard(c.id) : undefined} />
+                </Draggable>
               ))}
             </Box>
           </Box>
@@ -143,6 +163,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#dc2626",
   icon: "🎴",
   tagline: "Match the colour or the number, play your action cards, and be first out. Every rule is yours to change, even the deck.",
+  keys: [{ key: "D", does: "Draw a card" }, { key: "1 – 9", does: "Play the card in that position" }],
   howTo: [
     { title: "Goal", text: "Get rid of all your cards first. Then score the points left in everyone else's hands. First to the target wins the match." },
     { title: "Play a card", text: "Play a card that matches the top card's colour, number or symbol. Wild cards go on anything and let you choose the colour." },

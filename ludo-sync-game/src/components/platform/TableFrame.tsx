@@ -1,12 +1,15 @@
 "use client";
 
-import { Badge, Box, Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, Flex, HStack, IconButton, Modal, ModalBody, ModalContent, ModalHeader, ModalOverlay, Text, VStack, useDisclosure } from "@chakra-ui/react";
-import { ChevronLeftIcon, QuestionIcon } from "@chakra-ui/icons";
-import { useEffect, useRef, type ReactNode } from "react";
+import { Badge, Box, Button, DrawerCloseButton, Flex, HStack, IconButton, Modal, ModalBody, ModalContent, ModalHeader, ModalOverlay, Text, VStack, useDisclosure } from "@chakra-ui/react";
+import { ChevronLeftIcon } from "@chakra-ui/icons";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { InGameMenu, type MenuTab } from "./InGameMenu";
+import { useHotkeys } from "./interact/keys";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import type { Award } from "@/lib/client/profile";
 import { describeStreak } from "@/lib/client/streak";
+import { metaOf } from "@/lib/platform/registry";
 import { describeRules, type RuleValues } from "@/lib/platform/rules";
 import type { BaseView, GameModule, GameEvent } from "@/lib/platform/types";
 import { BG } from "./Shell";
@@ -55,8 +58,9 @@ export { HowTo };
 /** The frame every game sits in: back button, scores, a banner saying what to do, the log, and the result. */
 export function TableFrame(p: FrameProps) {
   const { mod, base, rules } = p;
-  const help = useDisclosure();
-  const rulesDrawer = useDisclosure();
+  const menu = useDisclosure();
+  const [menuTab, setMenuTab] = useState<MenuTab>("settings");
+  const openMenu = (t: MenuTab) => { setMenuTab(t); menu.onOpen(); };
   const leave = useDisclosure();
   const you = base.you;
   const myTurn = you !== null && base.actors.includes(you) && !base.over;
@@ -72,7 +76,7 @@ export function TableFrame(p: FrameProps) {
     if (!base.over) overSeen.current = false;
   }, [base.over, base.winners, you]);
 
-  const lines = describeRules(mod.driver.schema, rules);
+  useHotkeys({ m: () => openMenu("settings"), "?": () => openMenu("help") });
   const won = you !== null && base.winners.includes(you);
   const winnerNames = base.winners.map(w => base.players[w]?.name).filter(Boolean).join(" and ");
   const streak = p.award?.streak ? describeStreak(p.award.streak) : null;
@@ -84,8 +88,7 @@ export function TableFrame(p: FrameProps) {
         <Text fontWeight={800} flex={1} noOfLines={1} as="h1">{p.title}</Text>
         {p.note && <Badge colorScheme="orange">{p.note}</Badge>}
         {p.headerExtra}
-        <Button size="sm" variant="outline" color="white" onClick={rulesDrawer.onOpen} aria-label="Show the rules in use">Rules</Button>
-        <IconButton aria-label="How to play" icon={<QuestionIcon />} size="sm" variant="outline" color="white" onClick={help.onOpen} />
+        <Button size="sm" variant="outline" color="white" onClick={() => openMenu("settings")} aria-label="Menu: settings, rules, how to play, log, controls" leftIcon={<span aria-hidden>☰</span>}>Menu</Button>
       </HStack>
 
       <HStack spacing={2} overflowX="auto" py={1} role="list" aria-label="Players">
@@ -145,18 +148,7 @@ export function TableFrame(p: FrameProps) {
           </ModalBody>
         </ModalContent>
       </Modal>
-      <Drawer isOpen={rulesDrawer.isOpen} onClose={rulesDrawer.onClose} placement="bottom">
-        <DrawerOverlay />
-        <DrawerContent bg="gray.800" color="white" borderTopRadius="xl">
-          <DrawerCloseButton />
-          <DrawerHeader>Rules in use</DrawerHeader>
-          <DrawerBody pb={6}>
-            {lines.length ? <VStack align="stretch" spacing={1}>{lines.map(l => <Text key={l} fontSize="sm">• {l}</Text>)}</VStack> : <Text color="gray.300">Standard rules.</Text>}
-            <Text fontSize="xs" color="gray.500" mt={3}>Everything else is as in the default rules.</Text>
-          </DrawerBody>
-        </DrawerContent>
-      </Drawer>
-      <HowTo mod={mod} isOpen={help.isOpen} onClose={help.onClose} />
+      <InGameMenu isOpen={menu.isOpen} onClose={menu.onClose} tab={menuTab} setTab={setMenuTab} c={{ name: mod.driver.name, rules: describeRules(mod.driver.schema, rules), howTo: mod.howTo, log: p.log, keys: mod.keys, cards: metaOf(mod.driver.id)?.category === "Cards" }} />
     </Flex>
   );
 }

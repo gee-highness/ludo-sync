@@ -17,6 +17,13 @@ Every game after Ludo and Skip-Bo is a **driver** (a pure engine) plus a **table
 
 `GameDriver.mayAct` lets players act out of turn (catching a missed call, jumping in). `noHotseat` marks games where every seat plays at once (Solitaire races).
 
+## Motion: cards and pieces travel, they never just vanish
+`components/platform/useMotion.ts` animates any table built from keyed pieces. In the game's `Table`: give the root `position: relative` and a ref; give every card `mk` (a stable key, e.g. `c${id}`, on `PlayingCard` or `ColourCard`) and every place cards come from or go to `data-anchor` (`deck`, `hand-<seat>`, `pile-<seat>`, `stock`); then call `useMotion(root, frame, { me, enter, exit, fly })`.
+- A card whose key moved glides from its old spot to its new one (a card played from your hand to the table, a card moved between Solitaire piles).
+- A card that appeared flies in from `enter(key, events)` (the opponent's hand, the deck); one that left flies to `exit(key, events)` (the pile that captured it); `fly(events)` sends card backs between anchors when no card is on screen (an opponent drawing).
+- Honours the Speed setting (Instant turns it off) and reduced motion. Copies are drawn in a layer above the table and the real card is hidden until it lands, so nothing blocks taps.
+Used by Casino, Crazy Eights, 4 Colors and Solitaire. Four in a Row drops its discs, Memory flips its cards, and Ludo, Skip-Bo, Checkers and Snakes and Ladders animate their own pieces.
+
 ## Games
 Four in a Row, Casino (South African, Swazi, Sotho, Crazy, Classic), 4 Colors, Snakes and Ladders, Memory Match, Crazy Eights, Solitaire (Klondike, FreeCell, Spider), Snakes and Ladders (themes, seeded fair boards with a shareable board number, special squares, choose-a-die), Checkers (American, Brazilian, big board; compulsory or optional captures, flying kings).
 

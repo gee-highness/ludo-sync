@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import type { GameModule, TableProps } from "@/lib/platform/types";
+import { useDraggable, useDropTarget } from "../../platform/interact/drag";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { cfgOf, checkers, type CAction, type CState, type CView, type Sq } from "@/lib/games/checkers/driver";
 
 const CELL = 100, PAD = 44;
@@ -28,6 +30,27 @@ function Disc({ side, king, mini }: { side: number; king: boolean; mini?: boolea
       {king && mini && <circle r={10} fill={c.glyph} opacity={0.8} />}
       <ellipse cx={-12} cy={-20} rx={16} ry={8} fill="#fff" opacity={0.28} transform="rotate(-25 -12 -20)" />
     </g>
+  );
+}
+
+
+/** One dark square's touch target: tap, key, drag a piece from it, or drop a dragged piece on it. */
+function SquareHit({ sqKey, x, y, label, clickable, piece, canDrop, onTap, onDropHere, onPickUp, onPutDown, side }: {
+  sqKey: string; x: number; y: number; label: string; clickable: boolean; piece: boolean; canDrop: boolean; onTap: () => void; onDropHere: (from: string) => void; onPickUp: () => void; onPutDown: () => void; side: number;
+}) {
+  const id = `sq${sqKey}`;
+  const drag = useDraggable({
+    id, data: sqKey, label: label.split(",").slice(0, 2).join(","), disabled: !piece || !clickable, touch: "none", onStart: onPickUp, onEnd: onPutDown,
+    preview: box => {
+      const d = document.createElement("div"), c = SIDES[side];
+      Object.assign(d.style, { width: `${box.width * 0.85}px`, height: `${box.width * 0.85}px`, borderRadius: "50%", background: `radial-gradient(circle at 38% 30%, ${c.light}, ${c.mid} 55%, ${c.deep})`, border: `3px solid ${c.rim}`, boxSizing: "border-box" });
+      return d;
+    },
+  });
+  const drop = useDropTarget({ id, accepts: () => canDrop, onDrop: from => onDropHere(String(from)) });
+  return (
+    <rect ref={drop.ref as unknown as React.Ref<SVGRectElement>} data-drop-id={drop["data-drop-id"]} x={x} y={y} width={CELL} height={CELL} fill="transparent" role="gridcell" tabIndex={clickable ? 0 : -1} aria-label={label}
+      style={{ cursor: clickable ? "pointer" : "default", outline: "none", ...drag.style }} onPointerDown={drag.onPointerDown} onClick={onTap} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTap(); } }} />
   );
 }
 
@@ -91,12 +114,27 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
     if (sel) setSel(null);
   };
 
+  const [dragFrom, setDragFrom] = useState<string | null>(null);
+  /** A piece was dragged onto a landing square: finish the move if it is complete, otherwise carry on picking the next jump. */
+  const dropMove = (from: Sq, to: Sq) => {
+    if (!myTurn) return;
+    const fromMoves = moves.filter(m => key(m.from) === key(from));
+    const path = [...(sel && key(sel.from) === key(from) ? sel.path : []), to];
+    const next = fromMoves.filter(m => startsWith(m.path, path));
+    const done = next.find(m => m.path.length === path.length);
+    if (done && next.length === 1) { act({ type: "move", path: [from, ...path] }); setSel(null); }
+    else if (next.length) setSel({ from, path });
+    else setSel(null);
+  };
+  useHotkeys({ h: () => showHintRef.current(), Escape: () => setSel(null) }, myTurn);
+  const showHintRef = useRef<() => void>(() => undefined);
   const showHint = () => {
     if (!myTurn || you === null) return;
     const a = checkers.bot({ rules: view.rules, cfg: cfgOf(view.rules), board: view.board, turn: view.turn, quiet: view.quiet, plies: 0, captures: view.captures, phase: view.phase, winner: view.winner, lastMove: view.lastMove, names: [], rng: 1 } as CState, you, "normal");
     if (a) { setHint({ from: a.path[0], to: a.path[1] }); setSel(null); sound.play("click"); setTimeout(() => setHint(null), 3500); }
   };
 
+  showHintRef.current = showHint;
   const counts = [0, 1].map(p => view.board.flat().filter(v => v >= 0 && (v & 1) === p).length);
   const total = size * CELL + PAD * 2;
   const lm = view.lastMove;
@@ -119,7 +157,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   return (
     <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" flex={1} gap={2} pt={1} maxW="640px" w="100%" mx="auto">
       {side(order[0])}
-      <svg ref={svgRef} viewBox={`0 0 ${total} ${total}`} role="grid" aria-label={`Checkers board, ${size} by ${size}`} style={{ width: "100%", maxHeight: "calc(100dvh - 300px)", minHeight: 280, touchAction: "manipulation", filter: "drop-shadow(0 10px 18px rgba(0,0,0,.5))" }}>
+      <svg ref={svgRef} onKeyDown={roveKeys} viewBox={`0 0 ${total} ${total}`} role="grid" aria-label={`Checkers board, ${size} by ${size}`} style={{ width: "100%", maxHeight: "calc(100dvh - 300px)", minHeight: 280, touchAction: "manipulation", filter: "drop-shadow(0 10px 18px rgba(0,0,0,.5))" }}>
         <defs>
           <radialGradient id="disc0" cx="38%" cy="30%" r="80%"><stop offset="0" stopColor={SIDES[0].light} /><stop offset="0.55" stopColor={SIDES[0].mid} /><stop offset="1" stopColor={SIDES[0].deep} /></radialGradient>
           <radialGradient id="disc1" cx="38%" cy="30%" r="80%"><stop offset="0" stopColor={SIDES[1].light} /><stop offset="0.6" stopColor={SIDES[1].mid} /><stop offset="1" stopColor={SIDES[1].deep} /></radialGradient>
@@ -147,9 +185,9 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
 
         {view.board.map((row, r) => row.map((v, c) => {
           if (v < 0) return null;
-          const q: Sq = [r, c], [x, y] = pos(q), p = v & 1, can = movable.some(m => key(m) === key(q)), isSel = !!active && key(active.from) === key(q);
+          const q: Sq = [r, c], [x, y] = pos(q), p = v & 1, can = movable.some(m => key(m) === key(q)), isSel = !!active && key(active.from) === key(q), lifted = dragFrom === key(q);
           return (
-            <g key={`p${r}-${c}`} data-piece={key(q)} transform={`translate(${x} ${y})`} style={{ transition: "none" }} pointerEvents="none">
+            <g key={`p${r}-${c}`} data-piece={key(q)} transform={`translate(${x} ${y})`} style={{ transition: "none", opacity: lifted ? 0.3 : 1 }} pointerEvents="none">
               <g style={{ transform: isSel ? "translateY(-7px) scale(1.06)" : undefined, transition: "transform .15s" }}>
                 {can && !isSel && <circle className="ckanim" r={50} fill="none" stroke={mustCapture ? "#f87171" : "#facc15"} strokeWidth={5} style={{ animation: "ckpulse 1.4s infinite" }} />}
                 <Disc side={p} king={v >= 2} />
@@ -166,10 +204,12 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
         {view.board.map((row, r) => row.map((v, c) => {
           if ((r + c) % 2 === 0) return null;
           const q: Sq = [r, c], [x, y] = pos(q);
-          const clickable = myTurn && (hops.has(key(q)) || movable.some(m => key(m) === key(q)) || !!sel);
-          const label = `${String.fromCharCode(97 + c)}${size - r}${v >= 0 ? `, ${SIDES[v & 1].name} ${v >= 2 ? "king" : "man"}` : ", empty"}${hops.has(key(q)) ? ", you can move here" : movable.some(m => key(m) === key(q)) ? ", can move" : ""}`;
-          return <rect key={`t${r}-${c}`} x={x - CELL / 2} y={y - CELL / 2} width={CELL} height={CELL} fill="transparent" role="gridcell" tabIndex={clickable ? 0 : -1} aria-label={label}
-            style={{ cursor: clickable ? "pointer" : "default", outline: "none" }} onClick={() => tap(q)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); tap(q); } }} />;
+          const canGo = hops.has(key(q)), movableHere = movable.some(m => key(m) === key(q));
+          const clickable = myTurn && (canGo || movableHere || !!sel);
+          const label = `${String.fromCharCode(97 + c)}${size - r}${v >= 0 ? `, ${SIDES[v & 1].name} ${v >= 2 ? "king" : "man"}` : ", empty"}${canGo ? ", you can move here" : movableHere ? ", can move" : ""}`;
+          return <SquareHit key={`t${r}-${c}`} sqKey={key(q)} x={x - CELL / 2} y={y - CELL / 2} label={label} clickable={clickable} piece={movableHere} canDrop={myTurn && canGo} side={you ?? 0}
+            onTap={() => tap(q)} onPickUp={() => { setDragFrom(key(q)); setSel({ from: q, path: [] }); sound.play("click"); }} onPutDown={() => setDragFrom(null)}
+            onDropHere={fromKey => { const from = fromKey.split(",").map(Number) as Sq; dropMove(from, q); }} />;
         }))}
       </svg>
       {side(order[1])}
@@ -189,6 +229,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#dc2626",
   icon: "⛀",
   tagline: "Jump and crown your way across the board. American, Brazilian and big-board rules, compulsory captures, flying kings: every rule is yours to change.",
+  keys: [{ key: "H", does: "Show a suggested move" }, { key: "Esc", does: "Put the piece down" }],
   howTo: [
     { title: "Move diagonally", text: "Tap one of your glowing pieces, then a green square. Men step one square forward on the dark squares; kings can also go backwards." },
     { title: "Capture by jumping", text: "Jump over an enemy piece into the empty square behind it to take it. Red squares show captures. Keep jumping if you can: pick each landing square in turn." },

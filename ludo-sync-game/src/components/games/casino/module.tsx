@@ -8,12 +8,34 @@ import { casino } from "@/lib/games/casino/driver";
 import { PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, unitOf, type CAction, type Item, type Position } from "@/lib/games/casino/engine";
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
-import { CardBacks, PlayingCard } from "../../platform/PlayingCard";
+import { CardBacks, PlayingCard, cardLabel } from "../../platform/PlayingCard";
+import { CardBackFace } from "../../platform/cards/CardBack";
+import { Draggable, DropZone } from "../../platform/interact/Parts";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
+import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 import type { CView } from "@/lib/games/casino/driver";
 
 function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const me = view.me;
+  const root = useRef<HTMLDivElement>(null);
+  const idOf = (key: string) => Number(key.slice(1));
+  useMotion(root, frame, {
+    me,
+    // someone else's card arrives from their hand; dealt cards come from the deck
+    enter: (key, events) => {
+      const id = idOf(key);
+      const e = events.find(x => (x.card === id || (Array.isArray(x.cards) && (x.cards as number[]).includes(id))) && x.p !== undefined && x.p !== me);
+      if (e) return `hand-${e.p}`;
+      return events.some(x => x.type === "deal" || x.type === "redeal") ? "deck" : null;
+    },
+    // captured cards go to the pile of whoever took them
+    exit: (key, events) => {
+      const id = idOf(key);
+      const e = events.find(x => x.type === "capture" && (x.card === id || (x.cards as number[] | undefined)?.includes(id)));
+      return e ? `pile-${e.p}` : null;
+    },
+  });
   const myTurn = me !== null && base.actors.includes(me) && view.phase === "play";
   const [card, setCard] = useState<number | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
@@ -55,6 +77,27 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
     return ids;
   }, [pos, card, items, myTurn]);
 
+  /** The table cards a given hand card can capture or build with (alone or together with others). */
+  const usableWith = (c: number): Set<number> => {
+    const ids = new Set<number>();
+    if (!pos) return ids;
+    const pool = items.slice(0, 13);
+    for (let mask = 1; mask < 1 << pool.length; mask++) {
+      const sub = pool.filter((_, i) => (mask >> i) & 1);
+      if (sub.length > 4) continue;
+      if (isCapture(pos, c, sub) || buildOptions(pos, c, sub).length) sub.forEach(x => ids.add(x.id));
+    }
+    return ids;
+  };
+  /** Dropping a card on a table card: do the move if it is clear, otherwise pick both and let the buttons finish it. */
+  const dropOn = (c: number, it: Item) => {
+    if (!pos || !myTurn) return;
+    if (isCapture(pos, c, [it])) { act({ type: "capture", card: c, take: [it.id] }); return; }
+    const b = buildOptions(pos, c, [it]);
+    if (b.length === 1) { act({ type: "build", card: c, take: [it.id], value: b[0] }); return; }
+    setCard(c); setPicked([it.id]);
+  };
+  const trailNow = (c: number) => { if (pos && myTurn && trailAllowed(pos, c)) act({ type: "trail", card: c }); };
   const toggle = (id: number) => { if (myTurn && card !== null) setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id])); };
   const bestCapture = () => {
     if (!pos || card === null) return;
@@ -67,42 +110,50 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
     setPicked(best.map(b => b.id));
   };
 
+  useHotkeys({
+    c: () => { if (card !== null && canCapture) act({ type: "capture", card, take: picked }); },
+    t: () => { if (card !== null && canTrail) act({ type: "trail", card }); },
+    b: () => { if (card !== null && buildValues.length === 1) act({ type: "build", card, take: picked, value: buildValues[0] }); },
+    m: () => bestCapture(),
+    Escape: () => { setPicked([]); setCard(null); },
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [String(i + 1), () => { const h = view.hand[i]; if (myTurn && h !== undefined) { setCard(x => (x === h ? null : h)); setPicked([]); } }])),
+  }, me !== null && view.phase === "play");
   const unitColour = (p: number) => SEAT_COLOURS[unitOf(view.rules, base.players.length, p) % SEAT_COLOURS.length];
   const owns = pos ? ownsBuild(pos) : false;
 
   return (
-    <VStack spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between">
+    <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
       <HStack spacing={3} overflowX="auto" align="start">
         {base.players.map((p, i) => i === me ? null : (
           <VStack key={i} spacing={1} minW="96px" p={2} borderRadius="lg" bg={view.turn === i ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={view.turn === i && view.phase === "play" ? unitColour(i) : "transparent"}>
             <Text fontSize="xs" fontWeight={800} noOfLines={1}>{p.name}</Text>
-            <CardBacks count={view.handCounts[i]} />
-            <HStack spacing={1} fontSize="2xs">
+            <Box data-anchor={`hand-${i}`}><CardBacks count={view.handCounts[i]} /></Box>
+            <HStack spacing={1} fontSize="2xs" data-anchor={`pile-${i}`}>
               <Badge>{view.pileCounts[i]} won</Badge>
               {view.sweeps[view.units[i]] > 0 && <Badge colorScheme="yellow">{view.sweeps[view.units[i]]} sweep{view.sweeps[view.units[i]] === 1 ? "" : "s"}</Badge>}
             </HStack>
-            {view.pileTops[i] !== null && <HStack spacing={1}><Text fontSize="2xs" color="gray.400">top</Text><PlayingCard id={view.pileTops[i]!} size="xs" /></HStack>}
+            {view.pileTops[i] !== null && <HStack spacing={1}><Text fontSize="2xs" color="gray.400">top</Text><PlayingCard id={view.pileTops[i]!} size="xs" mk={`c${view.pileTops[i]}`} /></HStack>}
           </VStack>
         ))}
-        <VStack spacing={0} minW="64px" fontSize="xs" color="gray.300"><Text>Deck {view.deckCount}</Text><Text>Deal {view.deal}</Text></VStack>
+        <VStack spacing={0} minW="64px" fontSize="xs" color="gray.300" data-anchor="deck"><Text>Deck {view.deckCount}</Text><Text>Deal {view.deal}</Text></VStack>
       </HStack>
 
-      <Box minH="120px" bg="#14532d" borderRadius="xl" p={3} border="2px solid #166534" role="group" aria-label="Table">
+      <DropZone id="table" accepts={d => typeof d === "number" && !!pos && myTurn && trailAllowed(pos, d)} onDrop={d => trailNow(d as number)} minH="120px" bg="#14532d" borderRadius="xl" p={3} border="2px solid #166534" role="group" aria-label="Table">
         {view.table.length === 0 && <Text color="whiteAlpha.600" textAlign="center" py={6}>The table is empty</Text>}
         <Wrap spacing={3} justify="center">
           {view.table.map(it => (
-            <Box key={it.id} position="relative">
+            <DropZone key={it.id} id={`t${it.id}`} accepts={d => typeof d === "number" && usableWith(d).has(it.id)} onDrop={d => dropOn(d as number, it)} position="relative" p="2px">
               {it.build ? (
                 <VStack spacing={1} p={2} borderRadius="lg" bg="blackAlpha.300" border="2px solid" borderColor={picked.includes(it.id) ? "#fde047" : hint.has(it.id) ? "#38bdf8" : unitColour(it.owner)}
                   as="button" type="button" onClick={() => toggle(it.id)} aria-label={`Build of ${it.value} owned by ${base.players[it.owner]?.name}`} aria-pressed={picked.includes(it.id)}>
-                  <HStack spacing="-26px">{it.cards.slice(0, 5).map(c => <PlayingCard key={c} id={c} size="xs" />)}</HStack>
+                  <HStack spacing="-26px">{it.cards.slice(0, 5).map(c => <PlayingCard key={c} id={c} size="xs" mk={`c${c}`} />)}</HStack>
                   <Badge colorScheme="yellow">Build {it.value}</Badge>
                   <Text fontSize="2xs" color="gray.300">{base.players[it.owner]?.name}</Text>
                 </VStack>
               ) : (
-                <PlayingCard id={it.cards[0]} size="md" selected={picked.includes(it.id)} glow={hint.has(it.id) && !picked.includes(it.id)} dim={card !== null && myTurn && !hint.has(it.id) && !picked.includes(it.id)} onClick={() => toggle(it.id)} />
+                <PlayingCard id={it.cards[0]} size="md" mk={`c${it.cards[0]}`} selected={picked.includes(it.id)} glow={hint.has(it.id) && !picked.includes(it.id)} dim={card !== null && myTurn && !hint.has(it.id) && !picked.includes(it.id)} onClick={() => toggle(it.id)} />
               )}
-            </Box>
+            </DropZone>
           ))}
         </Wrap>
         {view.pileTops.some((t, i) => t !== null && i !== me && myTurn && card !== null && flag(view.rules, "stealPileTop")) && (
@@ -112,7 +163,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
             ))}
           </Wrap>
         )}
-      </Box>
+      </DropZone>
 
       {view.phase === "dealOver" && (
         <VStack bg="whiteAlpha.100" borderRadius="xl" p={3} spacing={2} align="stretch" role="region" aria-label="Deal result">
@@ -138,8 +189,12 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
           </HStack>
           {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
-          <HStack justify="center" spacing={2} wrap="wrap" aria-label="Your hand" role="group">
-            {view.hand.map(c => <PlayingCard key={c} id={c} size="lg" selected={card === c} dim={!myTurn} onClick={() => { if (!myTurn) return; setCard(x => (x === c ? null : c)); setPicked([]); }} />)}
+          <HStack justify="center" spacing={3} aria-label="Your pile" fontSize="xs" color="gray.300" data-anchor={`pile-${me}`}>
+            <Box w="26px" h="36px" borderRadius="5px" border="2px solid #f8fafc" overflow="hidden" opacity={view.pileCounts[me] ? 1 : 0.35} aria-hidden><CardBackFace /></Box>
+            <Text>My pile: {view.pileCounts[me]} card{view.pileCounts[me] === 1 ? "" : "s"}</Text>
+          </HStack>
+          <HStack justify="center" spacing={2} wrap="wrap" aria-label="Your hand" role="group" onKeyDown={roveKeys}>
+            {view.hand.map(c => <Draggable key={c} id={`hand${c}`} data={c} label={cardLabel(c)} disabled={!myTurn} onStart={() => { setCard(c); setPicked([]); }}><PlayingCard id={c} mk={`c${c}`} size="lg" selected={card === c} dim={!myTurn} onClick={() => { if (!myTurn) return; setCard(x => (x === c ? null : c)); setPicked([]); }} /></Draggable>)}
           </HStack>
         </>
       )}
@@ -153,6 +208,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#16a34a",
   icon: "♠️",
   tagline: "The South African card game of capturing, building and trailing, with the top card of every pile up for grabs. Every rule is yours to set.",
+  keys: [{ key: "1 – 9", does: "Pick the card in that position" }, { key: "C", does: "Capture" }, { key: "B", does: "Build (when there is one choice)" }, { key: "T", does: "Trail the card" }, { key: "M", does: "Pick the most you can take" }, { key: "Esc", does: "Clear" }],
   howTo: [
     { title: "Goal", text: "Win cards and score points for the Mummy (10 of diamonds, 2), most cards (2), most spades (2), the Spy Two (2 of spades, 1) and each ace (1): 11 points a deal. First to 11 wins (7 when three or four play alone)." },
     { title: "Capture", text: "Play a card and take table cards of the same rank, or cards that add up to it (a 9 takes 4 + 5). You can take several sets at once." },
