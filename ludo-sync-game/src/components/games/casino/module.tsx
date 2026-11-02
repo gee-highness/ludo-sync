@@ -152,13 +152,14 @@ const gameModule: GameModule<never, never, never> = {
   Table: Table as never,
   accent: "#16a34a",
   icon: "♠️",
-  tagline: "The South African card game of capturing, building and trailing. Every rule is yours to set: aces, picture cards, builds, taking from piles, sweeps, points and teams.",
+  tagline: "The South African card game of capturing, building and trailing, with the top card of every pile up for grabs. Every rule is yours to set.",
   howTo: [
-    { title: "Goal", text: "Win cards from the table and score points for the most cards, the most spades, the Big Casino (10 of diamonds), the Little Casino (2 of spades), aces and sweeps. First to the target score wins." },
+    { title: "Goal", text: "Win cards and score points for the Mummy (10 of diamonds, 2), most cards (2), most spades (2), the Spy Two (2 of spades, 1) and each ace (1): 11 points a deal. First to 11 wins (7 when three or four play alone)." },
     { title: "Capture", text: "Play a card and take table cards of the same rank, or cards that add up to it (a 9 takes 4 + 5). You can take several sets at once." },
     { title: "Build", text: "Combine your card with table cards into a build of a higher value, such as a 4 and a 5 as a 9, if you hold a 9. Opponents can capture your build with a 9, or add to it." },
     { title: "Trail", text: "If you cannot or do not want to capture or build, put a card on the table." },
-    { title: "Sweep", text: "Clear the whole table with a capture for a sweep." },
+    { title: "Steal", text: "Capture piles lie face up with the lowest card on top. That top card counts as a table card: you can capture it or build with it." },
+    { title: "Sweep", text: "Clear the whole table with a capture. Sweeps score only if you switch them on." },
     { title: "Your rules", text: "Ace as 1 or 14, picture cards counting 11 to 13 or pairing only, whether you may build, take from an opponent's pile, must capture, every point value, the target and teams: all in Rules." },
   ],
 };

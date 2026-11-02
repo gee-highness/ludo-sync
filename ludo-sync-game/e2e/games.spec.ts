@@ -179,3 +179,21 @@ test("4 Colors: play and draw against a bot with a changed rule", async ({ page 
   }
   expect(errors).toEqual([]);
 });
+
+test("Snakes and Ladders: choose the classic board, roll, and the bot rolls back", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/snakes");
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Classic", exact: true }).click();
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("img", { name: /Board of 100 squares/ })).toBeVisible({ timeout: 15_000 });
+  for (let i = 0; i < 4; i++) {
+    const roll = page.getByRole("button", { name: /Roll the dice|Roll again/ });
+    await expect(roll).toBeEnabled({ timeout: 20_000 });
+    await roll.click();
+    await page.waitForTimeout(1500);
+  }
+  expect(errors).toEqual([]);
+});
