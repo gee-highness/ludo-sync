@@ -4,6 +4,7 @@ import { Box, Button, HStack } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
+import { useSettings } from "@/lib/client/settings";
 import { num, flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { fourInRow, dropRow, type FAction, type FView } from "@/lib/games/fourinrow/driver";
@@ -20,21 +21,35 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const popOut = flag(view.rules, "popOut");
   const bombsLeft = you !== null ? view.bombs[you] ?? 0 : 0;
   const last = useRef(frame.id);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [settings] = useSettings();
   const win = new Set((view.last?.cells ?? []).map(([r, c]) => `${r},${c}`));
 
   useEffect(() => {
     if (frame.id === last.current) return;
     last.current = frame.id;
     for (const e of frame.events) {
-      if (e.type === "drop") { sound.play("pop"); buzz("tap"); }
+      if (e.type === "drop") {
+        sound.play("pop"); buzz("tap");
+        // the disc falls from the top of its column and bounces once as it lands
+        const disc = svgRef.current?.querySelector(`[data-cell="${e.row},${e.col}"]`) as SVGElement | null;
+        const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        const f = settings.speed === "instant" || reduce ? 0 : settings.speed === "fast" ? 0.55 : 1;
+        if (disc?.animate && f > 0) {
+          const fall = (e.row as number + 1.3) * cellPx.current;
+          disc.animate([{ transform: `translateY(${-fall}px)`, offset: 0, easing: "cubic-bezier(.5,0,.9,.6)" }, { transform: "translateY(0)", offset: 0.72 }, { transform: `translateY(${-cellPx.current * 0.16}px)`, offset: 0.86, easing: "ease-out" }, { transform: "translateY(0)", offset: 1, easing: "ease-in" }], { duration: (260 + (e.row as number) * 55) * f });
+        }
+      }
       else if (e.type === "pop") sound.play("click");
       else if (e.type === "bomb") { sound.play("crash"); buzz("capture"); }
       else if (e.type === "round") sound.play("start");
     }
-  }, [frame]);
+  }, [frame, settings.speed]);
 
+  const cellPx = useRef(0);
   const cell = Math.min(64, Math.floor(Math.min(360, (typeof window === "undefined" ? 360 : window.innerWidth - 24)) / C));
   const W = cell * C, H = cell * R;
+  cellPx.current = cell;
   const colour = (p: number) => SEAT_COLOURS[p % 4 === 3 ? 3 : p % 4]; // red, yellow, green, blue by seat
   const pick = (col: number) => { if (!myTurn) return; act({ type: mode === "bomb" ? "bomb" : "drop", col }); setMode("drop"); };
   const fall = (col: number) => dropRow(view.board, col);
@@ -45,14 +60,14 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
       <HStack spacing={3} fontSize="sm" aria-label="Match score">
         {base.players.map((p, i) => <span key={i} style={{ color: colour(i), fontWeight: 800 }}>{MARKS[i]} {p.name}: {view.wins[i]}{view.need > 1 ? ` / ${view.need}` : ""}</span>)}
       </HStack>
-      <svg width={W} height={H + cell * 0.2} viewBox={`0 0 ${W} ${H + cell * 0.2}`} role="grid" aria-label={`Board, ${C} columns by ${R} rows`} style={{ touchAction: "manipulation", maxWidth: "100%" }}>
+      <svg ref={svgRef} width={W} height={H + cell * 0.2} viewBox={`0 0 ${W} ${H + cell * 0.2}`} role="grid" aria-label={`Board, ${C} columns by ${R} rows`} style={{ touchAction: "manipulation", maxWidth: "100%" }}>
         <rect x={0} y={cell * 0.2} width={W} height={H} rx={cell * 0.15} fill="#1d4ed8" />
         {Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => {
           const v = view.board[r][c];
           const hot = win.has(`${r},${c}`);
           return (
             <g key={`${r}-${c}`} role="gridcell" aria-label={v < 0 ? "empty" : `${base.players[v]?.name ?? "player"}`}>
-              <circle cx={c * cell + cell / 2} cy={cell * 0.2 + r * cell + cell / 2} r={cell * 0.4} fill={v < 0 ? "#0f172a" : colour(v)} stroke={hot ? "#fff" : "none"} strokeWidth={hot ? 3 : 0} style={{ transition: "fill .2s" }} />
+              <circle data-cell={`${r},${c}`} cx={c * cell + cell / 2} cy={cell * 0.2 + r * cell + cell / 2} r={cell * 0.4} fill={v < 0 ? "#0f172a" : colour(v)} stroke={hot ? "#fff" : "none"} strokeWidth={hot ? 3 : 0} style={{ transition: "fill .2s" }} />
               {v >= 0 && <text x={c * cell + cell / 2} y={cell * 0.2 + r * cell + cell / 2 + cell * 0.14} textAnchor="middle" fontSize={cell * 0.38} fill="#0f172a" fontWeight={900} aria-hidden>{MARKS[v]}</text>}
             </g>
           );

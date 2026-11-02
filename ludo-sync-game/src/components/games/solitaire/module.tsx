@@ -9,6 +9,7 @@ import type { GameModule, TableProps } from "@/lib/platform/types";
 import { solitaire, type BoardView, type SolView } from "@/lib/games/solitaire/driver";
 import { applyMove, foundationIndex, variantOf, type Board, type Card, type Pile, type SAction } from "@/lib/games/solitaire/engine";
 import { PlayingCard } from "../../platform/PlayingCard";
+import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 const asBoard = (b: BoardView): Board => ({ ...b, hist: [], sigs: [] });
@@ -18,6 +19,9 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
   const rules = view.rules;
   const variant = variantOf(rules);
   const b = view.board;
+  const root = useRef<HTMLDivElement>(null);
+  // every card keeps its key wherever it is, so a card that moves between piles glides there; a card turned up from the stock flies from it
+  useMotion(root, frame, { me: base.you, enter: key => (b?.waste.some(c => `c${c.id}` === key) ? "stock" : null) });
   const [sel, setSel] = useState<{ from: Pile; n: number } | null>(null);
   const [showHint, setShowHint] = useState(false);
   const [auto, setAuto] = useState(false);
@@ -100,7 +104,7 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
   const wasteShown = pick(rules, "draw") === "3" ? b.waste.slice(-3) : b.waste.slice(-1);
 
   return (
-    <VStack spacing={2} align="stretch" px="6px" pt={1} flex={1}>
+    <VStack ref={root} spacing={2} align="stretch" px="6px" pt={1} flex={1} position="relative">
       <HStack spacing={1} overflowX="auto" role="list" aria-label="Scores">
         {view.others.map((o, i) => (
           <Badge key={i} role="listitem" fontSize="xs" borderRadius="full" px={2} py="2px" colorScheme={o.won ? "green" : "gray"} border="2px solid" borderColor={i === base.you ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "transparent"}>
@@ -112,14 +116,14 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
       <HStack justify="space-between" align="start" spacing={gap}>
         <HStack spacing={gap} align="start">
           {variant === "klondike" && (<>
-            <Box as="button" type="button" aria-label={b.stock.length ? "Turn a card from the stock" : "Turn the waste back over"} w={`${width}px`} minH={`${full}px`} onClick={() => live && act({ type: "draw" })} position="relative" borderRadius="8px" border="2px dashed" borderColor={hint?.draw ? "#38bdf8" : "whiteAlpha.300"}>
+            <Box as="button" type="button" data-anchor="stock" aria-label={b.stock.length ? "Turn a card from the stock" : "Turn the waste back over"} w={`${width}px`} minH={`${full}px`} onClick={() => live && act({ type: "draw" })} position="relative" borderRadius="8px" border="2px dashed" borderColor={hint?.draw ? "#38bdf8" : "whiteAlpha.300"}>
               {b.stock.length > 0 ? <PlayingCard faceDown width={width} /> : <Box position="absolute" inset={0} display="grid" placeItems="center" color="whiteAlpha.500" fontSize="xl">↺</Box>}
               <Badge position="absolute" bottom="-6px" right="-2px" fontSize="2xs">{b.stock.length}</Badge>
             </Box>
             <Box position="relative" w={`${width + (wasteShown.length - 1) * width * 0.35}px`} minH={`${full}px`} aria-label="Waste">
               {wasteShown.map((c, i) => (
                 <Box key={i} position="absolute" left={`${i * width * 0.35}px`} top={0}>
-                  <PlayingCard id={c.id} width={width} selected={i === wasteShown.length - 1 && same(sel?.from ?? null, { k: "w", i: 0 })} glow={i === wasteShown.length - 1 && same(hintFrom, { k: "w", i: 0 })}
+                  <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={i === wasteShown.length - 1 && same(sel?.from ?? null, { k: "w", i: 0 })} glow={i === wasteShown.length - 1 && same(hintFrom, { k: "w", i: 0 })}
                     onClick={i === wasteShown.length - 1 ? () => pickSource({ k: "w", i: 0 }, 1) : undefined} />
                   {i === wasteShown.length - 1 && <Box position="absolute" inset={0} onDoubleClick={() => home({ k: "w", i: 0 }, c)} />}
                 </Box>
@@ -127,7 +131,7 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
             </Box>
           </>)}
           {variant === "freecell" && b.cells.map((c, i) => slot(i, { k: "c", i },
-            c && <PlayingCard id={c.id} width={width} selected={same(sel?.from ?? null, { k: "c", i })} glow={same(hintFrom, { k: "c", i })} onClick={() => (sel ? tryDest({ k: "c", i }) : pickSource({ k: "c", i }, 1))} />))}
+            c && <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={same(sel?.from ?? null, { k: "c", i })} glow={same(hintFrom, { k: "c", i })} onClick={() => (sel ? tryDest({ k: "c", i }) : pickSource({ k: "c", i }, 1))} />))}
           {variant === "spider" && (
             <Box as="button" type="button" aria-label="Deal a row from the stock" w={`${width}px`} minH={`${full}px`} onClick={() => live && act({ type: "draw" })} position="relative" borderRadius="8px" border="2px dashed" borderColor={hint?.draw ? "#38bdf8" : "whiteAlpha.300"} disabled={b.stock.length < 10}>
               {b.stock.length >= 10 && <PlayingCard faceDown width={width} />}
@@ -139,7 +143,7 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
           {variant === "spider"
             ? <Box textAlign="right"><Text fontSize="sm" fontWeight={800}>{b.completed} of 8 runs</Text><Text fontSize="xs" color="gray.400">Score {b.score}</Text></Box>
             : found.map((p, i) => slot(i, { k: "f", i },
-              p.length > 0 && <PlayingCard id={p[p.length - 1].id} width={width} onClick={flag(rules, "fromFoundation") && variant === "klondike" ? () => (sel ? tryDest({ k: "f", i }) : pickSource({ k: "f", i }, 1)) : undefined} />,
+              p.length > 0 && <PlayingCard id={p[p.length - 1].id} mk={`c${p[p.length - 1].id}`} width={width} onClick={flag(rules, "fromFoundation") && variant === "klondike" ? () => (sel ? tryDest({ k: "f", i }) : pickSource({ k: "f", i }, 1)) : undefined} />,
               ["♣", "♦", "♥", "♠"][i]))}
         </HStack>
       </HStack>
@@ -161,7 +165,7 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
                 return (
                   <Box key={i} position="absolute" left={0} top={`${positions[i]}px`} onDoubleClick={isTop ? () => home(pile, c) : undefined}>
                     {c.up
-                      ? <PlayingCard id={c.id} width={width} selected={picked} glow={hinted && !picked} onClick={() => { if (sel && !same(sel.from, pile)) tryDest(pile); else pickSource(pile, n); }} />
+                      ? <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={picked} glow={hinted && !picked} onClick={() => { if (sel && !same(sel.from, pile)) tryDest(pile); else pickSource(pile, n); }} />
                       : <PlayingCard faceDown width={width} />}
                   </Box>
                 );

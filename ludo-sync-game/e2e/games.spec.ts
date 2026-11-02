@@ -383,3 +383,24 @@ test("Checkers: pick a piece, move it, and the bot answers", async ({ page }) =>
   await expect(page.getByRole("log").getByText(/Mia moved|Mia captured/).first()).toBeVisible({ timeout: 20_000 });
   expect(errors).toEqual([]);
 });
+
+test("Cards travel instead of vanishing: a played card flies to the table in Casino", async ({ page }) => {
+  const errors = watch(page);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("ludo-sync:v1:settings", JSON.stringify({ music: false, sound: false, speed: "normal" }));
+      localStorage.setItem("ludo-sync:v1:g-setup:casino", JSON.stringify({ seats: [{ name: "Tester", kind: "human" }, { name: "Mia", kind: "bot", level: "easy" }], rules: {}, hotseat: false }));
+    } catch { /* private window */ }
+  });
+  await page.goto("/g/casino/play");
+  const hand = page.getByRole("group", { name: "Your hand" });
+  await expect(hand.getByRole("button").first()).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Your turn" })).toBeVisible({ timeout: 30_000 }); // the bot may deal first
+  await hand.getByRole("button").first().click();
+  await page.getByRole("button", { name: "Trail" }).click();
+  // a copy of the card is flying while the real one is held back, and the layer is cleaned up afterwards
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll("[data-motion-layer] > *").length), { timeout: 3000 }).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll("[data-motion-layer] > *").length), { timeout: 8000 }).toBe(0);
+  await expect(page.locator('[data-mk][style*="visibility: hidden"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

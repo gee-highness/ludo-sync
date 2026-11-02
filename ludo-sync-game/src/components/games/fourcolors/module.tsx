@@ -8,10 +8,24 @@ import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { K, fourColors, type FAction, type FView } from "@/lib/games/fourcolors/driver";
 import { COLOUR_HEX, COLOUR_NAMES, ColourCard, SHAPES } from "../../platform/ColourCard";
+import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const me = view.me;
+  const root = useRef<HTMLDivElement>(null);
+  useMotion(root, frame, {
+    me,
+    // a card someone else played flies in from their hand; cards I draw or am dealt come from the draw pile
+    enter: (key, events) => {
+      const id = Number(key.slice(1));
+      const play = events.find(e => e.type === "play" && e.p !== me && ((e.card as number | undefined) === id || (e.cards as number[] | undefined)?.includes(id)));
+      if (play) return `hand-${play.p}`;
+      return events.some(e => e.type === "round" || e.type === "deal" || ((e.type === "draw" || e.type === "drawPenalty") && e.p === me)) ? "deck" : null;
+    },
+    // an opponent drawing has no card on screen: a card back flies from the pile to their hand
+    fly: events => events.filter(e => (e.type === "draw" || e.type === "drawPenalty" || e.type === "catch") && e.p !== me && e.p !== undefined).map(e => ({ from: "deck", to: `hand-${e.p}`, count: typeof e.cards === "number" ? e.cards : 1 })),
+  });
   const myTurn = me !== null && view.turn === me && view.phase === "play";
   const [chooser, setChooser] = useState<{ card: number; swap?: number } | null>(null);
   const [swapFor, setSwapFor] = useState<number | null>(null);
@@ -49,12 +63,12 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const topColour = view.color;
 
   return (
-    <VStack spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between">
+    <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
       <HStack spacing={2} overflowX="auto" align="start" role="list" aria-label="Opponents">
         {base.players.map((p, i) => i === me ? null : (
           <VStack key={i} role="listitem" spacing={1} minW="86px" p={2} borderRadius="lg" bg={view.turn === i && view.phase === "play" ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={view.turn === i && view.phase === "play" ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "transparent"}>
             <Text fontSize="xs" fontWeight={800} noOfLines={1}>{p.name}</Text>
-            <Text fontSize="2xl" fontWeight={900} lineHeight={1} aria-label={`${view.handCounts[i]} cards`}>🂠 {view.handCounts[i]}</Text>
+            <Text data-anchor={`hand-${i}`} fontSize="2xl" fontWeight={900} lineHeight={1} aria-label={`${view.handCounts[i]} cards`}>🂠 {view.handCounts[i]}</Text>
             {view.handCounts[i] === 1 && <Badge colorScheme={view.called[i] ? "green" : "red"}>{view.called[i] ? "Last card!" : "uncalled"}</Badge>}
             {catchTarget === i && <Button size="xs" colorScheme="red" onClick={() => act({ type: "catch", target: i })}>Catch!</Button>}
           </VStack>
@@ -64,11 +78,11 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
       <VStack spacing={2}>
         <HStack spacing={6} align="center" justify="center">
           <VStack spacing={0}>
-            <Box as="button" aria-label="Draw a card" onClick={() => myTurn && view.pending === 0 && view.drawn === null && act({ type: "draw" })} opacity={myTurn ? 1 : 0.7}><ColourCard faceDown size="md" glow={myTurn && view.pending === 0 && view.playable.length === 0} /></Box>
+            <Box as="button" data-anchor="deck" aria-label="Draw a card" onClick={() => myTurn && view.pending === 0 && view.drawn === null && act({ type: "draw" })} opacity={myTurn ? 1 : 0.7}><ColourCard faceDown size="md" glow={myTurn && view.pending === 0 && view.playable.length === 0} /></Box>
             <Text fontSize="2xs" color="gray.400">Draw ({view.deckCount})</Text>
           </VStack>
           <VStack spacing={0}>
-            {view.top && <ColourCard card={view.top} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}
+            {view.top && <ColourCard card={view.top} mk={`c${view.top.id}`} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}
             <HStack spacing={1} mt="6px" aria-label={`Colour in play: ${COLOUR_NAMES[topColour]}`}>
               <Box w="16px" h="16px" borderRadius="50%" bg={COLOUR_HEX[topColour]} border="2px solid white" />
               <Text fontSize="xs" fontWeight={800}>{SHAPES[topColour]} {COLOUR_NAMES[topColour]}</Text>
@@ -99,7 +113,7 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
             <Box display="flex" w="fit-content" mx="auto" px={2}>
               {view.hand.map((c, i) => (
                 <Box key={c.id} ml={i ? "-16px" : 0} zIndex={i}>
-                  <ColourCard card={c} size="md" glow={clickable.has(c.id)} dim={!clickable.has(c.id) && (myTurn || view.jumpable.length > 0)} onClick={clickable.has(c.id) ? () => playCard(c.id) : undefined} />
+                  <ColourCard card={c} mk={`c${c.id}`} size="md" glow={clickable.has(c.id)} dim={!clickable.has(c.id) && (myTurn || view.jumpable.length > 0)} onClick={clickable.has(c.id) ? () => playCard(c.id) : undefined} />
                 </Box>
               ))}
             </Box>

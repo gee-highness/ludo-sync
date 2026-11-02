@@ -9,11 +9,30 @@ import { PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, 
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { CardBacks, PlayingCard } from "../../platform/PlayingCard";
+import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 import type { CView } from "@/lib/games/casino/driver";
 
 function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const me = view.me;
+  const root = useRef<HTMLDivElement>(null);
+  const idOf = (key: string) => Number(key.slice(1));
+  useMotion(root, frame, {
+    me,
+    // someone else's card arrives from their hand; dealt cards come from the deck
+    enter: (key, events) => {
+      const id = idOf(key);
+      const e = events.find(x => (x.card === id || (Array.isArray(x.cards) && (x.cards as number[]).includes(id))) && x.p !== undefined && x.p !== me);
+      if (e) return `hand-${e.p}`;
+      return events.some(x => x.type === "deal" || x.type === "redeal") ? "deck" : null;
+    },
+    // captured cards go to the pile of whoever took them
+    exit: (key, events) => {
+      const id = idOf(key);
+      const e = events.find(x => x.type === "capture" && (x.card === id || (x.cards as number[] | undefined)?.includes(id)));
+      return e ? `pile-${e.p}` : null;
+    },
+  });
   const myTurn = me !== null && base.actors.includes(me) && view.phase === "play";
   const [card, setCard] = useState<number | null>(null);
   const [picked, setPicked] = useState<number[]>([]);
@@ -71,20 +90,20 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const owns = pos ? ownsBuild(pos) : false;
 
   return (
-    <VStack spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between">
+    <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
       <HStack spacing={3} overflowX="auto" align="start">
         {base.players.map((p, i) => i === me ? null : (
           <VStack key={i} spacing={1} minW="96px" p={2} borderRadius="lg" bg={view.turn === i ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={view.turn === i && view.phase === "play" ? unitColour(i) : "transparent"}>
             <Text fontSize="xs" fontWeight={800} noOfLines={1}>{p.name}</Text>
-            <CardBacks count={view.handCounts[i]} />
-            <HStack spacing={1} fontSize="2xs">
+            <Box data-anchor={`hand-${i}`}><CardBacks count={view.handCounts[i]} /></Box>
+            <HStack spacing={1} fontSize="2xs" data-anchor={`pile-${i}`}>
               <Badge>{view.pileCounts[i]} won</Badge>
               {view.sweeps[view.units[i]] > 0 && <Badge colorScheme="yellow">{view.sweeps[view.units[i]]} sweep{view.sweeps[view.units[i]] === 1 ? "" : "s"}</Badge>}
             </HStack>
-            {view.pileTops[i] !== null && <HStack spacing={1}><Text fontSize="2xs" color="gray.400">top</Text><PlayingCard id={view.pileTops[i]!} size="xs" /></HStack>}
+            {view.pileTops[i] !== null && <HStack spacing={1}><Text fontSize="2xs" color="gray.400">top</Text><PlayingCard id={view.pileTops[i]!} size="xs" mk={`c${view.pileTops[i]}`} /></HStack>}
           </VStack>
         ))}
-        <VStack spacing={0} minW="64px" fontSize="xs" color="gray.300"><Text>Deck {view.deckCount}</Text><Text>Deal {view.deal}</Text></VStack>
+        <VStack spacing={0} minW="64px" fontSize="xs" color="gray.300" data-anchor="deck"><Text>Deck {view.deckCount}</Text><Text>Deal {view.deal}</Text></VStack>
       </HStack>
 
       <Box minH="120px" bg="#14532d" borderRadius="xl" p={3} border="2px solid #166534" role="group" aria-label="Table">
@@ -95,12 +114,12 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
               {it.build ? (
                 <VStack spacing={1} p={2} borderRadius="lg" bg="blackAlpha.300" border="2px solid" borderColor={picked.includes(it.id) ? "#fde047" : hint.has(it.id) ? "#38bdf8" : unitColour(it.owner)}
                   as="button" type="button" onClick={() => toggle(it.id)} aria-label={`Build of ${it.value} owned by ${base.players[it.owner]?.name}`} aria-pressed={picked.includes(it.id)}>
-                  <HStack spacing="-26px">{it.cards.slice(0, 5).map(c => <PlayingCard key={c} id={c} size="xs" />)}</HStack>
+                  <HStack spacing="-26px">{it.cards.slice(0, 5).map(c => <PlayingCard key={c} id={c} size="xs" mk={`c${c}`} />)}</HStack>
                   <Badge colorScheme="yellow">Build {it.value}</Badge>
                   <Text fontSize="2xs" color="gray.300">{base.players[it.owner]?.name}</Text>
                 </VStack>
               ) : (
-                <PlayingCard id={it.cards[0]} size="md" selected={picked.includes(it.id)} glow={hint.has(it.id) && !picked.includes(it.id)} dim={card !== null && myTurn && !hint.has(it.id) && !picked.includes(it.id)} onClick={() => toggle(it.id)} />
+                <PlayingCard id={it.cards[0]} size="md" mk={`c${it.cards[0]}`} selected={picked.includes(it.id)} glow={hint.has(it.id) && !picked.includes(it.id)} dim={card !== null && myTurn && !hint.has(it.id) && !picked.includes(it.id)} onClick={() => toggle(it.id)} />
               )}
             </Box>
           ))}
@@ -138,8 +157,12 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
           </HStack>
           {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
+          <HStack justify="center" spacing={3} aria-label="Your pile" fontSize="xs" color="gray.300" data-anchor={`pile-${me}`}>
+            <Box w="26px" h="36px" borderRadius="5px" border="2px solid #f8fafc" bg="repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 4px,#2563eb 4px,#2563eb 8px)" opacity={view.pileCounts[me] ? 1 : 0.35} aria-hidden />
+            <Text>My pile: {view.pileCounts[me]} card{view.pileCounts[me] === 1 ? "" : "s"}</Text>
+          </HStack>
           <HStack justify="center" spacing={2} wrap="wrap" aria-label="Your hand" role="group">
-            {view.hand.map(c => <PlayingCard key={c} id={c} size="lg" selected={card === c} dim={!myTurn} onClick={() => { if (!myTurn) return; setCard(x => (x === c ? null : c)); setPicked([]); }} />)}
+            {view.hand.map(c => <PlayingCard key={c} id={c} mk={`c${c}`} size="lg" selected={card === c} dim={!myTurn} onClick={() => { if (!myTurn) return; setCard(x => (x === c ? null : c)); setPicked([]); }} />)}
           </HStack>
         </>
       )}

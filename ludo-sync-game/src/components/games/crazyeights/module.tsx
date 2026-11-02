@@ -8,6 +8,7 @@ import { flag, pick } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { crazyEights, rankOf, type EAction, type EView } from "@/lib/games/crazyeights/driver";
 import { CardBacks, PlayingCard, SUIT_NAMES, SUIT_SYMBOLS } from "../../platform/PlayingCard";
+import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 const KEY: Record<number, string> = { 8: "p8", 1: "pA", 2: "p2", 7: "p7", 11: "pJ", 12: "pQ", 13: "pK" };
@@ -15,6 +16,19 @@ const SUIT_HEX = ["#0f172a", "#dc2626", "#dc2626", "#0f172a"];
 
 function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
   const me = view.me;
+  const root = useRef<HTMLDivElement>(null);
+  useMotion(root, frame, {
+    me,
+    // a card someone else played flies in from their hand; cards I draw or am dealt come from the draw pile
+    enter: (key, events) => {
+      const id = Number(key.slice(1));
+      const play = events.find(e => e.type === "play" && e.p !== me && ((e.card as number | undefined) === id || (e.cards as number[] | undefined)?.includes(id)));
+      if (play) return `hand-${play.p}`;
+      return events.some(e => e.type === "round" || e.type === "deal" || ((e.type === "draw" || e.type === "drawPenalty") && e.p === me)) ? "deck" : null;
+    },
+    // an opponent drawing has no card on screen: a card back flies from the pile to their hand
+    fly: events => events.filter(e => (e.type === "draw" || e.type === "drawPenalty" || e.type === "catch") && e.p !== me && e.p !== undefined).map(e => ({ from: "deck", to: `hand-${e.p}`, count: typeof e.cards === "number" ? e.cards : 1 })),
+  });
   const myTurn = me !== null && view.turn === me && view.phase === "play";
   const [selected, setSelected] = useState<number[]>([]);
   const [chooser, setChooser] = useState<number[] | null>(null);
@@ -49,12 +63,12 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
   };
 
   return (
-    <VStack spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between">
+    <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
       <HStack spacing={2} overflowX="auto" align="start" role="list" aria-label="Opponents">
         {base.players.map((p, i) => i === me ? null : (
           <VStack key={i} role="listitem" spacing={1} minW="86px" p={2} borderRadius="lg" bg={view.turn === i && view.phase === "play" ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={view.turn === i && view.phase === "play" ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "transparent"}>
             <Text fontSize="xs" fontWeight={800} noOfLines={1}>{p.name}</Text>
-            <CardBacks count={view.handCounts[i]} />
+            <Box data-anchor={`hand-${i}`}><CardBacks count={view.handCounts[i]} /></Box>
             <Text fontSize="xs" color="gray.300">{view.handCounts[i]} cards</Text>
           </VStack>
         ))}
@@ -63,11 +77,11 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
       <VStack spacing={2}>
         <HStack spacing={6} justify="center" align="center">
           <VStack spacing={0}>
-            <Box as="button" aria-label="Draw a card" onClick={() => view.canDraw && act({ type: "draw" })} opacity={view.canDraw ? 1 : 0.75}><PlayingCard faceDown size="md" glow={view.canDraw} /></Box>
+            <Box as="button" data-anchor="deck" aria-label="Draw a card" onClick={() => view.canDraw && act({ type: "draw" })} opacity={view.canDraw ? 1 : 0.75}><PlayingCard faceDown size="md" glow={view.canDraw} /></Box>
             <Text fontSize="2xs" color="gray.400">Draw ({view.deckCount})</Text>
           </VStack>
           <VStack spacing={1}>
-            {view.top !== null && <PlayingCard id={view.top} size="lg" />}
+            {view.top !== null && <PlayingCard id={view.top} size="lg" mk={`c${view.top}`} />}
             <HStack spacing={1} aria-label={`Suit in play: ${SUIT_NAMES[view.suit]}`}>
               <Text fontSize="xl" color={view.suit === 1 || view.suit === 2 ? "#f87171" : "white"} fontWeight={900}>{SUIT_SYMBOLS[view.suit]}</Text>
               <Text fontSize="xs">{SUIT_NAMES[view.suit]}</Text>
@@ -100,7 +114,7 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
             <Box display="flex" w="fit-content" mx="auto" px={2}>
               {view.hand.map((c, i) => (
                 <Box key={c} ml={i ? "-18px" : 0} zIndex={i}>
-                  <PlayingCard id={c} size="md" selected={selected.includes(c)} glow={clickable.has(c) && !selected.includes(c)} dim={!clickable.has(c) && !joinable(c) && !selected.includes(c) && (myTurn || view.jumpable.length > 0)}
+                  <PlayingCard id={c} mk={`c${c}`} size="md" selected={selected.includes(c)} glow={clickable.has(c) && !selected.includes(c)} dim={!clickable.has(c) && !joinable(c) && !selected.includes(c) && (myTurn || view.jumpable.length > 0)}
                     onClick={clickable.has(c) || joinable(c) || selected.includes(c) ? () => choose(c) : undefined} />
                 </Box>
               ))}

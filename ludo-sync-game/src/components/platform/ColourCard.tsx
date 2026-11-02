@@ -15,10 +15,10 @@ export const cardName = (c: Card) => {
   return c.c === 4 ? what : `${COLOUR_NAMES[c.c]} ${what}`;
 };
 
-interface Props { card?: Card; faceDown?: boolean; size?: keyof typeof SIZES; selected?: boolean; glow?: boolean; dim?: boolean; onClick?: () => void; colour?: number }
+interface Props { card?: Card; faceDown?: boolean; size?: keyof typeof SIZES; selected?: boolean; glow?: boolean; dim?: boolean; onClick?: () => void; colour?: number; /** stable key so the card can fly when it moves, see useMotion */ mk?: string }
 
 /** An original card design: a coloured card with a big face, a shape in the corners, and four coloured quarters for wilds. */
-export function ColourCard({ card, faceDown, size = "md", selected, glow, dim, onClick, colour }: Props) {
+export function ColourCard({ card, faceDown, size = "md", selected, glow, dim, onClick, colour, mk }: Props) {
   const z = SIZES[size];
   const wild = card && card.c === 4;
   const bg = faceDown ? "#0f172a" : wild ? "conic-gradient(#dc2626 0 25%, #eab308 0 50%, #16a34a 0 75%, #2563eb 0 100%)" : COLOUR_HEX[card?.c ?? 0];
@@ -42,6 +42,6 @@ export function ColourCard({ card, faceDown, size = "md", selected, glow, dim, o
     </Box>
   );
   const label = faceDown ? "face-down card" : cardName(card!);
-  if (!onClick) return <Box role="img" aria-label={label} display="inline-block">{body}</Box>;
-  return <Box as="button" type="button" onClick={onClick} aria-label={label} aria-pressed={selected} display="inline-block" _focusVisible={{ outline: "3px solid #fde047", outlineOffset: "2px", borderRadius: "10px" }}>{body}</Box>;
+  if (!onClick) return <Box role="img" aria-label={label} display="inline-block" data-mk={mk}>{body}</Box>;
+  return <Box as="button" type="button" onClick={onClick} aria-label={label} aria-pressed={selected} display="inline-block" data-mk={mk} _focusVisible={{ outline: "3px solid #fde047", outlineOffset: "2px", borderRadius: "10px" }}>{body}</Box>;
 }

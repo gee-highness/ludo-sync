@@ -24,6 +24,8 @@ interface Props {
   dim?: boolean;
   onClick?: () => void;
   label?: string;
+  /** A stable key (the card id) so the card can fly to its new place when it moves, see useMotion. */
+  mk?: string;
   children?: ReactNode;
 }
 
@@ -85,7 +87,7 @@ function Face({ rank, suit, w, h }: { rank: number; suit: number; w: number; h: 
 }
 
 /** A standard playing card painted in CSS: a small rank and suit in two corners and the real pip layout in the middle. Four-colour suits are never the only cue: the symbol is always there. */
-export function PlayingCard({ id, faceDown, size = "md", width, selected, glow, dim, onClick, label, children }: Props) {
+export function PlayingCard({ id, faceDown, size = "md", width, selected, glow, dim, onClick, label, mk, children }: Props) {
   const z = width ? { w: width, h: Math.round(width * 1.42), f: Math.max(9, Math.round(width * 0.36)) } : SIZES[size];
   const suit = id === undefined ? 0 : Math.floor(id / 13);
   const rank = id === undefined ? 0 : (id % 13) + 1;
@@ -106,9 +108,9 @@ export function PlayingCard({ id, faceDown, size = "md", width, selected, glow, 
       {children}
     </Box>
   );
-  if (!onClick) return <Box role="img" aria-label={label ?? (faceDown ? "face-down card" : id === undefined ? "card" : cardLabel(id))} display="inline-block">{inner}</Box>;
+  if (!onClick) return <Box role="img" aria-label={label ?? (faceDown ? "face-down card" : id === undefined ? "card" : cardLabel(id))} display="inline-block" data-mk={mk}>{inner}</Box>;
   return (
-    <Box as="button" type="button" onClick={onClick} aria-label={label ?? (id === undefined ? "card" : cardLabel(id))} aria-pressed={selected} display="inline-block" _focusVisible={{ outline: "3px solid #fde047", outlineOffset: "2px", borderRadius: "8px" }}>
+    <Box as="button" type="button" onClick={onClick} aria-label={label ?? (id === undefined ? "card" : cardLabel(id))} aria-pressed={selected} display="inline-block" data-mk={mk} _focusVisible={{ outline: "3px solid #fde047", outlineOffset: "2px", borderRadius: "8px" }}>
       {inner}
     </Box>
   );
