@@ -4,9 +4,11 @@ import { Box, Button, HStack, Text, VStack } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
+import { stepMs } from "@/lib/client/anim";
+import { useSettings } from "@/lib/client/settings";
 import { num } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
-import { snakes, squareXY, type SAction, type SView } from "@/lib/games/snakes/driver";
+import { snakes, squareXY, walkOf, type SAction, type SView } from "@/lib/games/snakes/driver";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 const FACES = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
@@ -21,31 +23,81 @@ function Table({ base, view, act, frame }: TableProps<SView, SAction>) {
   const me = base.you;
   const myTurn = me !== null && view.turn === me && view.phase === "play";
   const last = useRef(frame.id);
+  const [settings] = useSettings();
   const [rolling, setRolling] = useState(false);
+  const [shown, setShown] = useState<number[]>(view.pos);
+  const [travel, setTravel] = useState(0);
+  const posRef = useRef(view.pos);
+  posRef.current = view.pos;
+  const busy = useRef(0);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const alive = useRef(true);
+  const svgRef = useRef<SVGSVGElement>(null);
   const cell = Math.min(46, Math.floor(Math.min(420, typeof window === "undefined" ? 360 : window.innerWidth - 16) / cols));
   const W = cols * cell, H = rows * cell;
   const centre = (sq: number) => { const { x, y } = squareXY(Math.max(1, sq), cols, rows); return { cx: x * cell + cell / 2, cy: y * cell + cell / 2 }; };
+  const speed = settings.speed === "normal" && typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "fast" : settings.speed;
+  const hop = stepMs("hop", speed);
 
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
+  // A roll plays out like a Ludo move: the token hops square by square, then glides up a ladder or slides down a snake.
   useEffect(() => {
     if (frame.id === last.current) return;
     last.current = frame.id;
-    setRolling(true);
-    const t = setTimeout(() => setRolling(false), 500);
-    for (const e of frame.events) {
-      if (e.type === "roll") { sound.play("dice"); if (e.jump !== null && e.jump !== undefined) { sound.play(((e.to as number) > (e.jump as number)) ? "bonus" : "squeal"); buzz("bonus"); } if ((e.bumped as number[]).length) sound.play("capture"); }
-      else if (e.type === "finish") sound.play("home");
+    const rolls = frame.events.filter(e => e.type === "roll");
+    if (!rolls.length) return;
+    const nap = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+    for (const e of rolls) {
+      busy.current += 1;
+      setRolling(true);
+      queue.current = queue.current.then(async () => {
+        const p = e.p as number, dice = e.dice as number[], from = e.from as number, land = e.land as number;
+        const slides = (e.slides as [number, number][]) ?? [], bumped = (e.bumped as number[]) ?? [];
+        sound.play("dice");
+        const walk = walkOf(from, dice.reduce((a, b) => a + b, 0), land, size);
+        if (hop > 0 && alive.current) {
+          await nap(Math.round(hop * 1.4)); // let the dice land first
+          const each = Math.max(60, Math.min(Math.round(hop * 0.75), Math.floor(2600 / Math.max(1, walk.length))));
+          for (const sq of walk) {
+            if (!alive.current) return;
+            setTravel(each);
+            setShown(cur => cur.map((v, i) => (i === p ? sq : v)));
+            sound.play("hop");
+            (svgRef.current?.querySelector(`[data-arc="${p}"]`) as SVGGElement | null)?.animate?.([{ transform: "translateY(0)" }, { transform: "translateY(-9px)" }, { transform: "translateY(0)" }], { duration: each, easing: "ease-out" });
+            await nap(each);
+          }
+          for (const [a, b] of slides) {
+            if (!alive.current) return;
+            sound.play(b > a ? "bonus" : "squeal"); buzz("bonus");
+            setTravel(Math.round(hop * 2.6));
+            setShown(cur => cur.map((v, i) => (i === p ? b : v)));
+            await nap(Math.round(hop * 2.8));
+          }
+          if (bumped.length) { sound.play("capture"); setTravel(Math.round(hop * 2)); }
+        } else {
+          for (const [a, b] of slides) sound.play(b > a ? "bonus" : "squeal");
+          if (bumped.length) sound.play("capture");
+        }
+        if (e.to === size) sound.play("home");
+      }).catch(() => undefined).then(() => {
+        busy.current -= 1;
+        if (busy.current === 0 && alive.current) { setShown(posRef.current); setRolling(false); }
+      });
     }
-    return () => clearTimeout(t);
-  }, [frame]);
+  }, [frame, size, hop]);
+
+  // Anything that moves without a roll (a resumed game, a reset) simply snaps into place.
+  useEffect(() => { if (busy.current === 0) setShown(view.pos); }, [view.pos]);
 
   const dice = view.last?.dice ?? [];
   const sides = num(view.rules, "sides");
   const byPos = new Map<number, number[]>();
-  view.pos.forEach((p, i) => { if (p > 0) byPos.set(p, [...(byPos.get(p) ?? []), i]); });
+  shown.forEach((p, i) => { if (p > 0) byPos.set(p, [...(byPos.get(p) ?? []), i]); });
 
   return (
     <VStack spacing={3} flex={1} justify="center" pt={1}>
-      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Board of ${size} squares with ${Object.keys(jumps).length} snakes and ladders`} style={{ maxWidth: "100%" }}>
+      <svg ref={svgRef} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Board of ${size} squares with ${Object.keys(jumps).length} snakes and ladders`} style={{ maxWidth: "100%" }}>
         {Array.from({ length: size }, (_, i) => {
           const sq = i + 1, { x, y } = squareXY(sq, cols, rows);
           return (
@@ -77,14 +129,17 @@ function Table({ base, view, act, frame }: TableProps<SView, SAction>) {
             </g>
           );
         })}
-        {view.pos.map((p, i) => {
+        {shown.map((p, i) => {
           const here = byPos.get(p) ?? [i], idx = here.indexOf(i);
           const c = centre(p || 1);
-          const ox = p === 0 ? (i - view.pos.length / 2) * 14 + 7 : (idx - (here.length - 1) / 2) * 10;
+          const ox = p === 0 ? (i - shown.length / 2) * 14 + 7 : (idx - (here.length - 1) / 2) * 10;
           return (
-            <g key={i} style={{ transform: `translate(${c.cx + ox}px, ${p === 0 ? H + 12 : c.cy}px)`, transition: "transform .5s ease" }}>
-              <circle r={cell * 0.26} fill={SEAT_COLOURS[i % SEAT_COLOURS.length]} stroke="#fff" strokeWidth={2} />
-              <text textAnchor="middle" y={cell * 0.1} fontSize={cell * 0.28} fill="#0f172a" fontWeight={900} aria-hidden>{MARKS[i % 6]}</text>
+            <g key={i} style={{ transform: `translate(${c.cx + ox}px, ${p === 0 ? H + 12 : c.cy}px)`, transition: hop === 0 ? "none" : `transform ${travel || 500}ms ${travel > hop * 1.5 ? "ease-in-out" : "linear"}` }}>
+              <g data-arc={i}>
+                <ellipse cy={cell * 0.2} rx={cell * 0.22} ry={cell * 0.08} fill="#000" opacity={0.25} />
+                <circle r={cell * 0.26} fill={SEAT_COLOURS[i % SEAT_COLOURS.length]} stroke="#fff" strokeWidth={2} />
+                <text textAnchor="middle" y={cell * 0.1} fontSize={cell * 0.28} fill="#0f172a" fontWeight={900} aria-hidden>{MARKS[i % 6]}</text>
+              </g>
             </g>
           );
         })}

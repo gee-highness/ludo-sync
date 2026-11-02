@@ -84,6 +84,16 @@ const create = (seats: SeatInfo[], rules: RuleValues, seed: number): SState => {
   return s;
 };
 
+/** The squares a token passes over, one at a time, for a roll: forward to the end, then back if the finish bounces. */
+export const walkOf = (from: number, total: number, land: number, size: number): number[] => {
+  if (land === from) return [];
+  const out: number[] = [];
+  const top = Math.min(from + total, size);
+  for (let q = from + 1; q <= top; q++) out.push(q);
+  for (let q = top - 1; q >= land; q--) out.push(q);
+  return out;
+};
+
 const sidesMax = (r: RuleValues) => num(r, "sides");
 
 const apply = (state: SState, a: SAction, by: number): { state: SState; events: GameEvent[] } | null => {
@@ -98,6 +108,8 @@ const apply = (state: SState, a: SAction, by: number): { state: SState; events: 
   const enter = pick(r, "enter");
   const canEnter = from > 0 || enter === "any" || (enter === "max" ? dice.some(d => d === sidesMax(r)) : dice.some(d => d === 1));
   let jump: number | null = null;
+  let land = from;
+  const slides: [number, number][] = [];
   const bumped: number[] = [];
   if (canEnter) {
     to = from + total;
@@ -105,9 +117,10 @@ const apply = (state: SState, a: SAction, by: number): { state: SState; events: 
       const mode = pick(r, "finish");
       to = mode === "exact" ? from : mode === "bounce" ? s.size - (to - s.size) : s.size;
     }
+    land = to;
     if (to !== from && s.jumps[to] !== undefined) {
       let guard = 0;
-      do { jump = to; to = s.jumps[to]; } while (flag(r, "chain") && s.jumps[to] !== undefined && guard++ < 10);
+      do { jump = to; slides.push([to, s.jumps[to]]); to = s.jumps[to]; } while (flag(r, "chain") && s.jumps[to] !== undefined && guard++ < 10);
     }
     if (flag(r, "bump") && to > 0 && to < s.size) {
       for (let q = 0; q < s.n; q++) if (q !== by && s.pos[q] === to && !s.finished.includes(q)) { bumped.push(q); s.pos[q] = pick(r, "bumpTo") === "start" ? 0 : Math.max(0, to - total); }
@@ -116,7 +129,7 @@ const apply = (state: SState, a: SAction, by: number): { state: SState; events: 
   s.pos[by] = to;
   s.rolls.push(total);
   s.last = { p: by, dice, from, to, jump, bumped };
-  events.push({ type: "roll", p: by, dice, from, to, jump, bumped });
+  events.push({ type: "roll", p: by, dice, from, land, slides, to, jump, bumped });
   if (to === s.size) { s.finished.push(by); events.push({ type: "finish", p: by, place: s.finished.length }); }
 
   const bonusMode = pick(r, "bonus");
