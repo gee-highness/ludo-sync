@@ -168,7 +168,7 @@ export default function Board2D({
   const neon = isWorld(settings.boardTheme);
   const road = settings.boardTheme === "road";
   const rich = settings.boardTheme === "serene" || road;
-  const pal = useMemo(() => neon ? { ...PALETTES[settings.boardTheme], bg: world.bg, cell: world.cell, line: world.accent } : PALETTES[settings.boardTheme], [neon, world, settings.boardTheme]);
+  const pal = useMemo(() => neon ? { ...PALETTES[settings.boardTheme], bg: world.bg, cell: world.cell, line: world.accent, panel: world.bg } : PALETTES[settings.boardTheme], [neon, world, settings.boardTheme]);
   const designs = useDesigns();
   const rotation = -90 * viewSeat;
   const playing = useMemo(() => new Set(state.players.map(p => p.seat)), [state.players]);
@@ -425,7 +425,7 @@ export default function Board2D({
       <g key={seat}>
         {neon ? (
           <g>
-            <rect x={x0} y={y0} width={6} height={6} fill="#0b1330" />
+            <rect x={x0} y={y0} width={6} height={6} fill={world.bg} />
             <rect x={x0} y={y0} width={6} height={6} fill={active ? `url(#nd-yard-${seat})` : INACTIVE} fillOpacity={active ? 1 : 0.14} />
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeOpacity={0.28} strokeWidth={0.3} />
             <rect x={x0 + 0.12} y={y0 + 0.12} width={5.76} height={5.76} rx={0.3} fill="none" stroke={active ? info.home : "#666"} strokeWidth={0.07} />
