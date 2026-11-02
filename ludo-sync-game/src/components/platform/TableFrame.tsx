@@ -107,7 +107,7 @@ export function TableFrame(p: FrameProps) {
         {p.rejected ? `That move is not allowed (${p.rejected.replace(/-/g, " ")})` : base.prompt}
       </Box>
 
-      <Box flex={1} minH={0} position="relative" display="flex" flexDirection="column" justifyContent="center">
+      <Box flex={1} minH={0} position="relative" display="flex" flexDirection="column">
         <mod.Table base={base} view={p.view as never} act={p.act as never} frame={p.frame} rules={rules} />
       </Box>
 

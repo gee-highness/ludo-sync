@@ -128,3 +128,24 @@ test("Four in a Row: change a rule, play against a bot, and the game is saved", 
   await expect(page.getByRole("dialog", { name: "Game over" })).toBeVisible({ timeout: 15_000 });
   expect(errors).toEqual([]);
 });
+
+test("Casino: set a rule, play a card against a bot, and the bot answers", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/casino");
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "African Casino" }).click();
+  await page.getByRole("combobox", { name: "Bot level" }).selectOption("easy");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Your hand" })).toBeVisible({ timeout: 15_000 });
+  for (let turn = 0; turn < 3; turn++) {
+    await expect(page.getByText("Your turn: play a card")).toBeVisible({ timeout: 20_000 });
+    await page.getByRole("group", { name: "Your hand" }).getByRole("button").first().click();
+    const take = page.getByRole("button", { name: "Pick the most I can take" });
+    await take.click();
+    const capture = page.getByRole("button", { name: "Capture", exact: true });
+    if (await capture.isEnabled()) await capture.click(); else await page.getByRole("button", { name: "Trail", exact: true }).click();
+  }
+  expect(errors).toEqual([]);
+});
