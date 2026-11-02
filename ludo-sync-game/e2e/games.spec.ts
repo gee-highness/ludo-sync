@@ -197,3 +197,18 @@ test("Snakes and Ladders: choose the classic board, roll, and the bot rolls back
   }
   expect(errors).toEqual([]);
 });
+
+test("Memory Match: solo, flip cards and the game is saved", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/memory");
+  await page.getByRole("combobox", { name: "Number of bots" }).selectOption("0");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.getByRole("grid", { name: "Cards" })).toBeVisible({ timeout: 15_000 });
+  const cards = page.getByRole("gridcell");
+  await expect(cards).toHaveCount(20);
+  await cards.nth(0).click();
+  await cards.nth(1).click();
+  await expect(page.getByText(/found/).first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

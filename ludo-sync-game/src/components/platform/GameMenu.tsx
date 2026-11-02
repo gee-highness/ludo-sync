@@ -38,7 +38,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
       if (!m) return;
       setRules(loadLastRules(gameId, m.driver.schema));
       setName(getSettings().playerName);
-      setBots(Math.min(Math.max(1, m.driver.minPlayers - 1), m.driver.maxPlayers - 1));
+      setBots(Math.min(Math.max(m.driver.minPlayers === 1 ? 1 : 1, m.driver.minPlayers - 1), m.driver.maxPlayers - 1));
       setPassNames(Array.from({ length: m.driver.minPlayers }, () => ""));
       const s = loadSaved(gameId);
       setResume(s ? s.seats.map(x => x.name).join(" · ") : null);
@@ -84,7 +84,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         <Input value={name} maxLength={20} onChange={e => setName(e.target.value)} bg="gray.700" border="none" aria-label="Your name" placeholder="Your name" />
         <HStack>
           <Select bg="gray.700" aria-label="Number of bots" value={bots} onChange={e => setBots(Number(e.target.value))}>
-            {Array.from({ length: d.maxPlayers - 1 }, (_, i) => i + 1).filter(n => n + 1 >= d.minPlayers).map(n => <option key={n} value={n}>{n} bot{n === 1 ? "" : "s"}</option>)}
+            {Array.from({ length: d.maxPlayers }, (_, i) => i).filter(n => n + 1 >= d.minPlayers && n <= d.maxPlayers - 1).map(n => <option key={n} value={n}>{n === 0 ? "No bots (solo)" : `${n} bot${n === 1 ? "" : "s"}`}</option>)}
           </Select>
           <Select bg="gray.700" aria-label="Bot level" value={level} onChange={e => setLevel(e.target.value as BotLevel)}>
             <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
