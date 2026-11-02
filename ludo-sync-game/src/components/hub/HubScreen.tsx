@@ -7,6 +7,7 @@ import { sound } from "@/lib/client/audio";
 import { GAMES } from "@/lib/games";
 import { hasSaved } from "@/components/platform/useLocalTable";
 import { orderByPins, usePins } from "@/lib/client/pins";
+import { Credit } from "@/components/platform/Credit";
 import { useFriends } from "@/components/friends/FriendsProvider";
 import { headline, loadBook } from "@/lib/client/streak";
 import { dailyChallenge, dailyDone, dateKey, loadDailyRecord } from "@/lib/client/daily";
@@ -144,7 +145,7 @@ export default function HubScreen() {
 
         <Text fontSize="sm" color="gray.500">More games are on the way.</Text>
         <InstallButton />
-        <Text fontSize="sm" color="gray.500">Made by <a href="https://synapse-digital.vercel.app" style={{ fontWeight: 700, display: "inline-block", padding: "10px 4px" }}>Synapse Digital</a></Text>
+        <Credit />
       </VStack>
     </Flex>
   );

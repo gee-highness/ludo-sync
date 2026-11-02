@@ -1,5 +1,6 @@
 "use client";
 
+import { Credit } from "@/components/platform/Credit";
 import { Box, Button, Flex, HStack, Heading, Image, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -93,9 +94,7 @@ export default function MenuScreen() {
           </Text>
         )}
         <Box pt={4}>
-          <Text fontSize="sm" color="gray.500">
-            Made by <Link href="https://synapse-digital.vercel.app" style={{ fontWeight: 700, display: "inline-block", padding: "10px 4px" }}>Synapse Digital</Link>
-          </Text>
+          <Credit />
         </Box>
       </VStack>
       <HowToPlay isOpen={help.isOpen} onClose={help.onClose} />
