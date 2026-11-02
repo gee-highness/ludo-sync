@@ -98,7 +98,7 @@ describe("four in a row", () => {
     const t = mk({ connect: 6, cols: 4, rows: 4, horizontal: false, vertical: false, diagonal: false }, 3);
     expect(t.state.names.length).toBe(3);
     let guard = 0;
-    while (!t.over && guard++ < 100) t.botStep() ?? t.act(t.state.turn, drop(t.state.board[0].findIndex(x => x === -1)));
+    while (!t.over && guard++ < 100) { if (!t.botStep()) t.act(t.state.turn, drop(t.state.board[0].findIndex(x => x === -1))); }
     expect(t.state.phase).toBe("over");
     expect(t.state.last?.winner).toBe(-1);
   });

@@ -16,6 +16,8 @@ const ROUTES: { path: string; sees: RegExp | string | ((page: Page) => Locator) 
   { path: "/skipbo/nearby", sees: /Host a nearby game/ },
   { path: "/online", sees: "You are offline" },
   { path: "/skipbo/online", sees: "You are offline" },
+  { path: "/g/fourinrow", sees: "Rules: you decide" },
+  { path: "/g/fourinrow/online", sees: "You are offline" },
 ];
 
 test("every game opens, and can be played, with no connection after one visit", async ({ page, context }) => {

@@ -1,3 +1,4 @@
+import { PLATFORM_GAMES } from "@/lib/platform/registry";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
@@ -26,7 +27,7 @@ const listBuilt = (): string[] => {
 };
 
 /** Every screen of the app: all of them are prerendered pages that need no server to show. */
-const PAGES = ["/", "/ludo", "/play", "/online", "/nearby", "/garage", "/pieces", "/island", "/profile", "/skipbo", "/skipbo/play", "/skipbo/online", "/skipbo/nearby", "/skipbo/learn"];
+const PAGES = ["/", "/ludo", "/play", "/online", "/nearby", "/garage", "/pieces", "/island", "/profile", "/skipbo", "/skipbo/play", "/skipbo/online", "/skipbo/nearby", "/skipbo/learn", ...PLATFORM_GAMES.flatMap(g => [`/g/${g.id}`, `/g/${g.id}/play`, `/g/${g.id}/online`])];
 
 /** The service worker, generated per build so its caches are versioned and the model list stays current. */
 export function GET() {

@@ -1,0 +1,21 @@
+import type { GameModule } from "./types";
+
+/** What the hub and menus need to know about a game without loading its code. */
+export interface GameMeta { id: string; name: string; tagline: string; accent: string; icon: string; players: string; category: "Cards" | "Board" | "Dice" | "Puzzle" }
+
+export const PLATFORM_GAMES: readonly GameMeta[] = [
+  { id: "fourinrow", name: "Four in a Row", tagline: "Drop discs and connect a line. Change the board, the line length, add PopOut, bombs and more.", accent: "#eab308", icon: "🟡", players: "2 to 4 players", category: "Board" },
+];
+
+export const metaOf = (id: string): GameMeta | undefined => PLATFORM_GAMES.find(g => g.id === id);
+
+type Loader = () => Promise<{ default: GameModule<never, never, never> }>;
+/** Each game's code (engine, bots, table) is a separate chunk, loaded only when that game opens. */
+const LOADERS: Record<string, Loader> = {
+  fourinrow: () => import("@/components/games/fourinrow/module") as unknown as ReturnType<Loader>,
+};
+
+export const loadModule = async (id: string): Promise<GameModule | null> => {
+  const l = LOADERS[id];
+  return l ? ((await l()).default as unknown as GameModule) : null;
+};
