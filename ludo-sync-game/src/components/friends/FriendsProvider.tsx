@@ -7,7 +7,8 @@ import { sound } from "@/lib/client/audio";
 import { getSettings } from "@/lib/client/settings";
 import { FriendsService, type FriendsSnapshot } from "@/lib/friends/service";
 import { gameName, joinPathFor } from "@/lib/friends/routes";
-import { deviceStore } from "@/lib/friends/store";
+import { deviceStore, loadMyCode } from "@/lib/friends/store";
+import { MailboxClient, fetchMailApi } from "@/lib/mailbox/client";
 import { PeerNetwork } from "@/lib/net/peerTransport";
 
 interface Ctx { service: FriendsService | null; snap: FriendsSnapshot | null }
@@ -23,7 +24,8 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
   const announced = useRef(new Set<string>());
 
   useEffect(() => {
-    const service = new FriendsService({ network: new PeerNetwork(), store: deviceStore, name: () => getSettings().playerName });
+    const mailbox = new MailboxClient(fetchMailApi(), deviceStore, loadMyCode(deviceStore));
+    const service = new FriendsService({ network: new PeerNetwork(), store: deviceStore, name: () => getSettings().playerName, mailbox });
     setCtx({ service, snap: service.getSnapshot() });
     const off = service.subscribe(snap => setCtx({ service, snap }));
     void service.start();
@@ -63,6 +65,7 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
             return (
               <Box key={i.id} pointerEvents="auto" w="100%" maxW="460px" bg="gray.800" color="white" borderRadius="xl" p={3} border="2px solid #eab308" boxShadow="0 8px 24px rgba(0,0,0,.5)" role="alert">
                 <Text fontWeight={800}>{i.name} invites you to play {gameName(i.game)}</Text>
+                {Date.now() - i.sentAt > 120_000 && <Text fontSize="xs" color="gray.400">Sent {Math.round((Date.now() - i.sentAt) / 60_000)} minutes ago: the room may have closed</Text>}
                 <HStack mt={2}>
                   <Button size="sm" colorScheme="yellow" isDisabled={!path} onClick={() => { service.dismissInvite(i.id); if (path) router.push(path); }}>Join now</Button>
                   <Button size="sm" variant="ghost" color="white" onClick={() => service.dismissInvite(i.id)}>Not now</Button>

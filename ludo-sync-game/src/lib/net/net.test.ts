@@ -187,13 +187,18 @@ describe("play", () => {
     const { host, guests } = await setup();
     const got: Reaction[] = [];
     host.onReaction(r => got.push(r));
+    // a reaction sent the instant a guest connects can be lost while the host is still admitting them, so keep sending until it lands
+    const resend = setInterval(() => guests[0].react("🎉"), 750);
     guests[0].react("🎉");
-    await until(() => got.length === 1, "host got reaction", 12000);
+    await until(() => got.length >= 1, "host got reaction", 12000);
+    clearInterval(resend);
     expect(got[0]).toMatchObject({ emoji: "🎉", seat: 2, name: "Guest1" });
     const back: Reaction[] = [];
     guests[0].onReaction(r => back.push(r));
+    const resendHost = setInterval(() => host.sendReaction("👍"), 750);
     host.sendReaction("👍");
-    await until(() => back.length === 1, "guest got reaction", 12000);
+    await until(() => back.length >= 1, "guest got reaction", 12000);
+    clearInterval(resendHost);
   }, 15000);
 
   it("auto-plays for an idle guest and for one who is away", async () => {

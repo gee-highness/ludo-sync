@@ -1,16 +1,25 @@
+import type { MailboxLike } from "../mailbox/client";
 import { SecureChannel } from "../net/secure";
 import { TransportError, type Endpoint, type Link, type Network } from "../net/transport";
 import { FRIEND_PROTOCOL, INVITE_TTL_MS, macOf, parseFMsg, textFor, verifyMac, type FMsg } from "./protocol";
 import { cleanFriendCode, cleanName, isFriendCode, loadBlocked, loadFriends, loadListening, loadMyCode, newSecret, peerIdOf, saveBlocked, saveFriends, type Friend, type FriendsStore } from "./store";
 
-export interface Invite { id: string; code: string; name: string; game: string; room: string; at: number }
+export interface Invite { id: string; code: string; name: string; game: string; room: string; /** When it reached this device. */ at: number; /** When the friend sent it: older than a minute or two means it waited in the mailbox. */ sentAt: number }
 export interface FriendRequest { code: string; name: string; secret: string; at: number; /** Six digits both screens show, to check nobody is in the middle. */ check: string }
 export type ServiceStatus = "off" | "connecting" | "ready" | "error";
 export interface FriendsSnapshot { status: ServiceStatus; error?: string; listening: boolean; code: string; friends: Friend[]; requests: FriendRequest[]; invites: Invite[] }
-export interface ServiceOptions { network: Network; store: FriendsStore; name: () => string; now?: () => number; dialMs?: number; replyMs?: number }
+export interface ServiceOptions {
+  network: Network; store: FriendsStore; name: () => string; now?: () => number; dialMs?: number; replyMs?: number;
+  /** A server mailbox for friends who are not online, if there is one. */
+  mailbox?: MailboxLike;
+  /** How often to check the mailbox while the app is open; 0 checks only when asked. */
+  pollMs?: number;
+}
+/** Invites left in the mailbox stay valid this long. */
+export const MAIL_TTL_MS = 2 * 60 * 60_000;
 
 export type RequestResult = "added" | "sent" | "offline" | "self" | "invalid" | "blocked";
-export type InviteResult = "delivered" | "offline" | "not-friend";
+export type InviteResult = "delivered" | "queued" | "offline" | "not-friend";
 export interface Presence { online: boolean; known: boolean; name?: string }
 
 const MAX_REQUESTS = 20;
@@ -38,6 +47,7 @@ export class FriendsService {
   private stopped = false;
   private listeners = new Set<(s: FriendsSnapshot) => void>();
   private snap!: FriendsSnapshot;
+  private poller?: ReturnType<typeof setInterval>;
   private now: () => number;
   private dialMs: number;
   private replyMs: number;
@@ -79,9 +89,57 @@ export class FriendsService {
     this.status = "ready";
     this.error = undefined;
     this.refresh();
+    void this.mailSetup();
+  }
+
+  /** Registers with the server mailbox (if there is one), tells it which friends may leave mail, and collects anything waiting. */
+  private async mailSetup() {
+    const mb = this.o.mailbox;
+    if (!mb || this.stopped || !(await mb.ensure())) return;
+    await this.syncAllowed();
+    await this.pollMailbox();
+    const every = this.o.pollMs ?? 45_000;
+    if (every > 0 && !this.poller) this.poller = setInterval(() => { void this.pollMailbox(); }, every);
+  }
+
+  private syncAllowed(): Promise<void> {
+    // friends, and people you have asked (their "accept" is checked against the secret you sent)
+    return this.o.mailbox ? this.o.mailbox.setAllowed(this.friends.map(f => f.code)).catch(() => undefined) : Promise.resolve();
+  }
+
+  /** Collects invites and accepts left while this app was closed. Each is checked against the friend's secret, as if it had arrived directly. */
+  async pollMailbox(): Promise<number> {
+    const msgs = await this.o.mailbox?.fetch();
+    if (!msgs) return 0;
+    let taken = 0;
+    for (const raw of msgs) {
+      const m = parseFMsg(raw);
+      if (!m) continue;
+      if (m.t === "accept") { if (await this.confirmFrom(m)) taken++; }
+      else if (m.t === "invite") {
+        const f = this.friends.find(x => x.code === m.code && x.confirmed);
+        const age = this.now() - m.ts;
+        if (!f || this.blocked.includes(m.code) || age > MAIL_TTL_MS || age < -INVITE_TTL_MS || !(await verifyMac(f.secret, textFor.invite(m.code, m.game, m.room, m.ts), m.mac))) continue;
+        this.takeInvite(f, m);
+        taken++;
+      }
+    }
+    if (taken) this.refresh();
+    return taken;
+  }
+
+  /** Shows a checked invite once per room. */
+  private takeInvite(f: Friend, m: Extract<FMsg, { t: "invite" }>) {
+    if (f.name !== m.name) { f.name = m.name; this.save(); }
+    const key = `${m.code}|${m.room}`;
+    if (this.seen.has(key)) return;
+    this.seen.add(key);
+    this.invites = [{ id: `${key}|${m.ts}`, code: m.code, name: f.name, game: m.game, room: m.room, at: this.now(), sentAt: m.ts }, ...this.invites].slice(0, 10);
   }
 
   stop() {
+    if (this.poller) clearInterval(this.poller);
+    this.poller = undefined;
     this.stopped = true;
     this.endpoint?.close();
     this.endpoint = undefined;
@@ -140,6 +198,7 @@ export class FriendsService {
         // we already are friends (they lost the answer), or both of us asked: settle it on their secret
         Object.assign(f, { secret: m.secret, confirmed: true, name: m.name });
         this.save(); this.refresh();
+        void this.syncAllowed();
         reply({ t: "accept", code: this.code, name: this.myName(), mac: await macOf(m.secret, textFor.accept(this.code, m.secret)) });
         return;
       }
@@ -159,13 +218,8 @@ export class FriendsService {
       const fresh = Math.abs(this.now() - m.ts) < INVITE_TTL_MS;
       const text = m.t === "ping" ? textFor.ping(m.code, m.ts) : textFor.invite(m.code, m.game, m.room, m.ts);
       if (!fresh || !(await verifyMac(f.secret, text, m.mac))) { chan.close(); return; }
-      if (f.name !== m.name) { f.name = m.name; this.save(); }
-      if (m.t === "ping") { reply({ t: "pong", name: this.myName() }); this.refresh(); return; }
-      const key = `${m.code}|${m.room}`;
-      if (!this.seen.has(key)) {
-        this.seen.add(key);
-        this.invites = [{ id: `${key}|${m.ts}`, code: m.code, name: f.name, game: m.game, room: m.room, at: this.now() }, ...this.invites].slice(0, 10);
-      }
+      if (m.t === "ping") { if (f.name !== m.name) { f.name = m.name; this.save(); } reply({ t: "pong", name: this.myName() }); this.refresh(); return; }
+      this.takeInvite(f, m);
       this.refresh();
       reply({ t: "seen" });
     }
@@ -176,6 +230,7 @@ export class FriendsService {
     if (!p || !(await verifyMac(p.secret, textFor.accept(m.code, p.secret), m.mac))) return false;
     p.confirmed = true; p.name = m.name; p.since = this.now();
     this.save(); this.refresh();
+    void this.syncAllowed();
     return true;
   }
 
@@ -213,7 +268,7 @@ export class FriendsService {
     if (this.blocked.includes(code)) return "blocked";
     let f = this.friends.find(x => x.code === code);
     if (f?.confirmed) return "added";
-    if (!f) { f = { code, name: "Friend", secret: newSecret(), since: this.now(), confirmed: false }; this.friends = [...this.friends, f]; this.save(); this.refresh(); }
+    if (!f) { f = { code, name: "Friend", secret: newSecret(), since: this.now(), confirmed: false }; this.friends = [...this.friends, f]; this.save(); this.refresh(); await this.syncAllowed(); }
     const r = await this.call(code, { t: "req", code: this.code, name: this.myName(), secret: f.secret });
     if (!r) return "offline";
     if (r.t === "accept" && (await this.confirmFrom(r))) return "added";
@@ -227,8 +282,11 @@ export class FriendsService {
     this.requests = this.requests.filter(x => x.code !== code);
     this.friends = [...this.friends.filter(f => f.code !== code), { code, name: r.name, secret: r.secret, since: this.now(), confirmed: true }];
     this.save(); this.refresh();
-    const mac = await macOf(r.secret, textFor.accept(this.code, r.secret));
-    return (await this.call(code, { t: "accept", code: this.code, name: this.myName(), mac })) !== null;
+    void this.syncAllowed();
+    const msg: FMsg = { t: "accept", code: this.code, name: this.myName(), mac: await macOf(r.secret, textFor.accept(this.code, r.secret)) };
+    if ((await this.call(code, msg)) !== null) return true;
+    // they are not online: leave the answer in their mailbox so they are added when they next open the app
+    return (await this.o.mailbox?.send(code, msg)) === "queued";
   }
   declineRequest(code: string) { this.requests = this.requests.filter(x => x.code !== code); this.refresh(); }
   block(code: string) {
@@ -236,8 +294,9 @@ export class FriendsService {
     this.requests = this.requests.filter(x => x.code !== code);
     this.friends = this.friends.filter(f => f.code !== code);
     this.save(); this.refresh();
+    void this.syncAllowed();
   }
-  remove(code: string) { this.friends = this.friends.filter(f => f.code !== code); this.save(); this.refresh(); }
+  remove(code: string) { this.friends = this.friends.filter(f => f.code !== code); this.save(); this.refresh(); void this.syncAllowed(); }
   rename(code: string, name: string) { const f = this.friends.find(x => x.code === code); if (f) { f.name = cleanName(name, f.name); this.save(); this.refresh(); } }
   dismissInvite(id: string) { this.invites = this.invites.filter(i => i.id !== id); this.refresh(); }
 
@@ -247,8 +306,12 @@ export class FriendsService {
     if (!f) return "not-friend";
     const ts = this.now();
     const mac = await macOf(f.secret, textFor.invite(this.code, game, room, ts));
-    const r = await this.call(code, { t: "invite", code: this.code, name: this.myName(), game, room, ts, mac });
-    return r?.t === "seen" ? "delivered" : r?.t === "unknown" ? "not-friend" : "offline";
+    const msg: FMsg = { t: "invite", code: this.code, name: this.myName(), game, room, ts, mac };
+    const r = await this.call(code, msg);
+    if (r?.t === "seen") return "delivered";
+    if (r?.t === "unknown") return "not-friend";
+    // not online right now: leave it in their mailbox, if there is one
+    return (await this.o.mailbox?.send(code, msg)) === "queued" ? "queued" : "offline";
   }
 
   /** Is this friend's app open right now? Also finishes a friend request that was answered while you were away. */

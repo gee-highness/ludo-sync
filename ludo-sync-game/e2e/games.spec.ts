@@ -329,3 +329,39 @@ test("Friends: a link with a code fills it in, and the lobby offers one-tap invi
   await page.goto("/g/fourinrow/online?host=1");
   await expect(page.getByRole("group", { name: "Invite friends" })).toBeVisible({ timeout: 40_000 });
 });
+
+test("the friends mailbox is off until a Blob store is connected, and the app says nothing is wrong", async ({ request, page }) => {
+  const r = await request.post("/api/mailbox", { data: { op: "register", code: "ABCDEFGH", key: "k".repeat(24) } });
+  expect(r.status()).toBe(503);
+  expect(await r.json()).toEqual({ error: "disabled" });
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/friends");
+  await expect(page.getByRole("region", { name: "Your friend code" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("two browsers pair through our own endpoint (no PeerJS) and play a move", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const mk = async () => { const c = await browser.newContext(); await c.addInitScript(() => localStorage.setItem("ludo-sync:v1:net-signaling", JSON.stringify("vercel"))); return { c, p: await c.newPage() }; };
+  const A = await mk(), B = await mk();
+  const errors: string[] = [];
+  A.p.on("pageerror", e => errors.push(e.message)); B.p.on("pageerror", e => errors.push(e.message));
+  await A.p.goto("/g/fourinrow/online?host=1");
+  const label = await A.p.getByLabel(/^Room code [0-9A-Z ]+$/).getAttribute("aria-label", { timeout: 40_000 });
+  const code = label!.replace("Room code", "").replace(/\s/g, "");
+  expect(code).toMatch(/^[0-9A-Z]{6}$/);
+  await B.p.goto(`/g/fourinrow/online?join=${code}`);
+  await B.p.getByRole("button", { name: "Join room" }).click();
+  await expect(B.p.getByText(/Waiting for .* to start/)).toBeVisible({ timeout: 60_000 });
+  await expect(A.p.getByText("Check digits")).toBeVisible({ timeout: 30_000 }); // the host sees the guest arrive
+  await A.p.getByRole("button", { name: "Start the game" }).click();
+  // whoever's turn it is drops a disc; the other side sees it become their turn
+  const mine = (p: typeof A.p) => p.getByRole("status").filter({ hasText: "Your turn: drop a disc" });
+  await expect.poll(async () => (await mine(A.p).count()) + (await mine(B.p).count()), { timeout: 30_000 }).toBeGreaterThan(0);
+  const first = (await mine(A.p).count()) ? A : B, second = first === A ? B : A;
+  await first.p.getByRole("button", { name: "Drop in column 4" }).click({ force: true });
+  await expect(mine(second.p)).toBeVisible({ timeout: 20_000 });
+  expect(errors).toEqual([]);
+  await A.c.close(); await B.c.close();
+});

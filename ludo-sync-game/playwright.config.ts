@@ -12,10 +12,12 @@ export default defineConfig({
   reporter: [["list"]],
   use: {
     baseURL: "http://localhost:3100",
-    launchOptions: { executablePath, args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox"] },
+    launchOptions: { executablePath, args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox", "--disable-features=WebRtcHideLocalIpsWithMdns"] },
   },
   webServer: {
     command: "npx next start -p 3100",
+    // a local, in-memory pairing store so the browser tests can pair two browsers through our own endpoint
+    env: { SIGNAL_STORE: "memory" },
     url: "http://localhost:3100",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
