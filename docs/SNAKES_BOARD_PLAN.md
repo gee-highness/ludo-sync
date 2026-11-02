@@ -92,6 +92,7 @@ Pure luck stays the default. These make games interesting; each ships behind a r
 | Docs | Update `PLATFORM.md` and the in-app How to play. |
 
 ## 8. Phases
+Status: phases 1 to 3 and the choose-a-die and special-square parts of phase 4 are built (themes Classic, Jungle, Night; seeded generator with simulation and crossing avoidance; board numbers; board report; choose a die; bonus, trap, safe and portal squares; presets Strategy, Adventure, Sprint). Still to do: power cards, risk picker, teams, co-op, race mode and daily board, guided lesson, stats, 3D board, more themes. A rules fix shipped too: with several dice and an exact finish, a token one square short could never finish.
 1. **Steps and polish (done, plus a day):** hopping tokens, shadows, per-square sound, bonus and bump handling. Add the shadow and arc art, the result banner and a11y names for squares and jumps.
 2. **Art pass:** tile bevels, new ladder and snake drawing, themes (Classic, Jungle, Night), token art, responsive and landscape layout, tap-a-jump info.
 3. **Generator and board report:** constraints, simulation gate, difficulty presets, board codes and share link, board of the day.
