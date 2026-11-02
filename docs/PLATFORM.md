@@ -18,7 +18,7 @@ Every game after Ludo and Skip-Bo is a **driver** (a pure engine) plus a **table
 `GameDriver.mayAct` lets players act out of turn (catching a missed call, jumping in). `noHotseat` marks games where every seat plays at once (Solitaire races).
 
 ## Games
-Four in a Row, Casino (South African, Swazi, Sotho, Crazy, Classic), 4 Colors, Snakes and Ladders, Memory Match, Crazy Eights, Solitaire (Klondike, FreeCell, Spider).
+Four in a Row, Casino (South African, Swazi, Sotho, Crazy, Classic), 4 Colors, Snakes and Ladders, Memory Match, Crazy Eights, Solitaire (Klondike, FreeCell, Spider), Checkers (American, Brazilian, big board; compulsory or optional captures, flying kings).
 
 ## Friends (invite without sharing a link)
 Each device has a permanent **friend code** (8 characters, `lib/friends/store.ts`). While the app is open it listens at its own address on the pairing service (`lsf-<code>`), so a friend can reach it directly with an encrypted connection (`lib/friends/service.ts`).

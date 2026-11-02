@@ -17,8 +17,12 @@ Checks last run: typecheck clean, lint clean, **546 unit tests passed three time
 - Before running Playwright, make sure no old server is on port 3100 (`curl localhost:3100`); Playwright reuses it and will test an old build.
 - On Vercel (project `gss-ludo-sync`, team `gss`): connect a **Blob** store (mailbox) and an **Upstash Redis** store (pairing); add `NEXT_PUBLIC_SIGNALING=vercel`; redeploy; check `/api/signal` returns `{"enabled":true}`. Nothing has been changed on Vercel yet.
 
+## Done since: Checkers (branch, not merged)
+`lib/games/checkers/` (engine, bots, 18 tests) and `components/games/checkers/module.tsx` (own wooden SVG board: glowing movable pieces, green/red landing dots, multi-jump step by step, slide animation along the route, captured piles, last-move trail, hint, board flips for the second seat). This is the UX bar for the remaining games: copy its structure. Pending polish: drag and drop, a 3D view, a guided lesson.
+Vercel is set up: Blob + Upstash Redis connected, `NEXT_PUBLIC_SIGNALING=vercel` set, `/api/signal` answers `{"enabled":true}`. Live two-device pairing test not yet done.
+
 ## Not started
-Checkers, Dominoes, Hearts, Rummy and Gin Rummy, Backgammon, Blackjack, Poker. Crazy Eights variants (Countdown, Knockout, lowest-score-wins, last-card call). Web Push notifications for a closed app (needs push keys and a service-worker handler). Friends "online now" still uses PeerJS.
+Dominoes, Hearts, Rummy and Gin Rummy, Backgammon, Blackjack, Poker. Crazy Eights variants (Countdown, Knockout, lowest-score-wins, last-card call). Web Push notifications for a closed app (needs push keys and a service-worker handler). Friends "online now" still uses PeerJS.
 
 ## Gotchas
 - `.env*` is gitignored; document variables in docs instead.
