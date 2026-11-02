@@ -12,6 +12,7 @@ import { loadStats, type SkipBoStats } from "@/lib/skipbo/stats";
 import { clearSkipBoRoom, loadSkipBoRoom, type RoomRecord } from "@/hooks/useSkipBoOnline";
 import { CardFace } from "./CardFace";
 import { SettingsDrawer } from "@/components/game/SettingsDrawer";
+import { OfflineBadge } from "@/components/pwa/OfflineBadge";
 import { SkipBoHowToPlay } from "./HowToPlay";
 import { lessonDone } from "@/lib/skipbo/lessonStore";
 import { dailyDone, dateKey, loadDailyRecord, skipBoDaily, type SkipBoDaily, type SkipBoDailyRecord } from "@/lib/skipbo/daily";
@@ -75,6 +76,7 @@ export default function SkipBoMenu() {
           </HStack>
           <Heading as="h1" size="2xl" letterSpacing="-0.02em">Skip-Bo</Heading>
           <Text color="whiteAlpha.800" textAlign="center">Empty your stock pile first. Build 1 to 12, discard wisely, and block your rivals.</Text>
+          <OfflineBadge />
         </VStack>
 
         <Button colorScheme={learned ? "gray" : "green"} variant={learned ? "outline" : "solid"} color={learned ? "white" : undefined} size={learned ? "md" : "lg"} h="auto" py={3} onClick={go("/skipbo/learn")}>

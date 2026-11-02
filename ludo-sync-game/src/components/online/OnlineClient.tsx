@@ -2,7 +2,9 @@
 
 import { Box, Button, Center, Flex, Heading, HStack, IconButton, Input, Spinner, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useOnline } from "@/lib/client/device";
 import { useCallback, useEffect, useState } from "react";
 import { cleanName } from "@/lib/ludo/engine";
 import { cleanRoomCode, isRoomCode } from "@/lib/net/crypto";
@@ -115,6 +117,7 @@ export default function OnlineClient() {
   const [typed, setTyped] = useState(linkCode ?? "");
   const [ready, setReady] = useState(false);
 
+  const online = useOnline();
   const [noRoom, setNoRoom] = useState(false);
   useEffect(() => {
     setName(getSettings().playerName);
@@ -146,15 +149,22 @@ export default function OnlineClient() {
         <Text fontSize="sm" color="gray.300" mb={1}>Your name</Text>
         <Input value={name} maxLength={20} onChange={e => setName(e.target.value)} bg="gray.700" border="none" aria-label="Your name" />
       </Box>
+      {!online && (
+        <VStack align="stretch" spacing={2} bg="orange.900" borderRadius="lg" p={3} role="alert">
+          <Text fontWeight={800}>You are offline</Text>
+          <Text fontSize="sm">Online rooms need an internet connection. You can still play against bots or pass and play, and two phones in the same room can play nearby with no internet at all.</Text>
+          <HStack><Button as={Link} href="/nearby" size="sm" colorScheme="cyan">Play nearby</Button><Button as={Link} href="/ludo" size="sm" variant="outline" color="white">Back to the menu</Button></HStack>
+        </VStack>
+      )}
       {noRoom && <Text bg="whiteAlpha.100" borderRadius="lg" p={3}>There is no game to rejoin. It may have ended or been open too long.</Text>}
       {linkCode && (
         <Text bg="whiteAlpha.100" borderRadius="lg" p={3}>You were invited to room <b>{linkCode.slice(0, 3)}-{linkCode.slice(3)}</b>.</Text>
       )}
-      <Button colorScheme="teal" size="lg" onClick={() => { remember(); setStep({ kind: "host" }); }}>Create a room</Button>
+      <Button colorScheme="teal" size="lg" isDisabled={!online} onClick={() => { remember(); setStep({ kind: "host" }); }}>Create a room</Button>
       <Text textAlign="center" color="gray.400">or join a friend</Text>
       <Input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Room code" bg="gray.700" border="none" textAlign="center" fontFamily="mono"
         fontSize="xl" letterSpacing="0.12em" autoCapitalize="characters" autoComplete="off" aria-label="Room code" />
-      <Button colorScheme="blue" size="lg" isDisabled={!isRoomCode(code)} onClick={() => { remember(); setStep({ kind: "join", code }); }}>Join room</Button>
+      <Button colorScheme="blue" size="lg" isDisabled={!online || !isRoomCode(code)} onClick={() => { remember(); setStep({ kind: "join", code }); }}>Join room</Button>
       <ScanButton onCode={c => { setTyped(c); }} />
     </Shell>
   );
