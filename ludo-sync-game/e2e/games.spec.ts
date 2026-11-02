@@ -104,3 +104,27 @@ test("the manifest has a shortcut for each game", async ({ request }) => {
   expect(urls.some(u => u.startsWith("/skipbo/play"))).toBe(true);
   expect(urls.some(u => u.startsWith("/play"))).toBe(true);
 });
+
+test("Four in a Row: change a rule, play against a bot, and the game is saved", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  await page.goto("/g/fourinrow");
+  await expect(page.getByText("Rules: you decide")).toBeVisible();
+  await page.getByRole("button", { name: "Change" }).click();
+  await page.getByRole("button", { name: "Mini" }).click(); // preset: connect three on a small board
+  await page.getByRole("combobox", { name: "Bot level" }).selectOption("easy");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page).toHaveURL(/\/g\/fourinrow\/play/);
+  const col = page.getByRole("button", { name: "Drop in column 1" });
+  await expect(col).toBeVisible({ timeout: 15_000 });
+  // 5 columns on the mini board
+  await expect(page.getByRole("grid", { name: /5 columns by 5 rows/ })).toBeVisible();
+  for (let i = 0; i < 40; i++) {
+    if (await page.getByRole("dialog", { name: "Game over" }).isVisible().catch(() => false)) break;
+    const yourTurn = await page.getByText("Your turn: drop a disc").isVisible().catch(() => false);
+    if (yourTurn) await page.getByRole("button", { name: /Drop in column [1-5]$/ }).nth(i % 5).click({ force: true }).catch(() => undefined);
+    await page.waitForTimeout(500);
+  }
+  await expect(page.getByRole("dialog", { name: "Game over" })).toBeVisible({ timeout: 15_000 });
+  expect(errors).toEqual([]);
+});

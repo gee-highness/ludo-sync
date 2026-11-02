@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { GAMES } from "@/lib/games";
+import { hasSaved } from "@/components/platform/useLocalTable";
+import { headline, loadBook } from "@/lib/client/streak";
 import { dailyChallenge, dailyDone, dateKey, loadDailyRecord } from "@/lib/client/daily";
 import { levelFor, lifetimeTotal, loadProfile, rankFor, type LevelInfo, type RankInfo } from "@/lib/client/profile";
 import { loadGame as loadLudo } from "@/lib/client/save";
@@ -15,8 +17,8 @@ import { CardFace } from "@/components/skipbo/CardFace";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { OfflineBadge } from "@/components/pwa/OfflineBadge";
 
-const Art = ({ id }: { id: string }) =>
-  id === "skipbo" ? (
+const Art = ({ id, icon }: { id: string; icon?: string }) =>
+  icon ? <Box fontSize="52px" lineHeight="72px" w="72px" h="72px" textAlign="center" bg="whiteAlpha.200" borderRadius="18px" aria-hidden>{icon}</Box> : id === "skipbo" ? (
     <HStack spacing="-14px" aria-hidden>{[3, 0, 11].map((v, i) => <Box key={v} transform={`rotate(${(i - 1) * 14}deg) translateY(${i === 1 ? -3 : 2}px)`}><CardFace value={v} size="xs" /></Box>)}</HStack>
   ) : <Image src="/icons/icon-192x192.png" alt="" w="72px" h="72px" borderRadius="18px" boxShadow="0 6px 18px rgba(0,0,0,.45)" />;
 
@@ -35,14 +37,17 @@ export default function HubScreen() {
   const [level, setLevel] = useState<LevelInfo | null>(null);
   const [rank, setRank] = useState<RankInfo | null>(null);
   const [resume, setResume] = useState<Record<string, boolean>>({});
+  const [streaks, setStreaks] = useState<Record<string, { n: number; level: string }>>({});
   const [tiles, setTiles] = useState<{ continue: Tile[]; today: Tile[] }>({ continue: [], today: [] });
 
   useEffect(() => {
     const prof = loadProfile();
     setLevel(levelFor(prof.xp));
     setRank(rankFor(lifetimeTotal(prof)));
+    const book = loadBook();
+    setStreaks(Object.fromEntries(GAMES.map(g => { const h = headline(book, g.id); return [g.id, { n: h.record.current, level: h.level }]; })));
     const ludo = loadLudo(), sb = loadSkipBo(), room = loadSkipBoRoom();
-    setResume({ ludo: !!ludo, skipbo: !!sb });
+    setResume({ ludo: !!ludo, skipbo: !!sb, ...Object.fromEntries(GAMES.filter(g => g.icon).map(g => [g.id, hasSaved(g.id)])) });
     const cont: Tile[] = [];
     if (ludo) cont.push({ key: "c-ludo", href: "/play?resume=1", accent: "#E53E3E", title: "Continue Ludo", sub: ludo.state.players.map(p => p.name).join(" · ") });
     if (sb) cont.push({ key: "c-sb", href: "/skipbo/play?resume=1", accent: "#2563eb", title: "Continue Skip-Bo", sub: sb.state.players.map(p => p.name).join(" · ") });
@@ -90,9 +95,9 @@ export default function HubScreen() {
               <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
                 _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
                 onClick={() => { sound.unlock(); sound.play("click"); }}>
-                <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} /></Box>
+                <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} icon={g.icon} /></Box>
                 <VStack align="start" spacing={1} flex={1} minW={0}>
-                  <HStack><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}</HStack>
+                  <HStack><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}{(streaks[g.id]?.n ?? 0) >= 2 && <Text as="span" fontSize="xs" fontWeight={800} bg="red.500" color="white" borderRadius="full" px={2} py="1px" aria-label={`${streaks[g.id].n} wins in a row against ${streaks[g.id].level} bots`}>🔥 {streaks[g.id].n}</Text>}</HStack>
                   <Text fontSize="sm" color="gray.300">{g.tagline}</Text>
                   <Text fontSize="xs" color="gray.400">{g.players}</Text>
                 </VStack>

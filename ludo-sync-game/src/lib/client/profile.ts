@@ -1,6 +1,8 @@
 import { readJSON, writeJSON } from "./storage";
+import { recordBotResult, type StreakOutcome } from "./streak";
 
-export type GameId = "ludo" | "skipbo";
+export type GameId = string;
+const isGameId = (v: unknown): v is string => typeof v === "string" && /^[a-z0-9-]{2,24}$/.test(v);
 
 export interface GameTally { played: number; won: number }
 export interface Ledger { game: GameId; date: string; points: number; xp: number; won: boolean }
@@ -40,7 +42,7 @@ export const rankFor = (points: number): RankInfo => {
   return { rank, index, next, points: safe, into: next ? safe - rank.at : 1, need, fraction: next ? (safe - rank.at) / need : 1 };
 };
 
-export const lifetimeTotal = (p: Pick<Profile, "lifetime">): number => p.lifetime.ludo + p.lifetime.skipbo;
+export const lifetimeTotal = (p: Pick<Profile, "lifetime">): number => Object.values(p.lifetime).reduce((a, b) => a + b, 0);
 
 /** XP needed in total to reach a level: level 2 at 100, 3 at 300, 4 at 600, 5 at 1000 ... */
 export const xpToReach = (level: number): number => 50 * level * (level - 1);
@@ -68,6 +70,8 @@ export interface GameResult {
   withFriends?: boolean;
   /** The points you scored in the game itself, which are what experience is made of. */
   points?: number;
+  /** Extra XP on top, such as a streak milestone. */
+  bonusXp?: number;
 }
 
 /** The most game points that turn into experience from one game, so one long game cannot be farmed. */
@@ -105,15 +109,17 @@ export const parseProfile = (r: Partial<Profile> | null): Profile => {
   if (!r) return p;
   p.xp = n(r.xp);
   p.games = { ludo: t(r.games?.ludo), skipbo: t(r.games?.skipbo) };
+  for (const [id, g] of Object.entries(r.games ?? {})) if (isGameId(id) && !(id in p.games)) p.games[id] = t(g);
   p.today = { date: typeof r.today?.date === "string" ? r.today.date : "", played: n(r.today?.played) };
   p.recent = Array.isArray(r.recent)
-    ? r.recent.filter((e): e is Ledger => !!e && (e.game === "ludo" || e.game === "skipbo") && typeof e.date === "string").slice(0, RECENT).map(e => ({ game: e.game, date: e.date.slice(0, 10), points: n(e.points), xp: n(e.xp), won: e.won === true }))
+    ? r.recent.filter((e): e is Ledger => !!e && isGameId(e.game) && typeof e.date === "string").slice(0, RECENT).map(e => ({ game: e.game, date: e.date.slice(0, 10), points: n(e.points), xp: n(e.xp), won: e.won === true }))
     : [];
   // profiles from before lifetime points existed start from the games still on record
   const stored = r.lifetime as Partial<Record<GameId, number>> | undefined;
-  p.lifetime = stored ? { ludo: n(stored.ludo), skipbo: n(stored.skipbo) } : { ludo: p.recent.filter(e => e.game === "ludo").reduce((a, e) => a + e.points, 0), skipbo: p.recent.filter(e => e.game === "skipbo").reduce((a, e) => a + e.points, 0) };
+  p.lifetime = stored ? { ...Object.fromEntries(Object.entries(stored).filter(([k]) => isGameId(k)).map(([k, v]) => [k, n(v)])), ludo: n(stored.ludo), skipbo: n(stored.skipbo) } : { ludo: p.recent.filter(e => e.game === "ludo").reduce((a, e) => a + e.points, 0), skipbo: p.recent.filter(e => e.game === "skipbo").reduce((a, e) => a + e.points, 0) };
   const best = r.best as Partial<Record<GameId, number>> | undefined;
-  p.best = { ludo: Math.max(n(best?.ludo), ...p.recent.filter(e => e.game === "ludo").map(e => e.points), 0), skipbo: Math.max(n(best?.skipbo), ...p.recent.filter(e => e.game === "skipbo").map(e => e.points), 0) };
+  const extraBest = Object.fromEntries(Object.entries(best ?? {}).filter(([k]) => isGameId(k)).map(([k, v]) => [k, n(v)]));
+  p.best = { ...extraBest, ludo: Math.max(n(best?.ludo), ...p.recent.filter(e => e.game === "ludo").map(e => e.points), 0), skipbo: Math.max(n(best?.skipbo), ...p.recent.filter(e => e.game === "skipbo").map(e => e.points), 0) };
   return p;
 };
 
@@ -132,33 +138,37 @@ export interface Award {
   rankAfter: RankInfo;
   rankedUp: boolean;
   newBest: boolean;
+  /** The win streak against bots after this game, when it was a bot game. */
+  streak?: StreakOutcome | null;
 }
 
 /** Pure: the profile after one more game. */
 export const applyResult = (p: Profile, r: GameResult, now = new Date()): Award => {
-  const gained = xpFor(r);
+  const gained = xpFor(r) + Math.max(0, Math.floor(r.bonusXp ?? 0));
   const pointsGained = Math.max(0, Math.floor(r.points ?? 0));
   const today = day(now);
   const next: Profile = {
     xp: p.xp + gained,
-    games: { ...p.games, [r.game]: { played: p.games[r.game].played + 1, won: p.games[r.game].won + (r.won ? 1 : 0) } },
+    games: { ...p.games, [r.game]: { played: (p.games[r.game]?.played ?? 0) + 1, won: (p.games[r.game]?.won ?? 0) + (r.won ? 1 : 0) } },
     today: { date: today, played: (p.today.date === today ? p.today.played : 0) + 1 },
     recent: [{ game: r.game, date: today, points: Math.max(0, Math.floor(r.points ?? 0)), xp: gained, won: r.won }, ...p.recent].slice(0, RECENT),
-    lifetime: { ...p.lifetime, [r.game]: p.lifetime[r.game] + pointsGained },
-    best: { ...p.best, [r.game]: Math.max(p.best[r.game], pointsGained) },
+    lifetime: { ...p.lifetime, [r.game]: (p.lifetime[r.game] ?? 0) + pointsGained },
+    best: { ...p.best, [r.game]: Math.max(p.best[r.game] ?? 0, pointsGained) },
   };
   const before = levelFor(p.xp), after = levelFor(next.xp);
   const rankBefore = rankFor(lifetimeTotal(p)), rankAfter = rankFor(lifetimeTotal(next));
   return {
     gained, before, after, leveledUp: after.level > before.level, profile: next, pointsGained, lifetime: lifetimeTotal(next), rankBefore, rankAfter,
-    rankedUp: rankAfter.index > rankBefore.index, newBest: pointsGained > p.best[r.game] && p.games[r.game].played > 0,
+    rankedUp: rankAfter.index > rankBefore.index, newBest: pointsGained > (p.best[r.game] ?? 0) && (p.games[r.game]?.played ?? 0) > 0,
   };
 };
 
 export const awardGame = (r: GameResult): Award => {
-  const a = applyResult(loadProfile(), r);
+  // wins in a row count only against bots: online, nearby and pass-and-play games neither add nor break a streak
+  const streak = r.botLevel && !r.withFriends ? recordBotResult(r.game, r.botLevel, r.won) : null;
+  const a = applyResult(loadProfile(), { ...r, bonusXp: streak?.bonusXp ?? 0 });
   writeJSON("profile", a.profile);
-  return a;
+  return { ...a, streak };
 };
 
 export const awardBonus = (xp: number): Award => {

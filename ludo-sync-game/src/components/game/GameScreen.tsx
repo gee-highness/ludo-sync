@@ -15,6 +15,7 @@ import type { AnimStep } from "@/lib/client/anim";
 import { stepMs } from "@/lib/client/anim";
 import { describeFrame, ordinal, type LogLine } from "@/lib/client/describe";
 import { awardGame } from "@/lib/client/profile";
+import { describeStreak } from "@/lib/client/streak";
 import { unlockedAt } from "@/lib/client/unlocks";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
@@ -293,6 +294,8 @@ export default function GameScreen(props: GameScreenProps) {
         const award = awardGame({ game: "ludo", won, players: frame.state.players.length, botLevel: hardest, tournament: !!frame.state.rules.tycoon, daily: props.daily, withFriends: frame.state.players.filter(p => p.kind === "human").length > 1, points: mineP ? pointsOf(mineP) : 0 });
         if (award.rankedUp) toast({ title: `${award.rankAfter.rank.icon} ${award.rankAfter.rank.name}`, description: `New rank: ${award.lifetime.toLocaleString()} lifetime points`, status: "success", duration: 8000, isClosable: true, position: "top" });
         toast({ title: `+${award.gained} XP · ★ +${award.pointsGained}`, description: award.leveledUp ? `Level ${award.after.level}${unlockedAt(award.after.level).length ? ` · unlocked ${unlockedAt(award.after.level).map(u => u.name).join(", ")}` : ""}` : `Level ${award.after.level}: ${award.after.into} of ${award.after.need}`, status: award.leveledUp ? "success" : "info", duration: award.leveledUp ? 8000 : 4000, isClosable: true, position: "top" });
+        const st = award.streak ? describeStreak(award.streak) : null;
+        if (st) toast({ title: st.title, description: st.detail, status: award.streak?.event === "up" ? "success" : "info", duration: 6000, isClosable: true, position: "top" });
         setStreak(after.streak);
         if (props.daily) {
           const day = recordDaily(dateKey(), won);

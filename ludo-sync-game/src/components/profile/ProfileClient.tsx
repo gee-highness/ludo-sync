@@ -13,6 +13,7 @@ import { loadDailyRecord, type SkipBoDailyRecord } from "@/lib/skipbo/daily";
 import { updatePrefs, usePrefs } from "@/lib/skipbo/prefs";
 import { loadStats as loadSkipBoStats, type SkipBoStats } from "@/lib/skipbo/stats";
 import { CardFace } from "../skipbo/CardFace";
+import { bestOf, loadBook, type StreakBook } from "@/lib/client/streak";
 
 const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "-");
 
@@ -34,7 +35,8 @@ export default function ProfileClient() {
   const [ludo, setLudo] = useState<Stats | null>(null);
   const [sb, setSb] = useState<SkipBoStats | null>(null);
   const [daily, setDaily] = useState<SkipBoDailyRecord | null>(null);
-  useEffect(() => { setProfile(loadProfile()); setLudo(loadLudoStats()); setSb(loadSkipBoStats()); setDaily(loadDailyRecord()); }, []);
+  const [book, setBook] = useState<StreakBook>({});
+  useEffect(() => { setBook(loadBook()); setProfile(loadProfile()); setLudo(loadLudoStats()); setSb(loadSkipBoStats()); setDaily(loadDailyRecord()); }, []);
   if (!profile || !ludo || !sb) return null;
   const lv = levelFor(profile.xp);
   const life = lifetimeTotal(profile);
@@ -96,12 +98,12 @@ export default function ProfileClient() {
           <Box p={4} borderRadius="xl" bg="whiteAlpha.100" borderLeft="6px solid #E53E3E">
             <Heading size="sm" mb={2}>Ludo</Heading>
             <Text fontSize="sm">{profile.games.ludo.played} played · {profile.games.ludo.won} won ({pct(profile.games.ludo.won, profile.games.ludo.played)})</Text>
-            <Text fontSize="sm" color="gray.300">{ludo.captures} sent home · best streak {ludo.bestStreak} · {ludo.vehicles.length} vehicles raced</Text>
+            <Text fontSize="sm" color="gray.300">{ludo.captures} sent home · best streak {Math.max(ludo.bestStreak, bestOf(book, "ludo"))} · {ludo.vehicles.length} vehicles raced</Text>
           </Box>
           <Box p={4} borderRadius="xl" bg="whiteAlpha.100" borderLeft="6px solid #2563eb">
             <Heading size="sm" mb={2}>Skip-Bo</Heading>
             <Text fontSize="sm">{profile.games.skipbo.played} played · {profile.games.skipbo.won} won ({pct(profile.games.skipbo.won, profile.games.skipbo.played)})</Text>
-            <Text fontSize="sm" color="gray.300">{sb.piles} piles cleared · best turn {sb.bestTurn} cards · {sb.tournamentsWon} tournaments{daily && daily.streakDays > 1 ? ` · daily streak ${daily.streakDays}` : ""}</Text>
+            <Text fontSize="sm" color="gray.300">{sb.piles} piles cleared · best turn {sb.bestTurn} cards · {sb.tournamentsWon} tournaments · best bot streak {bestOf(book, "skipbo")}{daily && daily.streakDays > 1 ? ` · daily streak ${daily.streakDays}` : ""}</Text>
           </Box>
         </SimpleGrid>
 
