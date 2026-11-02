@@ -23,6 +23,7 @@ const ROUTES: { path: string; sees: RegExp | string | ((page: Page) => Locator) 
   { path: "/g/snakes", sees: "Rules: you decide" },
   { path: "/g/memory", sees: "Rules: you decide" },
   { path: "/g/crazyeights", sees: "Rules: you decide" },
+  { path: "/g/solitaire", sees: "Rules: you decide" },
 ];
 
 test("every game opens, and can be played, with no connection after one visit", async ({ page, context }) => {

@@ -103,6 +103,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         </Collapse>
       </VStack>
 
+      {!d.noHotseat && d.maxPlayers > 1 && (
       <VStack align="stretch" spacing={2} bg="whiteAlpha.100" borderRadius="xl" p={4} as="section" aria-label="Pass and play">
         <Text fontWeight={800}>Pass and play on one device</Text>
         {passNames.map((n, i) => <Input key={i} value={n} maxLength={20} placeholder={`Player ${i + 1}`} bg="gray.700" border="none" aria-label={`Player ${i + 1} name`} onChange={e => setPassNames(l => l.map((x, j) => (j === i ? e.target.value : x)))} />)}
@@ -112,6 +113,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
         </HStack>
         <Button colorScheme="blue" onClick={playPass}>Start pass and play</Button>
       </VStack>
+      )}
 
       <Button colorScheme="teal" size="lg" onClick={go(`/g/${gameId}/online`)}>Play with friends online</Button>
       <Button variant="outline" color="white" onClick={help.onOpen}>How to play</Button>
