@@ -294,3 +294,38 @@ test("Solitaire: FreeCell and Spider deal their own layouts", async ({ page }) =
     await expect(page.getByRole("group", { name: /^Column \d+, \d+ cards?$/ })).toHaveCount(columns, { timeout: 15_000 });
   }
 });
+
+test("Friends: a stable friend code, add and remove a friend, and the home screen links to it", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: /Friends/ }).first().click();
+  await expect(page).toHaveURL(/\/friends$/);
+  const codeEl = page.getByLabel(/^Your friend code [A-Z2-9 ]+$/);
+  await expect(codeEl).toBeVisible();
+  const code = (await codeEl.textContent())!.trim();
+  expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  await page.reload();
+  await expect(page.getByLabel(/^Your friend code [A-Z2-9 ]+$/)).toHaveText(code); // the same code after a reload
+  const add = page.getByRole("button", { name: "Add friend" });
+  await expect(add).toBeDisabled();
+  await page.getByLabel("Friend code", { exact: true }).fill("not a code");
+  await expect(add).toBeDisabled();
+  await page.getByLabel("Friend code", { exact: true }).fill("ABCD-EFGH");
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page.getByRole("status").filter({ hasText: /Saved|Request sent/ })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Waiting for them to accept").first()).toBeVisible();
+  await page.getByRole("button", { name: /^Remove / }).click();
+  await expect(page.getByText("No friends yet")).toBeVisible();
+  // your own code is refused
+  await page.getByLabel("Friend code", { exact: true }).fill(code);
+  await page.getByRole("button", { name: "Add friend" }).click();
+  await expect(page.getByText("That is your own code.")).toBeVisible({ timeout: 10_000 });
+});
+
+test("Friends: a link with a code fills it in, and the lobby offers one-tap invites", async ({ page }) => {
+  await page.goto("/friends?add=ABCDEFGH");
+  await expect(page.getByLabel("Friend code", { exact: true })).toHaveValue("ABCDEFGH");
+  // "Play with a friend" opens the room straight away
+  await page.goto("/g/fourinrow/online?host=1");
+  await expect(page.getByRole("group", { name: "Invite friends" })).toBeVisible({ timeout: 40_000 });
+});

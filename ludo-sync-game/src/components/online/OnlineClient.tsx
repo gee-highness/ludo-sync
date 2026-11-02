@@ -128,7 +128,7 @@ export default function OnlineClient() {
         setName(rec.name);
         setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true });
       } else setNoRoom(true);
-    }
+    } else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     setReady(true);
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps

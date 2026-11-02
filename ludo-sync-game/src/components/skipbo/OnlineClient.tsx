@@ -86,7 +86,7 @@ export const Lobby = ({ room, host, check, invite, chat }: { room: RoomView; hos
   const stock = room.rules.stockSize;
   return (
     <VStack align="stretch" spacing={4}>
-      {host && (invite ?? <ShareCard code={room.code} link={skipBoShareLink(room.code)} game="Skip-Bo" />)}
+      {host && (invite ?? <ShareCard code={room.code} link={skipBoShareLink(room.code)} game="Skip-Bo" gameId="skipbo" />)}
       {check && (
         <Box bg="whiteAlpha.100" borderRadius="xl" p={3} textAlign="center">
           <Text fontSize="xs" textTransform="uppercase" color="gray.400">Security check</Text>
@@ -212,6 +212,7 @@ export default function SkipBoOnlineClient() {
       const rec = loadSkipBoRoom();
       if (rec) { setName(rec.name); setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true }); }
     }
+    if (params.get("host") === "1" && params.get("rejoin") !== "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     setReady(true);
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps

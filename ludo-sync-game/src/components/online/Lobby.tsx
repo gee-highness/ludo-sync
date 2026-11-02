@@ -10,6 +10,7 @@ import { shareLink } from "@/lib/net/identity";
 import type { MemberView } from "@/lib/net/host";
 import type { RoomView } from "@/lib/net/protocol";
 import { ChatPanel, type ChatSource } from "./ChatPanel";
+import { InviteFriends } from "../friends/InviteFriends";
 import ColorEditor from "../setup/ColorEditor";
 import { updateSettings, useSettings } from "@/lib/client/settings";
 import { usePalette } from "@/lib/client/palette";
@@ -54,7 +55,7 @@ interface Props {
   invite?: React.ReactNode;
 }
 
-export const ShareCard = ({ code, link: given, game = "Ludo" }: { code: string; link?: string; game?: string }) => {
+export const ShareCard = ({ code, link: given, game = "Ludo", gameId }: { code: string; link?: string; game?: string; gameId?: string }) => {
   const [copied, setCopied] = useState(false);
   const link = given ?? shareLink(code);
   const copy = async () => {
@@ -70,6 +71,7 @@ export const ShareCard = ({ code, link: given, game = "Ludo" }: { code: string; 
         <Button flex={1} onClick={copy}>{copied ? "Copied" : "Copy link"}</Button>
         {typeof navigator !== "undefined" && "share" in navigator && <Button flex={1} colorScheme="blue" onClick={share}>Share</Button>}
       </HStack>
+      {gameId && <InviteFriends gameId={gameId} room={code} />}
     </VStack>
   );
 };
@@ -81,7 +83,7 @@ export const Lobby = ({ room, host, onClaim, check, chat, invite }: Props) => {
   const [pickColours, setPickColours] = useState(false);
   return (
     <VStack align="stretch" spacing={4} w="100%">
-      {host && (invite ?? <ShareCard code={room.code} />)}
+      {host && (invite ?? <ShareCard code={room.code} gameId="ludo" />)}
       {check && (
         <Box bg="whiteAlpha.100" borderRadius="xl" p={3} textAlign="center">
           <Text fontSize="xs" textTransform="uppercase" color="gray.400">Security check</Text>

@@ -9,6 +9,7 @@ const ROUTES: { path: string; sees: RegExp | string | ((page: Page) => Locator) 
   { path: "/skipbo/play?name=Off&bots=1&level=easy&mode=quick&stock=10", sees: /your turn|thinking/ },
   { path: "/skipbo/learn", sees: "Step 1 of" },
   { path: "/profile", sees: "Your profile" },
+  { path: "/friends", sees: "Your friend code" },
   { path: "/pieces", sees: "Piece maker" },
   { path: "/island", sees: /Island/ },
   { path: "/garage", sees: /Garage|achievements/i },
