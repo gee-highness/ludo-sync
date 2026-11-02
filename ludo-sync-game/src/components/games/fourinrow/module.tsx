@@ -2,6 +2,7 @@
 
 import { Box, Button, HStack } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { useSettings } from "@/lib/client/settings";
@@ -51,6 +52,20 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const W = cell * C, H = cell * R;
   cellPx.current = cell;
   const colour = (p: number) => SEAT_COLOURS[p % 4 === 3 ? 3 : p % 4]; // red, yellow, green, blue by seat
+  const slid = useRef(false);
+  const colAt = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return Math.max(0, Math.min(C - 1, Math.floor(((e.clientX - r.left) / r.width) * C)));
+  };
+  // press and slide to choose a column, release to drop: easier than aiming a tap on a small phone
+  const onDown = (e: React.PointerEvent<SVGSVGElement>) => { if (!myTurn) return; slid.current = false; setHover(colAt(e)); };
+  const onMove = (e: React.PointerEvent<SVGSVGElement>) => { if (!myTurn || e.buttons === 0 && e.pointerType === "mouse") return; const c2 = colAt(e); if (c2 !== hover) { slid.current = true; setHover(c2); } };
+  const onUp = (e: React.PointerEvent<SVGSVGElement>) => { if (!myTurn || !slid.current) return; slid.current = false; pick(colAt(e)); };
+  useHotkeys({
+    ...Object.fromEntries(Array.from({ length: Math.min(C, 9) }, (_, i) => [String(i + 1), () => { if (myTurn) pick(i); }])),
+    ArrowLeft: () => setHover(h => Math.max(0, (h ?? 0) - 1)), ArrowRight: () => setHover(h => Math.min(C - 1, (h ?? -1) + 1)),
+    Enter: () => { if (myTurn && hover !== null) pick(hover); }, " ": () => { if (myTurn && hover !== null) pick(hover); },
+  }, myTurn);
   const pick = (col: number) => { if (!myTurn) return; act({ type: mode === "bomb" ? "bomb" : "drop", col }); setMode("drop"); };
   const fall = (col: number) => dropRow(view.board, col);
 
@@ -60,7 +75,7 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
       <HStack spacing={3} fontSize="sm" aria-label="Match score">
         {base.players.map((p, i) => <span key={i} style={{ color: colour(i), fontWeight: 800 }}>{MARKS[i]} {p.name}: {view.wins[i]}{view.need > 1 ? ` / ${view.need}` : ""}</span>)}
       </HStack>
-      <svg ref={svgRef} width={W} height={H + cell * 0.2} viewBox={`0 0 ${W} ${H + cell * 0.2}`} role="grid" aria-label={`Board, ${C} columns by ${R} rows`} style={{ touchAction: "manipulation", maxWidth: "100%" }}>
+      <svg ref={svgRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onKeyDown={roveKeys} width={W} height={H + cell * 0.2} viewBox={`0 0 ${W} ${H + cell * 0.2}`} role="grid" aria-label={`Board, ${C} columns by ${R} rows`} style={{ touchAction: "none", maxWidth: "100%" }}>
         <rect x={0} y={cell * 0.2} width={W} height={H} rx={cell * 0.15} fill="#1d4ed8" />
         {Array.from({ length: R }, (_, r) => Array.from({ length: C }, (_, c) => {
           const v = view.board[r][c];
@@ -77,7 +92,7 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
         )}
         {Array.from({ length: C }, (_, c) => (
           <rect key={c} x={c * cell} y={0} width={cell} height={H + cell * 0.2} fill="transparent" role="button" tabIndex={myTurn ? 0 : -1} aria-label={`${mode === "bomb" ? "Bomb" : "Drop in"} column ${c + 1}`}
-            style={{ cursor: myTurn ? "pointer" : "default" }} onPointerEnter={() => setHover(c)} onPointerLeave={() => setHover(null)} onClick={() => pick(c)}
+            style={{ cursor: myTurn ? "pointer" : "default" }} onPointerEnter={() => setHover(c)} onPointerLeave={() => setHover(null)} onClick={() => { if (!slid.current) pick(c); }}
             onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(c); } }} />
         ))}
       </svg>
@@ -96,6 +111,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#eab308",
   icon: "🟡",
   tagline: "Drop discs and connect a line. Change the board, the line length, add PopOut, bombs, wrap-around, misère, up to four players, and play a whole match.",
+  keys: [{ key: "1 – 7", does: "Drop in that column" }, { key: "← →", does: "Move the preview disc" }, { key: "Enter / Space", does: "Drop it" }],
   howTo: [
     { title: "Take turns", text: "On your turn drop one disc into a column. It falls to the lowest free square." },
     { title: "Connect a line", text: "Be first to line up the needed number of discs (four by default) in a row, column or diagonal." },

@@ -76,4 +76,6 @@ export interface GameModule<S = unknown, A = unknown, V = unknown> {
   accent: string;
   icon: string;
   howTo: HowToStep[];
+  /** Keys the table listens for, shown in the controls panel. */
+  keys?: { key: string; does: string }[];
 }

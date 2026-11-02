@@ -4,6 +4,7 @@ import { Badge, Box, Button, Drawer, DrawerBody, DrawerCloseButton, DrawerConten
 import { ChevronLeftIcon, QuestionIcon } from "@chakra-ui/icons";
 import { useEffect, useRef, type ReactNode } from "react";
 import { CardStudio } from "./CardStudio";
+import { ControlsPanel } from "./ControlsPanel";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import type { Award } from "@/lib/client/profile";
@@ -61,6 +62,7 @@ export function TableFrame(p: FrameProps) {
   const rulesDrawer = useDisclosure();
   const leave = useDisclosure();
   const cardsDrawer = useDisclosure();
+  const controlsDrawer = useDisclosure();
   const isCardGame = metaOf(mod.driver.id)?.category === "Cards";
   const you = base.you;
   const myTurn = you !== null && base.actors.includes(you) && !base.over;
@@ -88,6 +90,7 @@ export function TableFrame(p: FrameProps) {
         <Text fontWeight={800} flex={1} noOfLines={1} as="h1">{p.title}</Text>
         {p.note && <Badge colorScheme="orange">{p.note}</Badge>}
         {p.headerExtra}
+        <IconButton aria-label="Controls and accessibility" icon={<span aria-hidden>⚙️</span>} size="sm" variant="outline" color="white" onClick={controlsDrawer.onOpen} />
         {isCardGame && <IconButton aria-label="Change how the cards look" icon={<span aria-hidden>🎴</span>} size="sm" variant="outline" color="white" onClick={cardsDrawer.onOpen} />}
         <Button size="sm" variant="outline" color="white" onClick={rulesDrawer.onOpen} aria-label="Show the rules in use">Rules</Button>
         <IconButton aria-label="How to play" icon={<QuestionIcon />} size="sm" variant="outline" color="white" onClick={help.onOpen} />
@@ -167,6 +170,14 @@ export function TableFrame(p: FrameProps) {
           <DrawerCloseButton />
           <DrawerHeader>Your cards</DrawerHeader>
           <DrawerBody pb={6}><CardStudio compact /></DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      <Drawer isOpen={controlsDrawer.isOpen} onClose={controlsDrawer.onClose} placement="bottom">
+        <DrawerOverlay />
+        <DrawerContent bg="gray.800" color="white" borderTopRadius="xl" maxH="88dvh">
+          <DrawerCloseButton />
+          <DrawerHeader>Controls and accessibility</DrawerHeader>
+          <DrawerBody pb={6}><ControlsPanel shortcuts={mod.keys} /></DrawerBody>
         </DrawerContent>
       </Drawer>
       <HowTo mod={mod} isOpen={help.isOpen} onClose={help.onClose} />

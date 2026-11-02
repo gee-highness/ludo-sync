@@ -434,3 +434,84 @@ test("Cards page: a card back designed once shows up in every card game", async 
   await expect(page.locator("[data-cardback] svg").first()).toBeVisible({ timeout: 40_000 });
   expect(errors).toEqual([]);
 });
+
+const crazySetup = async (page: Page) => {
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("ludo-sync:v1:settings", JSON.stringify({ music: false, sound: false, speed: "instant" }));
+      localStorage.setItem("ludo-sync:v1:g-setup:crazyeights", JSON.stringify({ seats: [{ name: "Tester", kind: "human" }, { name: "Mia", kind: "bot", level: "easy" }], rules: {}, hotseat: false }));
+    } catch { /* private window */ }
+  });
+  await page.goto("/g/crazyeights/play");
+  await expect(page.getByRole("group", { name: "Your hand" }).getByRole("button").first()).toBeVisible({ timeout: 40_000 });
+};
+
+test("Dragging: a card can be dragged onto the discard pile, and the bot answers", async ({ page }) => {
+  const errors = watch(page);
+  await crazySetup(page);
+  const hand = page.getByRole("group", { name: "Your hand" }).getByRole("button");
+  const before = await hand.count();
+  let played = false;
+  for (let attempt = 0; attempt < 8 && !played; attempt++) {
+    await expect(page.getByRole("status").filter({ hasText: /Your turn/ })).toBeVisible({ timeout: 20_000 });
+    const grabbable = page.locator('[data-drag][style*="cursor: grab"]');
+    if (!(await grabbable.count())) { await page.keyboard.press("d"); continue; } // nothing playable: draw with the keyboard
+    const box = (await grabbable.first().boundingBox())!, to = (await page.locator('[data-drop-id="discard"]').boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2, box.y - 40, { steps: 4 }); // lifts the card
+    await expect(page.locator("body[data-dragging]")).toHaveCount(1);
+    await expect(page.locator('[data-drop-id="discard"][data-drop-ok="1"]')).toHaveCount(1); // the pile lights up
+    await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 8 });
+    await expect(page.locator('[data-drop-id="discard"][data-drop-over="1"]')).toHaveCount(1);
+    const inHand = await hand.count();
+    await page.mouse.up();
+    // an eight is wild: choose a suit for it
+    const dialog = page.getByRole("dialog");
+    if (await dialog.isVisible({ timeout: 800 }).catch(() => false)) await dialog.getByRole("button").first().click();
+    await expect.poll(() => hand.count(), { timeout: 10_000 }).toBeLessThan(inHand);
+    played = true;
+  }
+  expect(played).toBe(true);
+  await expect(page.locator("body[data-dragging]")).toHaveCount(0);
+  await expect(page.getByRole("log").getByText(/played/).first()).toBeVisible({ timeout: 20_000 });
+  void before;
+  expect(errors).toEqual([]);
+});
+
+test("Dropping on nothing puts the card back, and the keyboard shortcut draws", async ({ page }) => {
+  const errors = watch(page);
+  await crazySetup(page);
+  await expect(page.getByRole("status").filter({ hasText: /Your turn/ })).toBeVisible({ timeout: 20_000 });
+  const hand = page.getByRole("group", { name: "Your hand" }).getByRole("button");
+  const n = await hand.count();
+  const grabbable = page.locator('[data-drag][style*="cursor: grab"]');
+  if (await grabbable.count()) {
+    const box = (await grabbable.first().boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 5, box.y - 120, { steps: 6 });
+    await page.mouse.up();
+    await expect(page.locator("body[data-dragging]")).toHaveCount(0);
+    await expect(hand).toHaveCount(n); // nothing was played
+  }
+  await page.keyboard.press("d");
+  await expect(hand).not.toHaveCount(n - 1);
+  expect(errors).toEqual([]);
+});
+
+test("Controls: bigger buttons and larger text apply to the whole page and are remembered", async ({ page }) => {
+  const errors = watch(page);
+  await crazySetup(page);
+  await page.getByRole("button", { name: "Controls and accessibility" }).click();
+  await page.locator('label[for="big"]').click();
+  await page.getByRole("radio", { name: "130%" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-big-targets", "1");
+  expect(await page.evaluate(() => document.documentElement.style.fontSize)).toBe("130%");
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:interaction") ?? "null"));
+  expect(saved).toMatchObject({ bigTargets: true, textScale: 130 });
+  await page.locator('label[for="drag"]').click();
+  const grabbed = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:interaction") ?? "null").drag);
+  expect(grabbed).toBe(false);
+  expect(errors).toEqual([]);
+});

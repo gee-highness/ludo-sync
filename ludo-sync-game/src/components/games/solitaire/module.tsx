@@ -8,8 +8,10 @@ import { flag, pick } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { solitaire, type BoardView, type SolView } from "@/lib/games/solitaire/driver";
 import { applyMove, foundationIndex, variantOf, type Board, type Card, type Pile, type SAction } from "@/lib/games/solitaire/engine";
-import { PlayingCard } from "../../platform/PlayingCard";
+import { PlayingCard, cardLabel } from "../../platform/PlayingCard";
 import { useMotion } from "../../platform/useMotion";
+import { Draggable, DropZone } from "../../platform/interact/Parts";
+import { useHotkeys } from "../../platform/interact/keys";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 const asBoard = (b: BoardView): Board => ({ ...b, hist: [], sigs: [] });
@@ -72,6 +74,14 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
     return () => clearTimeout(t);
   }, [auto, autoPlan, live, act]);
 
+  useHotkeys({
+    d: () => { if (live && variant !== "freecell") act({ type: "draw" }); },
+    h: () => setShowHint(x => !x),
+    u: () => { if (live && flag(rules, "undo") && b?.canUndo) act({ type: "undo" }); },
+    a: () => { if (autoPlan.length) setAuto(true); },
+    Escape: () => setSel(null),
+  }, !!b);
+
   if (!b || !local) return <Text p={4} color="gray.300">Watching the race…</Text>;
 
   const tryDest = (to: Pile) => {
@@ -84,6 +94,10 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
     if (sel && same(sel.from, from) && sel.n === n) { setSel(null); return; }
     setSel({ from, n });
   };
+  type Carry = { from: Pile; n: number };
+  const isCarry = (d: unknown): d is Carry => !!d && typeof d === "object" && "from" in d && "n" in d;
+  const canDrop = (d: unknown, to: Pile) => live && isCarry(d) && !same(d.from, to) && canMove(d.from, d.n, to);
+  const dropMove = (d: unknown, to: Pile) => { if (isCarry(d) && canDrop(d, to)) { act({ type: "move", from: d.from, n: d.n, to }); setSel(null); } else sound.play("error"); };
   const home = (from: Pile, card: Card) => {
     if (!live || variant === "spider" || card.id < 0) return;
     const to: Pile = { k: "f", i: foundationIndex(card) };
@@ -93,11 +107,11 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
   const hint = showHint && view.hint ? view.hint : null;
   const hintFrom = hint?.move?.from ?? null, hintTo = hint?.move?.to ?? null;
 
-  const slot = (key: number, pile: Pile, children?: React.ReactNode, empty?: string) => (
-    <Box key={key} as="button" type="button" w={`${width}px`} minH={`${full}px`} borderRadius="8px" border="2px dashed" borderColor={same(hintTo, pile) ? "#38bdf8" : "whiteAlpha.300"} bg="blackAlpha.200" position="relative" onClick={() => tryDest(pile)} aria-label={`${pile.k === "f" ? "foundation" : pile.k === "c" ? "free cell" : "column"} ${pile.i + 1}`} disabled={!live}>
+ const slot = (key: number, pile: Pile, children?: React.ReactNode, empty?: string) => (
+    <DropZone key={key} id={`${pile.k}${pile.i}`} accepts={d => canDrop(d, pile)} onDrop={d => dropMove(d, pile)} as="button" type="button" w={`${width}px`} minH={`${full}px`} borderRadius="8px" border="2px dashed" borderColor={same(hintTo, pile) ? "#38bdf8" : "whiteAlpha.300"} bg="blackAlpha.200" position="relative" onClick={() => tryDest(pile)} aria-label={`${pile.k === "f" ? "foundation" : pile.k === "c" ? "free cell" : "column"} ${pile.i + 1}`} disabled={!live}>
       {empty && !children && <Box position="absolute" inset={0} display="grid" placeItems="center" color="whiteAlpha.400" fontSize={`${width * 0.45}px`}>{empty}</Box>}
       {children}
-    </Box>
+    </DropZone>
   );
 
   const found = b.found.length ? b.found : [];
@@ -122,16 +136,16 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
             </Box>
             <Box position="relative" w={`${width + (wasteShown.length - 1) * width * 0.35}px`} minH={`${full}px`} aria-label="Waste">
               {wasteShown.map((c, i) => (
-                <Box key={i} position="absolute" left={`${i * width * 0.35}px`} top={0}>
+                <Draggable key={i} id={`w${c.id}`} data={{ from: { k: "w", i: 0 }, n: 1 }} label={cardLabel(c.id)} disabled={!live || i !== wasteShown.length - 1} touch="none" position="absolute" left={`${i * width * 0.35}px`} top={0}>
                   <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={i === wasteShown.length - 1 && same(sel?.from ?? null, { k: "w", i: 0 })} glow={i === wasteShown.length - 1 && same(hintFrom, { k: "w", i: 0 })}
                     onClick={i === wasteShown.length - 1 ? () => pickSource({ k: "w", i: 0 }, 1) : undefined} />
                   {i === wasteShown.length - 1 && <Box position="absolute" inset={0} onDoubleClick={() => home({ k: "w", i: 0 }, c)} />}
-                </Box>
+                </Draggable>
               ))}
             </Box>
           </>)}
           {variant === "freecell" && b.cells.map((c, i) => slot(i, { k: "c", i },
-            c && <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={same(sel?.from ?? null, { k: "c", i })} glow={same(hintFrom, { k: "c", i })} onClick={() => (sel ? tryDest({ k: "c", i }) : pickSource({ k: "c", i }, 1))} />))}
+            c && <Draggable id={`cell${c.id}`} data={{ from: { k: "c", i }, n: 1 }} label={cardLabel(c.id)} disabled={!live} touch="none"><PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={same(sel?.from ?? null, { k: "c", i })} glow={same(hintFrom, { k: "c", i })} onClick={() => (sel ? tryDest({ k: "c", i }) : pickSource({ k: "c", i }, 1))} /></Draggable>))}
           {variant === "spider" && (
             <Box as="button" type="button" aria-label="Deal a row from the stock" w={`${width}px`} minH={`${full}px`} onClick={() => live && act({ type: "draw" })} position="relative" borderRadius="8px" border="2px dashed" borderColor={hint?.draw ? "#38bdf8" : "whiteAlpha.300"} disabled={b.stock.length < 10}>
               {b.stock.length >= 10 && <PlayingCard faceDown width={width} />}
@@ -155,7 +169,7 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
           const positions = col.map(c => { const at = y; y += c.up ? width * 0.42 : width * 0.16; return at; });
           const height = col.length ? positions[positions.length - 1] + full : full;
           return (
-            <Box key={ci} as="div" position="relative" h={`${Math.max(height, full)}px`} borderRadius="8px" border={col.length ? "none" : "2px dashed"} borderColor={same(hintTo, pile) ? "#38bdf8" : "whiteAlpha.300"} bg={col.length ? "transparent" : "blackAlpha.200"}
+            <DropZone key={ci} id={`t${ci}`} accepts={d => canDrop(d, pile)} onDrop={d => dropMove(d, pile)} position="relative" h={`${Math.max(height, full)}px`} borderRadius="8px" border={col.length ? "none" : "2px dashed"} borderColor={same(hintTo, pile) ? "#38bdf8" : "whiteAlpha.300"} bg={col.length ? "transparent" : "blackAlpha.200"}
               onClick={() => (sel ? tryDest(pile) : undefined)} role="group" aria-label={`Column ${ci + 1}, ${col.length} card${col.length === 1 ? "" : "s"}`}>
               {col.map((c, i) => {
                 const n = col.length - i;
@@ -163,14 +177,16 @@ function Table({ base, view, act, frame }: TableProps<SolView, SAction>) {
                 const picked = same(sel?.from ?? null, pile) && !!sel && n <= sel.n;
                 const hinted = same(hintFrom, pile) && !!hint?.move && n <= hint.move.n;
                 return (
-                  <Box key={i} position="absolute" left={0} top={`${positions[i]}px`} onDoubleClick={isTop ? () => home(pile, c) : undefined}>
+                  <Draggable key={i} id={`tc${ci}-${i}`} data={{ from: pile, n }} label={`${cardLabel(c.id)}${n > 1 ? ` and ${n - 1} more` : ""}`} disabled={!live || !c.up} touch="none" data-tc={`${ci}-${i}`}
+                    group={() => Array.from(root.current?.querySelectorAll<HTMLElement>(`[data-tc^="${ci}-"]`) ?? []).filter(e => Number(e.dataset.tc!.split("-")[1]) >= i)}
+                    position="absolute" left={0} top={`${positions[i]}px`} onDoubleClick={isTop ? () => home(pile, c) : undefined}>
                     {c.up
                       ? <PlayingCard id={c.id} mk={`c${c.id}`} width={width} selected={picked} glow={hinted && !picked} onClick={() => { if (sel && !same(sel.from, pile)) tryDest(pile); else pickSource(pile, n); }} />
                       : <PlayingCard faceDown width={width} />}
-                  </Box>
+                  </Draggable>
                 );
               })}
-            </Box>
+            </DropZone>
           );
         })}
       </Box>
@@ -192,6 +208,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#0ea5e9",
   icon: "🃏",
   tagline: "Klondike, FreeCell and Spider with every rule adjustable. Play solo, or race friends on the same deal.",
+  keys: [{ key: "D", does: "Turn a card from the stock (or deal a row)" }, { key: "H", does: "Show or hide a hint" }, { key: "U", does: "Undo" }, { key: "A", does: "Auto-finish" }, { key: "Esc", does: "Put the picked cards down" }],
   howTo: [
     { title: "Klondike", text: "Move all the cards onto the four foundations, Ace up to King in each suit. Build the columns down in alternating colours. Turn cards from the stock to find what you need." },
     { title: "FreeCell", text: "All cards are face up. Park cards in the free cells to get at the ones underneath, and build the columns down in alternating colours." },

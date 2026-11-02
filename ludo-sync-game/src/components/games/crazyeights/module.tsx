@@ -7,8 +7,10 @@ import { buzz } from "@/lib/client/haptics";
 import { flag, pick } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { crazyEights, rankOf, type EAction, type EView } from "@/lib/games/crazyeights/driver";
-import { CardBacks, PlayingCard, SUIT_NAMES, SUIT_SYMBOLS } from "../../platform/PlayingCard";
+import { CardBacks, PlayingCard, SUIT_NAMES, SUIT_SYMBOLS, cardLabel } from "../../platform/PlayingCard";
 import { useMotion } from "../../platform/useMotion";
+import { Draggable, DropZone } from "../../platform/interact/Parts";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 const KEY: Record<number, string> = { 8: "p8", 1: "pA", 2: "p2", 7: "p7", 11: "pJ", 12: "pQ", 13: "pK" };
@@ -61,6 +63,12 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
     if (cards.some(isWildCard)) { setChooser(cards); return; }
     act({ type: "play", cards });
   };
+  useHotkeys({
+    d: () => { if (view.canDraw) act({ type: "draw" }); },
+    p: () => { if (view.canPass) act({ type: "pass" }); },
+    Escape: () => { setSelected([]); setChooser(null); },
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [String(i + 1), () => { const c = view.hand[i]; if (c !== undefined && (clickable.has(c) || selected.includes(c))) choose(c); }])),
+  }, me !== null && view.phase === "play");
 
   return (
     <VStack ref={root} spacing={3} align="stretch" px={1} pt={1} pb={2} flex={1} justify="space-between" position="relative">
@@ -81,7 +89,7 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
             <Text fontSize="2xs" color="gray.400">Draw ({view.deckCount})</Text>
           </VStack>
           <VStack spacing={1}>
-            {view.top !== null && <PlayingCard id={view.top} size="lg" mk={`c${view.top}`} />}
+            <DropZone id="discard" accepts={d => typeof d === "number" && (clickable.has(d) || joinable(d))} onDrop={d => choose(d as number)} p="4px">{view.top !== null && <PlayingCard id={view.top} size="lg" mk={`c${view.top}`} />}</DropZone>
             <HStack spacing={1} aria-label={`Suit in play: ${SUIT_NAMES[view.suit]}`}>
               <Text fontSize="xl" color={view.suit === 1 || view.suit === 2 ? "#f87171" : "white"} fontWeight={900}>{SUIT_SYMBOLS[view.suit]}</Text>
               <Text fontSize="xs">{SUIT_NAMES[view.suit]}</Text>
@@ -110,13 +118,13 @@ function Table({ base, view, act, frame }: TableProps<EView, EAction>) {
           </HStack>
           {multi && selected.length === 0 && myTurn && <Text textAlign="center" fontSize="xs" color="gray.400">Tap a card, then tap other cards of the same rank to play them together.</Text>}
           {view.jumpable.length > 0 && !myTurn && <Text textAlign="center" fontSize="xs" color="sky.200">You can jump in with an identical card!</Text>}
-          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand">
+          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand" onKeyDown={roveKeys}>
             <Box display="flex" w="fit-content" mx="auto" px={2}>
               {view.hand.map((c, i) => (
-                <Box key={c} ml={i ? "-18px" : 0} zIndex={i}>
+                <Draggable key={c} id={`hand${c}`} data={c} label={cardLabel(c)} disabled={!(clickable.has(c) || joinable(c))} ml={i ? "-18px" : 0} zIndex={i}>
                   <PlayingCard id={c} mk={`c${c}`} size="md" selected={selected.includes(c)} glow={clickable.has(c) && !selected.includes(c)} dim={!clickable.has(c) && !joinable(c) && !selected.includes(c) && (myTurn || view.jumpable.length > 0)}
                     onClick={clickable.has(c) || joinable(c) || selected.includes(c) ? () => choose(c) : undefined} />
-                </Box>
+                </Draggable>
               ))}
             </Box>
           </Box>
@@ -146,6 +154,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#7c3aed",
   icon: "8️⃣",
   tagline: "Match the suit or rank; eights are wild. Every rank's power, the draw rules, stacking, multi-play and scoring are yours to change.",
+  keys: [{ key: "D", does: "Draw a card" }, { key: "P", does: "Pass" }, { key: "1 – 9", does: "Play the card in that position" }, { key: "Esc", does: "Clear the selection" }],
   howTo: [
     { title: "Goal", text: "Be first to play all your cards. Then score the points left in the other hands." },
     { title: "Play", text: "Play a card that matches the top card's suit or rank." },

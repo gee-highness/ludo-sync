@@ -44,3 +44,28 @@ select {
 @media (pointer: coarse) {
   .chakra-button, .chakra-select__wrapper select { min-height: 44px; min-width: 44px; }
 }
+
+/* ---- interaction and accessibility, shared by every game ---- */
+
+/* a clear focus ring on everything you can reach with a keyboard or switch */
+:focus-visible {
+  outline: 3px solid #fde047;
+  outline-offset: 2px;
+}
+
+/* dragging: everywhere a dragged card can go is lit up, and the one under it is brighter */
+body[data-dragging] { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+[data-drop-ok="1"] { outline: 3px dashed rgba(253, 224, 71, 0.75); outline-offset: 3px; border-radius: 12px; }
+[data-drop-over="1"] { outline: 3px solid #fde047; outline-offset: 3px; background-color: rgba(253, 224, 71, 0.16); border-radius: 12px; }
+@media (prefers-contrast: more) { [data-drop-ok="1"] { outline-width: 4px; } }
+
+/* "Bigger buttons": every control at least 48 px with room between them */
+html[data-big-targets="1"] button,
+html[data-big-targets="1"] [role="button"],
+html[data-big-targets="1"] [role="gridcell"][tabindex],
+html[data-big-targets="1"] select,
+html[data-big-targets="1"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]) {
+  min-height: 48px;
+  min-width: 48px;
+}
+html[data-big-targets="1"] [role="tab"] { min-height: 48px; }

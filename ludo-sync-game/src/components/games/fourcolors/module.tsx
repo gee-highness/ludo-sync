@@ -7,8 +7,10 @@ import { buzz } from "@/lib/client/haptics";
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { K, fourColors, type FAction, type FView } from "@/lib/games/fourcolors/driver";
-import { COLOUR_HEX, COLOUR_NAMES, ColourCard, SHAPES } from "../../platform/ColourCard";
+import { COLOUR_HEX, COLOUR_NAMES, ColourCard, SHAPES, cardName } from "../../platform/ColourCard";
 import { useMotion } from "../../platform/useMotion";
+import { Draggable, DropZone } from "../../platform/interact/Parts";
+import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 
 function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
@@ -59,6 +61,10 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
     void out;
   };
   const clickable = new Set([...(myTurn ? view.playable : []), ...view.jumpable]);
+  useHotkeys({
+    d: () => { if (myTurn && view.pending === 0 && view.drawn === null) act({ type: "draw" }); },
+    ...Object.fromEntries(Array.from({ length: 9 }, (_, i) => [String(i + 1), () => { const c = view.hand[i]; if (c && clickable.has(c.id)) playCard(c.id); }])),
+  }, me !== null && view.phase === "play");
   const dirIcon = view.dir === 1 ? "↻" : "↺";
   const topColour = view.color;
 
@@ -82,7 +88,7 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
             <Text fontSize="2xs" color="gray.400">Draw ({view.deckCount})</Text>
           </VStack>
           <VStack spacing={0}>
-            {view.top && <ColourCard card={view.top} mk={`c${view.top.id}`} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}
+            <DropZone id="discard" accepts={d => typeof d === "number" && clickable.has(d)} onDrop={d => playCard(d as number)} p="4px">{view.top && <ColourCard card={view.top} mk={`c${view.top.id}`} size="lg" colour={view.top.c === 4 ? topColour : undefined} />}</DropZone>
             <HStack spacing={1} mt="6px" aria-label={`Colour in play: ${COLOUR_NAMES[topColour]}`}>
               <Box w="16px" h="16px" borderRadius="50%" bg={COLOUR_HEX[topColour]} border="2px solid white" />
               <Text fontSize="xs" fontWeight={800}>{SHAPES[topColour]} {COLOUR_NAMES[topColour]}</Text>
@@ -109,12 +115,12 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
             {myTurn && view.drawn !== null && !flag(view.rules, "mustPlayDrawn") && <Button size="sm" variant="outline" color="white" onClick={() => act({ type: "pass" })}>Keep it and pass</Button>}
             {mayCall && <Button size="sm" colorScheme="yellow" onClick={() => act({ type: "call" })}>Last card!</Button>}
           </HStack>
-          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand">
+          <Box overflowX="auto" pt={4} pb={1} role="group" aria-label="Your hand" onKeyDown={roveKeys}>
             <Box display="flex" w="fit-content" mx="auto" px={2}>
               {view.hand.map((c, i) => (
-                <Box key={c.id} ml={i ? "-16px" : 0} zIndex={i}>
+                <Draggable key={c.id} id={`hand${c.id}`} data={c.id} label={cardName(c)} disabled={!clickable.has(c.id)} ml={i ? "-16px" : 0} zIndex={i}>
                   <ColourCard card={c} mk={`c${c.id}`} size="md" glow={clickable.has(c.id)} dim={!clickable.has(c.id) && (myTurn || view.jumpable.length > 0)} onClick={clickable.has(c.id) ? () => playCard(c.id) : undefined} />
-                </Box>
+                </Draggable>
               ))}
             </Box>
           </Box>
@@ -157,6 +163,7 @@ const gameModule: GameModule<never, never, never> = {
   accent: "#dc2626",
   icon: "🎴",
   tagline: "Match the colour or the number, play your action cards, and be first out. Every rule is yours to change, even the deck.",
+  keys: [{ key: "D", does: "Draw a card" }, { key: "1 – 9", does: "Play the card in that position" }],
   howTo: [
     { title: "Goal", text: "Get rid of all your cards first. Then score the points left in everyone else's hands. First to the target wins the match." },
     { title: "Play a card", text: "Play a card that matches the top card's colour, number or symbol. Wild cards go on anything and let you choose the colour." },
