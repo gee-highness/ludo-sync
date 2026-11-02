@@ -58,7 +58,7 @@ const Lobby = ({ mod, room, host, check, chat }: { mod: GameModule; room: RoomVi
   const seated = room.slots.filter(s => s.kind !== "empty").length;
   return (
     <VStack align="stretch" spacing={4}>
-      {host && <ShareCard code={room.code} link={`${typeof location !== "undefined" ? location.origin : ""}/g/${d.id}/online?join=${room.code}`} game={d.name} />}
+      {host && <ShareCard code={room.code} link={`${typeof location !== "undefined" ? location.origin : ""}/g/${d.id}/online?join=${room.code}`} game={d.name} gameId={d.id} />}
       {check && (
         <Box bg="whiteAlpha.100" borderRadius="xl" p={3} textAlign="center">
           <Text fontSize="xs" textTransform="uppercase" color="gray.400">Security check</Text>
@@ -171,6 +171,7 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
       setRules(loadLastRules(gameId, m.driver.schema));
       setName(getSettings().playerName);
       if (params.get("rejoin") === "1") { const rec = loadRoom(gameId); if (rec) { setName(rec.name); setStep({ kind: "join", code: rec.code, rejoin: true }); } }
+      else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     });
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps

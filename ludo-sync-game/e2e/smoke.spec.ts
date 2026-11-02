@@ -10,6 +10,8 @@ test("manifest and service worker are served", async ({ request }) => {
 });
 
 test("menu loads and a quick bot game can be played for a few turns", async ({ page }) => {
+  // the 3D board renders in software here, so a full run of the suite can make the bots slow to answer
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   page.on("console", m => { if (m.type() === "error" && !/Failed to load resource|GL Driver Message|GPU stall/.test(m.text())) errors.push(m.text()); });
@@ -23,7 +25,7 @@ test("menu loads and a quick bot game can be played for a few turns", async ({ p
 
   let rolls = 0;
   const movable = page.getByRole("button", { name: /token \d, can move/ });
-  for (let i = 0; i < 60 && rolls < 3; i++) {
+  for (let i = 0; i < 150 && rolls < 3; i++) {
     if (await roll.isVisible().catch(() => false)) {
       await roll.click();
       rolls++;
