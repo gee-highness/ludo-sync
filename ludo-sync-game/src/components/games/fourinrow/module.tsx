@@ -40,7 +40,7 @@ function Table({ base, view, act, frame }: TableProps<FView, FAction>) {
   const fall = (col: number) => dropRow(view.board, col);
 
   return (
-    <Box display="flex" flexDirection="column" alignItems="center" gap={3} pt={2}>
+    <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" flex={1} gap={3} pt={2}>
       {view.phase === "roundOver" && base.you !== null && !base.over && <Button colorScheme="yellow" onClick={() => act({ type: "next" })}>Next round</Button>}
       <HStack spacing={3} fontSize="sm" aria-label="Match score">
         {base.players.map((p, i) => <span key={i} style={{ color: colour(i), fontWeight: 800 }}>{MARKS[i]} {p.name}: {view.wins[i]}{view.need > 1 ? ` / ${view.need}` : ""}</span>)}

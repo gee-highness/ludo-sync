@@ -22,6 +22,8 @@ export interface GameDriver<S = unknown, A = unknown, V = unknown> {
   create(seats: SeatInfo[], rules: RuleValues, seed: number): S;
   /** Null when the move is illegal. `by` is the player making it. */
   apply(state: S, action: A, by: number): StepResult<S> | null;
+  /** Optional: who may act right now besides the players in `actors`, e.g. to catch a missed call or jump in out of turn. Defaults to `actors`. */
+  mayAct?(state: S, player: number): boolean;
   /** Players who may move now: one in turn-based games, several in simultaneous phases, none when the game is over. */
   actors(state: S): number[];
   over(state: S): boolean;
