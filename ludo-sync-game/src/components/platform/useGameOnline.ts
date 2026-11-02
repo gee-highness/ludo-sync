@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { PeerNetwork } from "@/lib/net/peerTransport";
+import { defaultNetwork } from "@/lib/net/network";
 import type { Network } from "@/lib/net/transport";
 import { getClientId } from "@/lib/net/identity";
 import { readJSON, removeKey, writeJSON } from "@/lib/client/storage";
@@ -65,7 +65,7 @@ export const useGameHost = (driver: GameDriver, name: string, rules: RuleValues,
   const sessionNames = useRef<string[]>([]);
   const sessionRef = useRef<GameHost<unknown, unknown, unknown> | null>(null);
   useEffect(() => {
-    const s = new GameHost(driver, { network: network ?? new PeerNetwork(), name, rules });
+    const s = new GameHost(driver, { network: network ?? defaultNetwork(), name, rules });
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
@@ -89,7 +89,7 @@ export const useGameGuest = (driver: GameDriver, code: string, name: string, rej
   const clientRef = useRef<GameGuest | null>(null);
   useEffect(() => {
     quit.current = false;
-    const c = new GameGuest({ network: network ?? new PeerNetwork(), gameId: driver.id, maxSlots: driver.maxPlayers, code, name, clientId: getClientId(), rejoin });
+    const c = new GameGuest({ network: network ?? defaultNetwork(), gameId: driver.id, maxSlots: driver.maxPlayers, code, name, clientId: getClientId(), rejoin });
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());

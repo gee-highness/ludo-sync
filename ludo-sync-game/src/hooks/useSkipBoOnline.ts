@@ -5,7 +5,7 @@ import { describeEvents } from "@/lib/skipbo/describe";
 import { SkipBoGuest, type GuestSnapshot } from "@/lib/skipbo/net/guest";
 import { SkipBoHost, parseHostResume, type HostResume, type HostSnapshot, type Reaction } from "@/lib/skipbo/net/host";
 import type { Rules } from "@/lib/skipbo/types";
-import { PeerNetwork } from "@/lib/net/peerTransport";
+import { defaultNetwork } from "@/lib/net/network";
 import type { Network } from "@/lib/net/transport";
 import { getClientId } from "@/lib/net/identity";
 import { readJSON, removeKey, writeJSON } from "@/lib/client/storage";
@@ -53,7 +53,7 @@ export const useSkipBoHost = (name: string, rules: Partial<Rules>, options: Sess
 
   useEffect(() => {
     ended.current = false;
-    const s = new SkipBoHost({ network: network ?? new PeerNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    const s = new SkipBoHost({ network: network ?? defaultNetwork(), name, rules, ...(resume ? { resume } : {}) });
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
@@ -86,7 +86,7 @@ export const useSkipBoGuest = (code: string, name: string, rejoin = false, optio
 
   useEffect(() => {
     quit.current = false;
-    const c = new SkipBoGuest({ network: network ?? new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
+    const c = new SkipBoGuest({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());

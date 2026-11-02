@@ -8,7 +8,7 @@ import { formatFriendCode } from "@/lib/friends/store";
 import { useFriends } from "./FriendsProvider";
 
 type Sent = InviteResult | "sending";
-const WORDS: Record<InviteResult | "sending", string> = { sending: "Sending…", delivered: "Invited ✓", offline: "Not online: share the link", "not-friend": "Not friends any more" };
+const WORDS: Record<InviteResult | "sending", string> = { sending: "Sending…", delivered: "Invited ✓", queued: "Sent: they will see it when they open the app", offline: "Not online: share the link", "not-friend": "Not friends any more" };
 
 /** One tap to invite a friend to the room you just opened. It lands on their screen if their app is open. */
 export function InviteFriends({ gameId, room }: { gameId: string; room: string }) {
@@ -58,7 +58,7 @@ export function InviteFriends({ gameId, room }: { gameId: string; room: string }
             <Box w="10px" h="10px" borderRadius="full" bg={online[f.code] ? "green.400" : online[f.code] === false ? "gray.500" : "yellow.500"} aria-label={online[f.code] ? "online" : online[f.code] === false ? "not online" : "checking"} />
             <Box minW={0}><Text fontWeight={700} noOfLines={1}>{f.name}</Text><Text fontSize="2xs" color="gray.500" fontFamily="mono">{formatFriendCode(f.code)}</Text></Box>
           </HStack>
-          {sent[f.code] ? <Badge colorScheme={sent[f.code] === "delivered" ? "green" : sent[f.code] === "sending" ? "gray" : "orange"} whiteSpace="normal" textAlign="right">{WORDS[sent[f.code]]}</Badge>
+          {sent[f.code] ? <Badge colorScheme={sent[f.code] === "delivered" || sent[f.code] === "queued" ? "green" : sent[f.code] === "sending" ? "gray" : "orange"} whiteSpace="normal" textAlign="right">{WORDS[sent[f.code]]}</Badge>
             : <Button size="sm" colorScheme="yellow" onClick={() => void send(f.code)}>Invite</Button>}
         </HStack>
       ))}

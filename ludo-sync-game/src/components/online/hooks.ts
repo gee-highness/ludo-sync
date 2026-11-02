@@ -9,7 +9,7 @@ import type { Seat } from "@/lib/ludo/board";
 import { getClientId } from "@/lib/net/identity";
 import { GuestClient, type GuestSnapshot } from "@/lib/net/guest";
 import { HostSession, type HostSnapshot, type Reaction } from "@/lib/net/host";
-import { PeerNetwork } from "@/lib/net/peerTransport";
+import { defaultNetwork } from "@/lib/net/network";
 import type { Network } from "@/lib/net/transport";
 import type { Rules } from "@/lib/ludo/types";
 import type { HostResume } from "@/lib/net/resume";
@@ -35,7 +35,7 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume, 
 
   useEffect(() => {
     ended.current = false;
-    const s = new HostSession({ network: network ?? new PeerNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    const s = new HostSession({ network: network ?? defaultNetwork(), name, rules, ...(resume ? { resume } : {}) });
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
@@ -80,7 +80,7 @@ export const useGuestClient = (code: string, name: string, rejoin = false, optio
 
   useEffect(() => {
     quit.current = false;
-    const c = new GuestClient({ network: network ?? new PeerNetwork(), code, name, clientId: getClientId(), rejoin });
+    const c = new GuestClient({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
