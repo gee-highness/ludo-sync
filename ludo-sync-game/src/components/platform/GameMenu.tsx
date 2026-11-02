@@ -67,7 +67,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
   const lines = describeRules(d.schema, rules);
 
   return (
-    <Shell title={d.name} onBack={() => router.push("/")} accent={mod.accent}>
+    <Shell title={d.name} onBack={() => router.push("/")} accent={mod.accent} pinId={gameId}>
       <Text color="gray.300">{mod.tagline}</Text>
       <HStack wrap="wrap">
         <Badge colorScheme="purple">{d.minPlayers} to {d.maxPlayers} players</Badge>

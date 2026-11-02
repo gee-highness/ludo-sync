@@ -238,3 +238,28 @@ test("Crazy Eights: pick a preset, play or draw against a bot", async ({ page })
   }
   expect(errors).toEqual([]);
 });
+
+test("pinning a game puts it at the top of the home screen, and it stays after a reload", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Pinned games" })).toHaveCount(0);
+  const pin = page.getByRole("button", { name: "Pin Casino to the top" });
+  await pin.click();
+  const pinned = page.getByRole("region", { name: "Pinned games" });
+  await expect(pinned).toBeVisible();
+  await expect(pinned.getByRole("link", { name: /Casino/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unpin Casino" })).toHaveAttribute("aria-pressed", "true");
+  await page.reload();
+  await expect(page.getByRole("region", { name: "Pinned games" }).getByRole("link", { name: /Casino/ })).toBeVisible();
+  // pin a second game: it goes after the first
+  await page.getByRole("button", { name: "Pin Four in a Row to the top" }).click();
+  const names = await page.getByRole("region", { name: "Pinned games" }).getByRole("heading").allTextContents();
+  expect(names).toEqual(["Casino", "Four in a Row"]);
+  // pinning also works from the game's own menu, and unpinning removes the section
+  await page.getByRole("button", { name: "Unpin Casino" }).click();
+  await page.getByRole("button", { name: "Unpin Four in a Row" }).click();
+  await expect(page.getByRole("region", { name: "Pinned games" })).toHaveCount(0);
+  await page.goto("/g/fourcolors");
+  await page.getByRole("button", { name: /Pin 4 Colors to the top/ }).click();
+  await page.goto("/");
+  await expect(page.getByRole("region", { name: "Pinned games" }).getByRole("link", { name: /4 Colors/ })).toBeVisible();
+});
