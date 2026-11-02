@@ -119,6 +119,10 @@ export default function HubScreen() {
           <HStack spacing={3}><Text fontSize="2xl" aria-hidden>👥</Text><Box><Text fontWeight={800}>Friends</Text><Text fontSize="xs" color="gray.300">{friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"}: invite them with one tap` : "Add friends to invite them with one tap"}</Text></Box></HStack>
           {friendAlerts > 0 && <Text as="span" fontSize="xs" fontWeight={800} bg="sky.400" color="black" borderRadius="full" px={2} py="1px" aria-label={`${friendAlerts} waiting`}>{friendAlerts}</Text>}
         </Flex>
+        <Flex as={Link} href="/cards" w="100%" align="center" justify="space-between" p={3} borderRadius="xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => sound.play("click")}>
+          <HStack spacing={3}><Text fontSize="2xl" aria-hidden>🎴</Text><Box><Text fontWeight={800}>Cards</Text><Text fontSize="xs" color="gray.300">Design your card backs and court cards for every card game</Text></Box></HStack>
+          <Text color="gray.400" aria-hidden>›</Text>
+        </Flex>
 
         {pinned.length > 0 && (
           <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="Pinned games">

@@ -101,11 +101,14 @@ export function useMotion(rootRef: RefObject<HTMLElement | null>, frame: { id: n
         if (!a || !b) continue;
         for (let i = 0; i < Math.min(f.count ?? 1, 5); i++) {
           const w = 36, h = 51;
-          const back = document.createElement("div");
-          Object.assign(back.style, { background: "repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 5px,#2563eb 5px,#2563eb 10px)", border: "3px solid #f8fafc", borderRadius: "6px", boxShadow: "0 2px 6px rgba(0,0,0,.5)", boxSizing: "border-box" });
+          // a copy of a real card back on screen, so the flying card looks like the player's own deck
+          const tpl = root.querySelector<HTMLElement>("[data-cardback]");
+          let back: HTMLElement;
+          if (tpl) { back = tpl.cloneNode(true) as HTMLElement; back.removeAttribute("data-cardback"); }
+          else { back = document.createElement("div"); Object.assign(back.style, { background: "#1e3a8a", border: "3px solid #f8fafc", borderRadius: "6px", boxSizing: "border-box" }); }
           layer.appendChild(back);
           const from = centred(a, w, h), to = centred(b, w, h);
-          Object.assign(back.style, { position: "absolute", left: `${to.x}px`, top: `${to.y}px`, width: `${w}px`, height: `${h}px`, transformOrigin: "0 0" });
+          Object.assign(back.style, { position: "absolute", left: `${to.x}px`, top: `${to.y}px`, width: `${w}px`, height: `${h}px`, transformOrigin: "0 0", margin: "0", transform: "", boxShadow: "0 2px 6px rgba(0,0,0,.5)", filter: "" });
           go(back, from, to, { fromScale: 1, toOpacity: 0.15 });
         }
       }

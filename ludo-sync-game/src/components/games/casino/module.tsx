@@ -9,6 +9,7 @@ import { PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, 
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { CardBacks, PlayingCard } from "../../platform/PlayingCard";
+import { CardBackFace } from "../../platform/cards/CardBack";
 import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 import type { CView } from "@/lib/games/casino/driver";
@@ -158,7 +159,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
           {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
           <HStack justify="center" spacing={3} aria-label="Your pile" fontSize="xs" color="gray.300" data-anchor={`pile-${me}`}>
-            <Box w="26px" h="36px" borderRadius="5px" border="2px solid #f8fafc" bg="repeating-linear-gradient(45deg,#1e3a8a,#1e3a8a 4px,#2563eb 4px,#2563eb 8px)" opacity={view.pileCounts[me] ? 1 : 0.35} aria-hidden />
+            <Box w="26px" h="36px" borderRadius="5px" border="2px solid #f8fafc" overflow="hidden" opacity={view.pileCounts[me] ? 1 : 0.35} aria-hidden><CardBackFace /></Box>
             <Text>My pile: {view.pileCounts[me]} card{view.pileCounts[me] === 1 ? "" : "s"}</Text>
           </HStack>
           <HStack justify="center" spacing={2} wrap="wrap" aria-label="Your hand" role="group">

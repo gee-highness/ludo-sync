@@ -3,10 +3,12 @@
 import { Badge, Box, Button, Drawer, DrawerBody, DrawerCloseButton, DrawerContent, DrawerHeader, DrawerOverlay, Flex, HStack, IconButton, Modal, ModalBody, ModalContent, ModalHeader, ModalOverlay, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { ChevronLeftIcon, QuestionIcon } from "@chakra-ui/icons";
 import { useEffect, useRef, type ReactNode } from "react";
+import { CardStudio } from "./CardStudio";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import type { Award } from "@/lib/client/profile";
 import { describeStreak } from "@/lib/client/streak";
+import { metaOf } from "@/lib/platform/registry";
 import { describeRules, type RuleValues } from "@/lib/platform/rules";
 import type { BaseView, GameModule, GameEvent } from "@/lib/platform/types";
 import { BG } from "./Shell";
@@ -58,6 +60,8 @@ export function TableFrame(p: FrameProps) {
   const help = useDisclosure();
   const rulesDrawer = useDisclosure();
   const leave = useDisclosure();
+  const cardsDrawer = useDisclosure();
+  const isCardGame = metaOf(mod.driver.id)?.category === "Cards";
   const you = base.you;
   const myTurn = you !== null && base.actors.includes(you) && !base.over;
   const was = useRef(false);
@@ -84,6 +88,7 @@ export function TableFrame(p: FrameProps) {
         <Text fontWeight={800} flex={1} noOfLines={1} as="h1">{p.title}</Text>
         {p.note && <Badge colorScheme="orange">{p.note}</Badge>}
         {p.headerExtra}
+        {isCardGame && <IconButton aria-label="Change how the cards look" icon={<span aria-hidden>🎴</span>} size="sm" variant="outline" color="white" onClick={cardsDrawer.onOpen} />}
         <Button size="sm" variant="outline" color="white" onClick={rulesDrawer.onOpen} aria-label="Show the rules in use">Rules</Button>
         <IconButton aria-label="How to play" icon={<QuestionIcon />} size="sm" variant="outline" color="white" onClick={help.onOpen} />
       </HStack>
@@ -154,6 +159,14 @@ export function TableFrame(p: FrameProps) {
             {lines.length ? <VStack align="stretch" spacing={1}>{lines.map(l => <Text key={l} fontSize="sm">• {l}</Text>)}</VStack> : <Text color="gray.300">Standard rules.</Text>}
             <Text fontSize="xs" color="gray.500" mt={3}>Everything else is as in the default rules.</Text>
           </DrawerBody>
+        </DrawerContent>
+      </Drawer>
+      <Drawer isOpen={cardsDrawer.isOpen} onClose={cardsDrawer.onClose} placement="bottom">
+        <DrawerOverlay />
+        <DrawerContent bg="gray.800" color="white" borderTopRadius="xl" maxH="88dvh">
+          <DrawerCloseButton />
+          <DrawerHeader>Your cards</DrawerHeader>
+          <DrawerBody pb={6}><CardStudio compact /></DrawerBody>
         </DrawerContent>
       </Drawer>
       <HowTo mod={mod} isOpen={help.isOpen} onClose={help.onClose} />

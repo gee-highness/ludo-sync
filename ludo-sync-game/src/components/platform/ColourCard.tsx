@@ -1,5 +1,6 @@
 "use client";
 
+import { CardBackFace } from "./cards/CardBack";
 import { Box } from "@chakra-ui/react";
 import type { Card } from "@/lib/games/fourcolors/driver";
 
@@ -29,7 +30,7 @@ export function ColourCard({ card, faceDown, size = "md", selected, glow, dim, o
     boxShadow: selected ? "0 0 0 3px #fde047, 0 8px 14px rgba(0,0,0,.5)" : glow ? "0 0 0 2px #38bdf8, 0 0 12px #38bdf8" : "0 2px 5px rgba(0,0,0,.5)",
   };
   const body = faceDown ? (
-    <Box {...common} display="grid" placeItems="center" aria-hidden><Box fontWeight={900} fontSize={`${z.f * 0.55}px`} color="#fde047" letterSpacing="-1px">4C</Box></Box>
+    <Box {...common} overflow="hidden" border="3px solid #f8fafc" data-cardback="1" aria-hidden><CardBackFace /></Box>
   ) : (
     <Box {...common} fontWeight={900} lineHeight={1} aria-hidden overflow="hidden"
       backgroundImage={wild ? undefined : "repeating-linear-gradient(135deg, rgba(255,255,255,.14) 0 6px, transparent 6px 12px)"}>

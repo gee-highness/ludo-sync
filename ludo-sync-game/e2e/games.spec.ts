@@ -404,3 +404,33 @@ test("Cards travel instead of vanishing: a played card flies to the table in Cas
   await expect(page.locator('[data-mk][style*="visibility: hidden"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("Cards page: a card back designed once shows up in every card game", async ({ page }) => {
+  const errors = watch(page);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("ludo-sync:v1:g-setup:crazyeights", JSON.stringify({ seats: [{ name: "Tester", kind: "human" }, { name: "Mia", kind: "bot", level: "easy" }], rules: {}, hotseat: false }));
+    } catch { /* private window */ }
+  });
+  await page.goto("/cards");
+  await expect(page.getByText("Ready-made looks")).toBeVisible({ timeout: 40_000 });
+  await page.getByRole("button", { name: "Royal card back" }).click();
+  await page.getByRole("button", { name: "Ornate border" }).click();
+  await page.getByLabel("Monogram", { exact: true }).fill("GS");
+  await page.getByRole("tab", { name: "Court cards" }).click();
+  await page.getByRole("button", { name: "Characters" }).click();
+  await page.getByRole("tab", { name: "Faces" }).click();
+  await page.getByLabel("Four-colour suits").check({ force: true });
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("ludo-sync:v1:card-style") ?? "null"));
+  expect(saved.back).toMatchObject({ design: "royal", border: "ornate", monogram: "GS" });
+  expect(saved.court.style).toBe("characters");
+  expect(saved.faces.fourColour).toBe(true);
+  // the opponent's face-down cards in a game carry the same monogram
+  await page.goto("/g/crazyeights/play");
+  await expect(page.locator("[data-cardback] svg text", { hasText: "GS" }).first()).toBeVisible({ timeout: 40_000 });
+  // a bad value in storage can never break a card
+  await page.evaluate(() => localStorage.setItem("ludo-sync:v1:card-style", JSON.stringify({ back: { design: "nope", primary: "x" } })));
+  await page.goto("/g/crazyeights/play");
+  await expect(page.locator("[data-cardback] svg").first()).toBeVisible({ timeout: 40_000 });
+  expect(errors).toEqual([]);
+});
