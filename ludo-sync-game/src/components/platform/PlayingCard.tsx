@@ -33,7 +33,7 @@ export function PlayingCard({ id, faceDown, size = "md", selected, glow, dim, on
   const red = suit === 1 || suit === 2;
   const common = {
     w: `${z.w}px`, h: `${z.h}px`, borderRadius: "8px", flexShrink: 0, position: "relative" as const, userSelect: "none" as const,
-    transition: "transform .15s, box-shadow .15s, opacity .15s", opacity: dim ? 0.45 : 1,
+    transition: "transform .15s, box-shadow .15s, filter .15s", filter: dim ? "brightness(.55) saturate(.7)" : undefined,
     transform: selected ? "translateY(-12px)" : undefined,
     boxShadow: selected ? "0 0 0 3px #fde047, 0 8px 14px rgba(0,0,0,.5)" : glow ? "0 0 0 2px #38bdf8, 0 0 12px #38bdf8" : "0 2px 5px rgba(0,0,0,.5)",
   };

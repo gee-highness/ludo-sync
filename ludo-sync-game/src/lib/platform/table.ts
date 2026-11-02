@@ -17,6 +17,7 @@ export class GameTable<S, A, V> {
   }
 
   get over(): boolean { return this.driver.over(this.state); }
+  canAct(p: number): boolean { return this.actors().includes(p) || (!!this.driver.mayAct && this.driver.mayAct(this.state, p)); }
   actors(): number[] { return this.driver.actors(this.state); }
 
   base(viewer: number | null): BaseView {
@@ -34,7 +35,7 @@ export class GameTable<S, A, V> {
 
   /** Applies a player's move. Returns the events, or null if the move was refused. */
   act(player: number, action: A): GameEvent[] | null {
-    if (this.over || !this.actors().includes(player) || !this.seats[player]) return null;
+    if (this.over || !this.canAct(player) || !this.seats[player]) return null;
     const r = this.driver.apply(this.state, action, player);
     if (!r) return null;
     this.state = r.state;
@@ -44,7 +45,9 @@ export class GameTable<S, A, V> {
   /** The next bot that has a move, if any. */
   botTurn(): { player: number; action: A } | null {
     if (this.over) return null;
-    for (const p of this.actors()) {
+    // bots that may react out of turn (catching a missed call, jumping in) are asked first, then the players whose turn it is
+    const order = [...this.seats.map((_, i) => i).filter(i => !this.actors().includes(i) && this.driver.mayAct?.(this.state, i)), ...this.actors()];
+    for (const p of order) {
       const seat = this.seats[p];
       if (seat?.kind !== "bot") continue;
       const action = this.driver.bot(this.state, p, seat.level ?? "normal");
@@ -61,7 +64,7 @@ export class GameTable<S, A, V> {
 
   /** Plays for someone who is away or out of time, at normal strength. */
   playFor(player: number, level: BotLevel = "normal"): GameEvent[] | null {
-    if (!this.actors().includes(player)) return null;
+    if (!this.canAct(player)) return null;
     const action = this.driver.bot(this.state, player, level);
     return action === null ? null : this.act(player, action);
   }

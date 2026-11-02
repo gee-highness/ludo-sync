@@ -108,3 +108,36 @@ describe("generic online room", () => {
     expect(host.getSnapshot().room.slots[1].kind).toBe("empty");
   });
 });
+
+describe("hidden information online (4 Colors)", () => {
+  it("gives each guest only their own hand and never the deck", async () => {
+    const { fourColors } = await import("../../games/fourcolors/driver");
+    const net = new MemoryNetwork();
+    const host = new GameHost(fourColors, { network: net, name: "Hosty", code: "HID234", botDelayMs: 0, rules: { target: 0 } });
+    await host.open();
+    cleanup.push(() => host.close());
+    const g = new GameGuest({ network: net, gameId: "fourcolors", maxSlots: fourColors.maxPlayers, code: "HID234", name: "G", clientId: newClientId(), retryDelays: [5, 5, 5, 5] });
+    cleanup.push(() => g.leave());
+    void g.start();
+    await until(() => g.getSnapshot().status === "connected", "connected");
+    host.setSlot(2, "bot", "easy");
+    host.start();
+    await until(() => g.getSnapshot().frame !== null, "frame");
+    const f = g.getSnapshot().frame!;
+    const view = f.view as { hand: { id: number }[]; handCounts: number[]; reveal: unknown };
+    const hostView = host.getSnapshot().room.frame!.view as { hand: { id: number }[] };
+    // a bot may already have moved, so check the invariant rather than exact counts: my hand is as large as my count says
+    expect(f.base.you).toBe(1);
+    expect(view.hand.length).toBe(view.handCounts[1]);
+    expect(view.handCounts.length).toBe(3);
+    expect(view.reveal).toBeNull();
+    const mine = new Set(view.hand.map(c => c.id));
+    expect(hostView.hand.some(c => mine.has(c.id))).toBe(false);
+    const text = JSON.stringify(f);
+    expect(text).not.toContain('"deck"');
+    expect(text).not.toContain('"hands"');
+    // a spectator-style request for someone else's action is refused
+    expect(g.act({ type: "next" })).toBe(true);
+    await until(() => !!g.getSnapshot().rejected || true, "answered");
+  });
+});

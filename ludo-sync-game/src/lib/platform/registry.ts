@@ -6,6 +6,7 @@ export interface GameMeta { id: string; name: string; tagline: string; accent: s
 export const PLATFORM_GAMES: readonly GameMeta[] = [
   { id: "fourinrow", name: "Four in a Row", tagline: "Drop discs and connect a line. Change the board, the line length, add PopOut, bombs and more.", accent: "#eab308", icon: "🟡", players: "2 to 4 players", category: "Board" },
   { id: "casino", name: "Casino", tagline: "The South African card game of capturing, building and trailing. Every rule is yours to set.", accent: "#16a34a", icon: "♠️", players: "2 to 4 players", category: "Cards" },
+  { id: "fourcolors", name: "4 Colors", tagline: "Match the colour or number, play action cards, be first out. Every rule and even the deck is yours to change.", accent: "#dc2626", icon: "🎴", players: "2 to 10 players", category: "Cards" },
 ];
 
 export const metaOf = (id: string): GameMeta | undefined => PLATFORM_GAMES.find(g => g.id === id);
@@ -14,6 +15,7 @@ type Loader = () => Promise<{ default: GameModule<never, never, never> }>;
 /** Each game's code (engine, bots, table) is a separate chunk, loaded only when that game opens. */
 const LOADERS: Record<string, Loader> = {
   fourinrow: () => import("@/components/games/fourinrow/module") as unknown as ReturnType<Loader>,
+  fourcolors: () => import("@/components/games/fourcolors/module") as unknown as ReturnType<Loader>,
   casino: () => import("@/components/games/casino/module") as unknown as ReturnType<Loader>,
 };
 
