@@ -2,7 +2,9 @@
 
 import { Badge, Box, Button, Center, Flex, Heading, HStack, IconButton, Input, Select, Spinner, Switch, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useOnline } from "@/lib/client/device";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { cleanName } from "@/lib/ludo/engine";
 import { cleanRoomCode, isRoomCode } from "@/lib/net/crypto";
@@ -198,6 +200,7 @@ export default function SkipBoOnlineClient() {
   const router = useRouter();
   const params = useSearchParams();
   const linkCode = extractRoomCode(params.get("join") ?? "");
+  const online = useOnline();
   const [step, setStep] = useState<Step>({ kind: "choose" });
   const [name, setName] = useState("");
   const [typed, setTyped] = useState(linkCode ?? "");
@@ -229,12 +232,19 @@ export default function SkipBoOnlineClient() {
         <Text fontSize="sm" color="gray.300" mb={1}>Your name</Text>
         <Input value={name} maxLength={20} onChange={e => setName(e.target.value)} bg="gray.700" border="none" aria-label="Your name" />
       </Box>
+      {!online && (
+        <VStack align="stretch" spacing={2} bg="orange.900" borderRadius="lg" p={3} role="alert">
+          <Text fontWeight={800}>You are offline</Text>
+          <Text fontSize="sm">Online rooms need an internet connection. You can still play against bots or pass and play, and two phones in the same room can play nearby with no internet at all.</Text>
+          <HStack><Button as={Link} href="/skipbo/nearby" size="sm" colorScheme="cyan">Play nearby</Button><Button as={Link} href="/skipbo" size="sm" variant="outline" color="white">Back to the menu</Button></HStack>
+        </VStack>
+      )}
       {linkCode && <Text bg="whiteAlpha.100" borderRadius="lg" p={3}>You were invited to room <b>{linkCode.slice(0, 3)}-{linkCode.slice(3)}</b>.</Text>}
-      <Button colorScheme="yellow" size="lg" onClick={() => { remember(); setStep({ kind: "host" }); }}>Create a room</Button>
+      <Button colorScheme="yellow" size="lg" isDisabled={!online} onClick={() => { remember(); setStep({ kind: "host" }); }}>Create a room</Button>
       <Text textAlign="center" color="gray.400">or join a friend</Text>
       <Input value={typed} onChange={e => setTyped(e.target.value)} placeholder="Room code" bg="gray.700" border="none" textAlign="center" fontFamily="mono"
         fontSize="xl" letterSpacing="0.12em" autoCapitalize="characters" autoComplete="off" aria-label="Room code" />
-      <Button colorScheme="blue" size="lg" isDisabled={!isRoomCode(code)} onClick={() => { remember(); setStep({ kind: "join", code }); }}>Join room</Button>
+      <Button colorScheme="blue" size="lg" isDisabled={!online || !isRoomCode(code)} onClick={() => { remember(); setStep({ kind: "join", code }); }}>Join room</Button>
       <ScanButton onCode={c => setTyped(c)} />
       <Text fontSize="xs" color="gray.400" textAlign="center">Everyone sees only their own hand. The table lives on the host&apos;s phone, so the host should keep this screen open.</Text>
     </Shell>

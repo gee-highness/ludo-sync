@@ -75,7 +75,7 @@ export default function SkipBoPlayClient() {
     // the dealer is random, so the human may not go first: that is part of the game
     clearSavedGame();
     saveGame(state, you, pass, daily);
-    router.replace("/skipbo/play?resume=1");
+    window.history.replaceState(null, "", "/skipbo/play?resume=1"); // the address only: no request, so it works with no connection
     setStarted({ state, you, hotseat: pass, daily });
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
