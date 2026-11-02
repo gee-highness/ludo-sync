@@ -337,7 +337,7 @@ test("the friends mailbox is off until a Blob store is connected, and the app sa
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   await page.goto("/friends");
-  await expect(page.getByLabel(/^Your friend code/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Your friend code" })).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -348,9 +348,9 @@ test("two browsers pair through our own endpoint (no PeerJS) and play a move", a
   const errors: string[] = [];
   A.p.on("pageerror", e => errors.push(e.message)); B.p.on("pageerror", e => errors.push(e.message));
   await A.p.goto("/g/fourinrow/online?host=1");
-  const label = await A.p.getByLabel(/^Room code [A-Z2-9 ]+$/).getAttribute("aria-label", { timeout: 40_000 });
+  const label = await A.p.getByLabel(/^Room code [0-9A-Z ]+$/).getAttribute("aria-label", { timeout: 40_000 });
   const code = label!.replace("Room code", "").replace(/\s/g, "");
-  expect(code).toMatch(/^[A-Z2-9]{6}$/);
+  expect(code).toMatch(/^[0-9A-Z]{6}$/);
   await B.p.goto(`/g/fourinrow/online?join=${code}`);
   await B.p.getByRole("button", { name: "Join room" }).click();
   await expect(B.p.getByText(/Waiting for .* to start/)).toBeVisible({ timeout: 60_000 });
