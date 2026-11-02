@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sanitizeRules } from "../../platform/rules";
 import { GameTable, simulate } from "../../platform/table";
 import type { BotLevel } from "../../platform/types";
-import { SCHEMA, snakes as d, type SState } from "./driver";
+import { walkOf, SCHEMA, snakes as d, type SState } from "./driver";
 
 const mk = (rules: Record<string, unknown> = {}, n = 2, seed = 3) => new GameTable(d, Array.from({ length: n }, (_, i) => ({ name: `P${i + 1}`, kind: "human" as const })), rules, seed);
 /** Puts the game in a chosen position and makes the next roll come out as wanted by searching seeds. */
@@ -127,5 +127,15 @@ describe("rules and bots", () => {
   it("is fully determined by its seed", () => {
     const a = simulate(d, ["easy", "easy"], { fixed: true }, 5), b = simulate(d, ["easy", "easy"], { fixed: true }, 5);
     expect(a.table.state.rolls).toEqual(b.table.state.rolls);
+  });
+});
+
+describe("walking", () => {
+  it("passes over every square, bounces off the end, and stays put when the roll is refused", async () => {
+    expect(walkOf(0, 4, 4, 100)).toEqual([1, 2, 3, 4]);
+    expect(walkOf(10, 3, 13, 100)).toEqual([11, 12, 13]);
+    expect(walkOf(98, 5, 97, 100)).toEqual([99, 100, 99, 98, 97]);
+    expect(walkOf(98, 5, 100, 100)).toEqual([99, 100]);
+    expect(walkOf(97, 6, 97, 100)).toEqual([]);
   });
 });

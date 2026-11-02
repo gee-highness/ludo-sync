@@ -365,3 +365,21 @@ test("two browsers pair through our own endpoint (no PeerJS) and play a move", a
   expect(errors).toEqual([]);
   await A.c.close(); await B.c.close();
 });
+
+test("Checkers: pick a piece, move it, and the bot answers", async ({ page }) => {
+  const errors = watch(page);
+  await quiet(page);
+  await page.goto("/g/checkers");
+  await page.getByLabel("Your name", { exact: true }).fill("Tester");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const board = page.getByRole("grid", { name: /Checkers board/ });
+  await expect(board).toBeVisible({ timeout: 40_000 });
+  await expect(page.getByRole("status").filter({ hasText: "Your turn" })).toBeVisible();
+  await page.locator('[role=gridcell][aria-label*="can move"]').first().click({ force: true });
+  await expect(page.locator('[role=gridcell][aria-label*="you can move here"]').first()).toBeAttached();
+  await page.locator('[role=gridcell][aria-label*="you can move here"]').first().click({ force: true });
+  // the bot replies and it is our turn again
+  await expect(page.getByRole("log").getByText(/Tester moved/).first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("log").getByText(/Mia moved|Mia captured/).first()).toBeVisible({ timeout: 20_000 });
+  expect(errors).toEqual([]);
+});
