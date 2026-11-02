@@ -1,4 +1,5 @@
 import { readJSON, writeJSON } from "./storage";
+import { recordBotResult, type StreakOutcome } from "./streak";
 
 export type GameId = "ludo" | "skipbo";
 
@@ -68,6 +69,8 @@ export interface GameResult {
   withFriends?: boolean;
   /** The points you scored in the game itself, which are what experience is made of. */
   points?: number;
+  /** Extra XP on top, such as a streak milestone. */
+  bonusXp?: number;
 }
 
 /** The most game points that turn into experience from one game, so one long game cannot be farmed. */
@@ -132,11 +135,13 @@ export interface Award {
   rankAfter: RankInfo;
   rankedUp: boolean;
   newBest: boolean;
+  /** The win streak against bots after this game, when it was a bot game. */
+  streak?: StreakOutcome | null;
 }
 
 /** Pure: the profile after one more game. */
 export const applyResult = (p: Profile, r: GameResult, now = new Date()): Award => {
-  const gained = xpFor(r);
+  const gained = xpFor(r) + Math.max(0, Math.floor(r.bonusXp ?? 0));
   const pointsGained = Math.max(0, Math.floor(r.points ?? 0));
   const today = day(now);
   const next: Profile = {
@@ -156,9 +161,11 @@ export const applyResult = (p: Profile, r: GameResult, now = new Date()): Award 
 };
 
 export const awardGame = (r: GameResult): Award => {
-  const a = applyResult(loadProfile(), r);
+  // wins in a row count only against bots: online, nearby and pass-and-play games neither add nor break a streak
+  const streak = r.botLevel && !r.withFriends ? recordBotResult(r.game, r.botLevel, r.won) : null;
+  const a = applyResult(loadProfile(), { ...r, bonusXp: streak?.bonusXp ?? 0 });
   writeJSON("profile", a.profile);
-  return a;
+  return { ...a, streak };
 };
 
 export const awardBonus = (xp: number): Award => {

@@ -1,6 +1,6 @@
 # Games expansion plan: UI, UX and gameplay
 
-Covers every game proposed after Ludo and Skip-Bo: Solitaire, 4 Colors (see `SOLITAIRE_AND_4COLORS_PLAN.md` for their full rules), Rummy and Gin Rummy, Hearts, Crazy Eights, Snakes and Ladders, Checkers, Dominoes, Backgammon, Four in a Row, Memory Match, and Blackjack and Poker (play money). Plus bot win streaks for every game.
+Covers every game proposed after Ludo and Skip-Bo: Solitaire, 4 Colors (see `SOLITAIRE_AND_4COLORS_PLAN.md` for their full rules), Rummy and Gin Rummy, Hearts, Crazy Eights, Snakes and Ladders, Checkers, Dominoes, Backgammon, Four in a Row, Memory Match, and Blackjack and Poker (play money), and Casino (the South African card game). Plus bot win streaks for every game.
 
 **Rule for all games: online play is supported wherever the game allows it.** Every game gets online rooms (code, link, QR), nearby play (no internet), reconnect, spectators, chat and reactions. Games with no opponent (Solitaire, Memory solo) get **races on the same seeded deal** so they are still online.
 
@@ -49,6 +49,7 @@ The host's device is authoritative (as in Ludo and Skip-Bo). Clients send intent
 | Backgammon | Full game | 2 (+ spectators) | none | host rolls dice, doubling cube option |
 | Four in a Row | Full game | 2 (+ spectators) | none | optional move clock, rematch swaps first player |
 | Memory Match | Full game (shared board, turns) and **race** (same layout, fewest moves/time) | 1-6 | face-down cards are never sent until flipped | host sends card identity only on flip |
+| Casino | Full game | 2-4 (teams of 2 in 4-player) | hands, stock | table cards, builds and capture piles are public |
 | Blackjack | Table of players vs dealer, all act on their own hand | 1-6 | dealer hole card, deck | play-money chips |
 | Poker (Texas hold'em) | Full game | 2-9 | hole cards, deck | host deals; hole cards sent only to the owner and revealed at showdown |
 
@@ -165,6 +166,24 @@ See the other plan. Extra UX: the fan of cards scrolls and magnifies on touch, p
 - Online: timers per action (default 30 s with a time bank), "Sit out" and "Away" states, rebuy for the tournament-free cash game with a limit, and a clear table-rules card.
 **Test focus:** hand evaluator against exhaustive 7-card ranking counts, side-pot allocation with multiple all-ins, blind rotation, tournament payouts, no leaks of hole cards in the views.
 
+### 3.14 Casino (South African card game)
+**Source notes:** published rules are for classic Casino (Cassino) and the related Southern African "African Casino"; I found no authoritative South African rulebook, and sources disagree on sweeps, trailing and capturing from opponents' piles. So the game ships as **a rules preset picker** with the choice shown in setup and How to play, and the default follows what players in South Africa expect (to be confirmed by you, see questions).
+**Core rules (all presets):** 52-card deck, 2 to 4 players (2 v 2 teams in 4-player). Deal four cards each (first deal also four face up on the table), re-deal four each when hands are empty, with no further table cards. On your turn play one hand card in one of four ways: **capture** (take a table card of the same rank, or several cards that add up to that rank: Ace 1 [option 14], 2 to 10 face value, picture cards by their own rank value J 11, Q 12, K 13 in the African presets, pairing-only in classic), **build** (combine a hand card with table cards into a build of a value you hold a card to capture later; builds can be added to by anyone, a **multiple build** is allowed, a build may be captured by its value), **trail** (put a card on the table; not allowed while you own a build, option: must capture if you can), or **take a build**. The last player to capture takes the leftover table cards (not a sweep).
+**Scoring (preset-driven):**
+| Preset | Points |
+| --- | --- |
+| Classic Casino | most cards 3, most spades 1, Big Casino (10 of diamonds) 2, Little Casino (2 of spades) 1, each Ace 1, each sweep 1; 11 points a deal; game to 21 |
+| African Casino | same 11 points a deal with no sweep points; capture cards stay face up and **the top card of an opponent's capture pile may be taken and used in builds** [option]; game to 21 |
+| Quick | one deal, highest total |
+**Bots:** easy takes the first legal capture; normal values Big/Little Casino, spades and Aces, makes safe builds; hard counts cards, avoids giving the opponent a capture, bluff-builds, protects its builds with a second card, and plans sweeps.
+**UI/UX:**
+- Tap a hand card: **every legal action is previewed**: capturable table cards glow, build options appear as a short list ("Build 9", "Capture 5 + 4"), the ambiguous ones need a tap to confirm.
+- Table cards sort into builds with a visible total badge and an owner marker; capture piles sit beside each player, face up when the preset says so; a point-tracker shows who is leading on cards, spades and Aces.
+- A **move helper** (toggle) explains the best action in words; undo before the final tap; rule reminders in a pull-up sheet.
+- Online: the same host-authoritative `TableView` (own hand only, table and piles visible); quick reactions; nearby play.
+**Streaks, progression and daily:** as every game; the daily deal is a shared seeded deal.
+**Test focus:** capture and build legality for every preset (exhaustive over small positions), multiple builds, the "you own a build so you may not trail" rule, scoring tables (cards, spades, Casinos, Aces, sweeps), the 4-player team scoring, bots always legal across 10,000 seeded games.
+
 ## 4. Win streaks against bots (all games)
 
 - **Per game, per bot level**: `botStreak = {current, best, shields}` in stats for each game id and level (easy/normal/hard).
@@ -205,6 +224,7 @@ See the other plan. Extra UX: the fan of cards scrolls and magnifies on touch, p
 | P0 | Shared infrastructure (section 5) and **bot win streaks** for Ludo and Skip-Bo | Makes every later game cheaper; delivers the streak request immediately |
 | P1 | Solitaire (Klondike) and 4 Colors | Already planned in detail |
 | P2 | Crazy Eights (as 4 Colors presets/variant), Four in a Row, Snakes and Ladders, Memory Match | Quick wins that exercise online turn-based, dice and race modes |
+| P2.5 | **Casino** (shares the card kit with 4 Colors and Crazy Eights; high local demand) |
 | P3 | Checkers, Dominoes, Hearts, Rummy and Gin Rummy | Deeper engines and bots; trick-taking and meld kits |
 | P4 | Backgammon, Blackjack, Poker | Highest complexity (dice+cube, payouts, side pots); play-money framework |
 | P5 | Solitaire variants (Spider, FreeCell, Pyramid, TriPeaks), teams options, 3D tables for all, tournaments and leaderboards among friends |
@@ -221,4 +241,5 @@ Each game ships only when its checklist is complete: engine and tests, bots at t
 2. Are play-money Blackjack and Poker acceptable for the audience and the stores you target?
 3. Do you want asynchronous (play-by-turn over days) online play for slow games like Checkers, or live-only?
 4. Should custom pieces from the Piece Maker be usable in Checkers, Four in a Row and Memory?
-5. Anything to drop from the list, or add (e.g. Chess, Spades, Euchre, Mahjong solitaire)?
+5. Casino: which rules do you play? (Aces 1 or 14, picture cards by rank value or pairing only, sweeps scored or not, taking from opponents' piles, game to 21 or 11.)
+6. Anything to drop from the list, or add (e.g. Chess, Spades, Euchre, Mahjong solitaire)?
