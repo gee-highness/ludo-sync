@@ -105,6 +105,9 @@ export const isCapture = (pos: Position, card: number, items: Item[]): boolean =
 };
 
 /** The builds a card can make with these table items. Only one build of a number can stand on the table: to make a second of the same number you must add to the first (or capture it). */
+/** Is this build made of just one set that adds up to its number (a 4 and a 1 for 5)? Several sets (4+1 and 3+2) make it a safe, multiple build. */
+export const singleSet = (rules: RuleValues, it: Item): boolean => it.build && sums(it.cards.map(c => valuesOf(rules, c)), it.value);
+
 export const buildOptions = (pos: Position, card: number, items: Item[]): number[] =>
   buildOptionsAny(pos, card, items).filter(b => !pos.table.some(t => t.build && t.value === b && !items.some(i => i.id === t.id)));
 
@@ -124,15 +127,14 @@ const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] =
   for (const it of items) if (it.build) {
     if (unitOf(r, pos.n, it.owner) === mine ? !flag(r, "increaseOwn") : !flag(r, "increaseOpponents")) return [];
   }
-  // an established build is only repeated with loose cards from the table that, with your card, add up to its number: your card alone is not enough
-  if (items.some(i => i.build) && !items.some(i => !i.build)) return [];
   const opts: Opt[] = [...items.map(it => optOf(r, it)), { vals: valuesOf(r, card), solo: false }];
   const out: number[] = [];
   const max = num(r, "maxBuild");
   for (let b = 2; b <= max; b++) {
     if (!partition(opts, b, false)) continue;
-    // an established build never goes up: you can only repeat its number (a 5 and a 5, or a 3 and a 2, onto a build of 5)
-    if (items.some(i => i.build && i.value !== b)) continue;
+    // a build made of one set (a 4 and a 1 for 5) can be raised (add a 4 to make 9); one made of several sets (4+1 and 3+2) is safe and its number never goes up.
+    // To repeat a build's number you need loose table cards that add up to it alongside your card; your card alone is not enough.
+    if (items.some(i => i.build && (i.value > b || (i.value < b && !singleSet(r, i)) || (i.value === b && !items.some(o => !o.build))))) continue;
     // at least one group must hold the played card plus something, so a build is never just a trail
     const multiple = items.length > 0;
     if (!multiple) continue;

@@ -79,10 +79,11 @@ describe("building", () => {
     expect(apply(low, { type: "build", card: card(5), take: [card(4)], value: 9 }, 0)).toBeNull();
   });
   it("lets an opponent capture a build with its value, and take it over by repeating its number", () => {
-    let s = mk({ maxBuild: 13, faces: "rank" }); s.hands[0] = [card(5), card(9, 1), card(2)]; s.hands[1] = [card(5, 1), card(9, 2), card(9), card(12, 3)]; s.table = [loose(card(4)), loose(card(9, 3))];
+    let s = mk({ maxBuild: 13, faces: "rank" }); s.hands[0] = [card(5), card(9, 1), card(2)]; s.hands[1] = [card(3, 1), card(9, 2), card(9), card(12, 3)]; s.table = [loose(card(4)), loose(card(9, 3))];
     s = act(s, { type: "build", card: card(5), take: [card(4)], value: 9 });
     const id = buildId(0);
-    expect(apply(s, { type: "build", card: card(3, 1), take: [id], value: 12 }, 1)).toBeNull(); // the number cannot go up
+    const raise = act(structuredClone(s), { type: "build", card: card(3, 1), take: [id], value: 12 }); // a single set (5 + 4) can be raised
+    expect(raise.table.find(i => i.build)).toMatchObject({ value: 12, owner: 1 });
     const again = act(structuredClone(s), { type: "build", card: card(9, 2), take: [id, card(9, 3)], value: 9 });
     expect(again.table.find(i => i.build)).toMatchObject({ value: 9, owner: 1 });
     const cap = act(s, { type: "capture", card: card(9, 2), take: [id] });
@@ -151,6 +152,19 @@ describe("established builds", () => {
     const t = act(s, { type: "build", card: card(1), take: [buildId(0), card(4)], value: 5 });
     expect(t.table.filter(i => i.build).length).toBe(1);
     expect(t.table.find(i => i.build)!.cards.length).toBe(5);
+  });
+});
+
+describe("single and multiple builds", () => {
+  const mkb = (cards: number[], value: number) => { const s = mk(); s.hands[0] = [card(4, 2), card(9, 3)]; s.hands[1] = [card(3)]; s.table = [{ id: buildId(0), cards, build: true, value, owner: 1 }]; return s; };
+  it("a build of one set can be raised: take the 5 build (4 and 1), add a 4 and have 9", () => {
+    const s = mkb([card(4), card(1)], 5);
+    const t = act(s, { type: "build", card: card(4, 2), take: [buildId(0)], value: 9 });
+    expect(t.table[0]).toMatchObject({ value: 9, owner: 0 });
+  });
+  it("a build of several sets (4+1 and 3+2) is safe: it cannot be raised", () => {
+    const s = mkb([card(4), card(1), card(3, 1), card(2)], 5);
+    expect(apply(s, { type: "build", card: card(4, 2), take: [buildId(0)], value: 9 }, 0)).toBeNull();
   });
 });
 
