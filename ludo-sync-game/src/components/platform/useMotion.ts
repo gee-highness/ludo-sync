@@ -18,7 +18,7 @@ export interface MotionConfig {
   fly?: (events: GameEvent[]) => { from: string; to: string; count?: number }[];
 }
 
-const BASE_MS = 460;
+const BASE_MS = 640;
 
 /**
  * Makes cards travel instead of vanishing and reappearing. Give every card `data-mk` (a stable key such as its id) and every place
@@ -67,14 +67,19 @@ export function useMotion(rootRef: RefObject<HTMLElement | null>, frame: { id: n
       };
       const centred = (a: Rect, w: number, h: number): Rect => ({ x: a.x + a.w / 2 - w / 2, y: a.y + a.h / 2 - h / 2, w, h });
       let n = 0;
-      const go = (clone: HTMLElement, from: Rect, to: Rect, o: { fromOpacity?: number; toOpacity?: number; fromScale?: number; toScale?: number; real?: HTMLElement }) => {
+      const go = (clone: HTMLElement, from: Rect, to: Rect, o: { fromOpacity?: number; toOpacity?: number; fromScale?: number; toScale?: number; real?: HTMLElement; stagger?: boolean; lift?: boolean }) => {
         const sx0 = (o.fromScale ?? from.w / to.w), sx1 = o.toScale ?? 1;
-        const kf: Keyframe[] = [
-          { transform: `translate(${from.x - to.x}px, ${from.y - to.y}px) scale(${sx0})`, opacity: o.fromOpacity ?? 1 },
-          { transform: `translate(0px, 0px) scale(${sx1})`, opacity: o.toOpacity ?? 1 },
-        ];
+        const dx = from.x - to.x, dy = from.y - to.y;
+        const far = Math.hypot(dx, dy) > 40;
+        // a card travelling a distance rises a little in the middle, like a hand carrying it, then settles
+        const kf: Keyframe[] = [{ transform: `translate(${dx}px, ${dy}px) scale(${sx0})`, opacity: o.fromOpacity ?? 1, offset: 0 }];
+        if (far && o.lift !== false) kf.push({ transform: `translate(${dx / 2}px, ${dy / 2 - Math.min(26, Math.hypot(dx, dy) / 6)}px) scale(${(sx0 + sx1) / 2 + 0.12})`, opacity: 1, offset: 0.5 });
+        kf.push({ transform: `translate(0px, 0px) scale(${sx1})`, opacity: o.toOpacity ?? 1, offset: 1 });
         if (o.real) o.real.style.visibility = "hidden";
-        const a = clone.animate(kf, { duration: dur, delay: Math.min(n++, 8) * 70 * factor, easing: "cubic-bezier(.22,.7,.2,1)", fill: "both" });
+        clone.style.willChange = "transform, opacity";
+        clone.style.zIndex = "2";
+        if (far) clone.style.filter = "drop-shadow(0 6px 8px rgba(0,0,0,.45))";
+        const a = clone.animate(kf, { duration: dur, delay: o.stagger ? Math.min(n++, 6) * 60 * factor : 0, easing: "cubic-bezier(.45,.05,.25,1)", fill: "both" });
         const done = () => { clone.remove(); if (o.real) o.real.style.visibility = ""; };
         a.onfinish = done; a.oncancel = done;
       };
@@ -86,15 +91,15 @@ export function useMotion(rootRef: RefObject<HTMLElement | null>, frame: { id: n
           return;
         }
         const from = anchor(cfgRef.current.enter?.(key, events) ?? null);
-        if (from) go(place(c.el, c.r), centred(from, c.r.w * 0.7, c.r.h * 0.7), c.r, { fromOpacity: 0.2, real: c.el });
-        else go(place(c.el, c.r), c.r, c.r, { fromScale: 0.85, fromOpacity: 0, real: c.el });
+        if (from) go(place(c.el, c.r), centred(from, c.r.w * 0.7, c.r.h * 0.7), c.r, { fromOpacity: 0.35, real: c.el, stagger: true });
+        else go(place(c.el, c.r), c.r, c.r, { fromScale: 0.85, fromOpacity: 0, real: c.el, lift: false });
       });
       snap.current.forEach((p, key) => {
         if (cur.has(key)) return;
         const to = anchor(cfgRef.current.exit?.(key, events) ?? null);
         const clone = place(p.el, p.r);
-        if (to) go(clone, p.r, centred(to, p.r.w * 0.5, p.r.h * 0.5), { toOpacity: 0.1, toScale: 0.5 });
-        else go(clone, p.r, p.r, { toScale: 0.8, toOpacity: 0 });
+        if (to) go(clone, p.r, centred(to, p.r.w * 0.6, p.r.h * 0.6), { toOpacity: 0.85, toScale: 0.6, stagger: true });
+        else go(clone, p.r, p.r, { toScale: 0.8, toOpacity: 0, lift: false });
       });
       for (const f of cfgRef.current.fly?.(events) ?? []) {
         const a = anchor(f.from), b = anchor(f.to);
@@ -109,7 +114,7 @@ export function useMotion(rootRef: RefObject<HTMLElement | null>, frame: { id: n
           layer.appendChild(back);
           const from = centred(a, w, h), to = centred(b, w, h);
           Object.assign(back.style, { position: "absolute", left: `${to.x}px`, top: `${to.y}px`, width: `${w}px`, height: `${h}px`, transformOrigin: "0 0", margin: "0", transform: "", boxShadow: "0 2px 6px rgba(0,0,0,.5)", filter: "" });
-          go(back, from, to, { fromScale: 1, toOpacity: 0.15 });
+          go(back, from, to, { fromScale: 1, toOpacity: 0.3, stagger: true });
         }
       }
     }
