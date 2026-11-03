@@ -5,16 +5,48 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { casino } from "@/lib/games/casino/driver";
-import { PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, unitOf, type CAction, type Item, type Position } from "@/lib/games/casino/engine";
+import { BIG, LITTLE, PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, unitOf, rankOf, suitOf, type CAction, type Item, type Position } from "@/lib/games/casino/engine";
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { CardBacks, PlayingCard, cardLabel } from "../../platform/PlayingCard";
-import { CardBackFace } from "../../platform/cards/CardBack";
 import { Draggable, DropZone } from "../../platform/interact/Parts";
 import { roveKeys, useHotkeys } from "../../platform/interact/keys";
 import { useMotion } from "../../platform/useMotion";
 import { SEAT_COLOURS } from "../../platform/TableFrame";
 import type { CView } from "@/lib/games/casino/driver";
+
+/** Points a card is worth to whoever holds it, so the best ones can be buried at the bottom of the pile where an opponent cannot reach them. */
+const worthOf = (c: number) => (c === BIG ? 5 : c === LITTLE ? 4 : rankOf(c) === 1 ? 3 : suitOf(c) === 3 ? 2 : 1);
+
+/** Your pile laid out face up, bottom to top. The card that made your last capture is locked on top; every other card can be moved. */
+function PileEditor({ pile, lock, fresh, onOrder }: { pile: number[]; lock: number | null; fresh: number; onOrder: (order: number[]) => void }) {
+  const topLocked = lock !== null && pile[pile.length - 1] === lock;
+  const first = pile.length - fresh; // older cards below this are fixed
+  const movable = topLocked ? pile.length - 1 : pile.length;
+  // an order is sent for just the fresh cards
+  const send = (o: number[]) => onOrder(o.slice(first));
+  const move = (i: number, d: number) => { const j = i + d; if (j < first || j >= movable) return; const o = pile.slice(); [o[i], o[j]] = [o[j], o[i]]; send(o); };
+  const bury = () => { const rest = pile.slice(first, movable).sort((a, b) => worthOf(b) - worthOf(a)); onOrder(topLocked ? [...rest, pile[pile.length - 1]] : rest); };
+  return (
+    <VStack align="stretch" spacing={2} p={2} borderRadius="lg" bg="blackAlpha.400" w="100%" role="group" aria-label="Arrange your pile">
+      <Text fontSize="xs" color="gray.300">Bottom on the left, top on the right. Only the cards from your latest capture can be moved; {topLocked ? "the card that made it stays on top. " : ""}older cards are fixed. Whatever is on top can be built with by an opponent, so keep your points underneath.</Text>
+      <Wrap spacing={2} justify="center">
+        {pile.map((c, i) => (
+          <VStack key={c} spacing={1}>
+            <PlayingCard id={c} size="sm" />
+            {i < first ? null : i < movable ? (
+              <HStack spacing={1}>
+                <Button size="xs" variant="ghost" color="white" aria-label={`Move ${cardLabel(c)} down the pile`} isDisabled={i === first} onClick={() => move(i, -1)}>◀</Button>
+                <Button size="xs" variant="ghost" color="white" aria-label={`Move ${cardLabel(c)} up the pile`} isDisabled={i === movable - 1} onClick={() => move(i, 1)}>▶</Button>
+              </HStack>
+            ) : <Badge colorScheme="yellow">top</Badge>}
+          </VStack>
+        ))}
+      </Wrap>
+      <Button size="xs" colorScheme="green" alignSelf="center" isDisabled={movable - first < 2} onClick={bury}>Bury my points</Button>
+    </VStack>
+  );
+}
 
 function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const me = view.me;
@@ -41,7 +73,8 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const [picked, setPicked] = useState<number[]>([]);
   const last = useRef(frame.id);
 
-  useEffect(() => { setCard(null); setPicked([]); }, [frame.id]);
+  useEffect(() => { if (frame.events.length && frame.events.every(e => e.type === "arrange")) return; setCard(null); setPicked([]); }, [frame.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showPile, setShowPile] = useState(false);
   useEffect(() => {
     if (frame.id === last.current) return;
     last.current = frame.id;
@@ -187,12 +220,20 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
             <Button size="sm" variant="ghost" color="white" isDisabled={!myTurn || card === null} onClick={bestCapture}>Pick the most I can take</Button>
             {picked.length > 0 && <Button size="sm" variant="ghost" color="white" onClick={() => setPicked([])}>Clear</Button>}
           </HStack>
-          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with.</Text>}
+          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. An opponent\u2019s pile card can only be added to a build.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
-          <HStack justify="center" spacing={3} aria-label="Your pile" fontSize="xs" color="gray.300" data-anchor={`pile-${me}`}>
-            <Box w="26px" h="36px" borderRadius="5px" border="2px solid #f8fafc" overflow="hidden" opacity={view.pileCounts[me] ? 1 : 0.35} aria-hidden><CardBackFace /></Box>
-            <Text>My pile: {view.pileCounts[me]} card{view.pileCounts[me] === 1 ? "" : "s"}</Text>
-          </HStack>
+          <VStack spacing={2} data-anchor={`pile-${me}`} aria-label="Your pile">
+            <HStack justify="center" spacing={3} fontSize="sm" color="gray.200">
+              {view.myPile.length ? <PlayingCard id={view.myPile[view.myPile.length - 1]} size="lg" mk={`c${view.myPile[view.myPile.length - 1]}`} label={`Top of your pile: ${cardLabel(view.myPile[view.myPile.length - 1])}`} />
+                : <Box w="72px" h="102px" borderRadius="8px" border="2px dashed" borderColor="whiteAlpha.400" aria-hidden />}
+              <VStack spacing={1} align="start">
+                <Text fontWeight={800}>My pile: {view.pileCounts[me]} card{view.pileCounts[me] === 1 ? "" : "s"}</Text>
+                <Text fontSize="xs" color="gray.400">{view.rules.stealPileTop ? "The top card can be built with by opponents" : "Face up. Your latest capture can be rearranged"}</Text>
+                <Button size="xs" variant="outline" color="white" isDisabled={view.pileFresh < 3} aria-expanded={showPile} onClick={() => setShowPile(x => !x)}>{showPile ? "Close pile" : "See and arrange"}</Button>
+              </VStack>
+            </HStack>
+            {showPile && <PileEditor pile={view.myPile} lock={view.pileLock} fresh={view.pileFresh} onOrder={order => act({ type: "arrange", order })} />}
+          </VStack>
           <HStack justify="center" spacing={2} wrap="wrap" aria-label="Your hand" role="group" onKeyDown={roveKeys}>
             {view.hand.map(c => <Draggable key={c} id={`hand${c}`} data={c} label={cardLabel(c)} disabled={!myTurn} onStart={() => { setCard(c); setPicked([]); }}><PlayingCard id={c} mk={`c${c}`} size="lg" selected={card === c} dim={!myTurn} onClick={() => { if (!myTurn) return; setCard(x => (x === c ? null : c)); setPicked([]); }} /></Draggable>)}
           </HStack>

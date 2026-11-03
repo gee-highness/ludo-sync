@@ -106,15 +106,63 @@ describe("building", () => {
 });
 
 describe("taking from an opponent's pile (African rule)", () => {
-  it("only when switched on", () => {
-    const base = (rules: Record<string, unknown>) => { const s = mk(rules); s.hands[0] = [card(6)]; s.hands[1] = [card(3)]; s.piles[1] = [card(2), card(6, 1)]; return s; };
+  const base = (rules: Record<string, unknown>) => { const s = mk(rules); s.hands[0] = [card(2), card(8)]; s.hands[1] = [card(3)]; s.piles[1] = [card(5), card(2, 3)]; s.table = [loose(card(4))]; return s; };
+  it("only when switched on, and only to build on something already on the table", () => {
     const on = base({ stealPileTop: true });
-    const t = act(on, { type: "capture", card: card(6), take: [200 + 1] });
-    expect(t.piles[1]).toEqual([card(2)]);
-    expect(t.piles[0].length).toBe(2);
-    expect(apply(base({}), { type: "capture", card: card(6), take: [201] }, 0)).toBeNull();
-    expect(d.view(on, 0).pileTops[1]).toBe(card(6, 1));
+    // the 4 on the table + the 2 from the pile + the 2 in hand = a build of 8, which you hold
+    const t = act(on, { type: "build", card: card(2), take: [card(4), 200 + 1], value: 8 });
+    expect(t.piles[1]).toEqual([card(5)]);
+    expect(t.table.find(i => i.build)!.cards.length).toBe(3);
+    expect(apply(base({}), { type: "build", card: card(2), take: [card(4), 201], value: 8 }, 0)).toBeNull();
+    expect(d.view(on, 0).pileTops[1]).toBe(card(2, 3));
     expect(d.view(base({}), 0).pileTops[1]).toBeNull();
+  });
+  it("never lets a pile card be captured, and never builds on the pile card alone", () => {
+    const on = base({ stealPileTop: true });
+    on.hands[0] = [card(2), card(8)];
+    expect(apply(on, { type: "capture", card: card(2), take: [200 + 1] }, 0)).toBeNull();
+    on.table = [loose(card(2, 1))];
+    expect(apply(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }, 0)).toBeNull();
+    on.table = [];
+    expect(apply(on, { type: "build", card: card(2), take: [201], value: 4 }, 0)).toBeNull();
+  });
+  it("lets you add a pile card to a build you already own", () => {
+    const on = base({ stealPileTop: true });
+    on.hands[0] = [card(5), card(8)]; on.table = [{ id: buildId(0), cards: [card(5, 1), card(3, 1)], build: true, value: 8, owner: 0 }]; on.piles[1] = [card(1), card(3, 2)];
+    const t = act(on, { type: "build", card: card(5), take: [buildId(0), 201], value: 8 }, 0); // the pile 3 and your 5 make a second 8 with the build
+    expect(t.piles[1]).toEqual([card(1)]);
+  });
+});
+
+describe("your own pile", () => {
+  const sa2 = () => { const s = mk({ stealPileTop: true }); s.hands = [[card(9), card(2, 1)], [card(8, 1), card(3, 1)]]; s.table = [loose(card(4)), loose(card(5, 1))]; return s; };
+  it("keeps the card that made the capture on top, and shows you your pile", () => {
+    const t = act(sa2(), { type: "capture", card: card(9), take: [card(4), card(5, 1)] });
+    expect(t.piles[0][t.piles[0].length - 1]).toBe(card(9));
+    expect(d.view(t, 0).myPile).toEqual(t.piles[0]);
+    expect(d.view(t, 0).pileLock).toBe(card(9));
+    expect(d.view(t, 1).myPile).toEqual([]);
+  });
+  it("can be rearranged at any time, but not the top card", () => {
+    const t = act(sa2(), { type: "capture", card: card(9), take: [card(4), card(5, 1)] });
+    const [a, b, top] = t.piles[0];
+    const ok = apply(t, { type: "arrange", order: [b, a, top] }, 0);
+    expect(ok!.state.piles[0]).toEqual([b, a, top]);
+    expect(d.view(t, 0).pileFresh).toBe(3);
+    expect(d.mayAct!(t, 0)).toBe(true); // even though it is not your turn
+    expect(apply(t, { type: "arrange", order: [top, a, b] }, 0)).toBeNull();
+    expect(apply(t, { type: "arrange", order: [a, b] }, 0)).toBeNull();
+    expect(apply(t, { type: "arrange", order: [a, b, card(1)] }, 0)).toBeNull();
+  });
+});
+
+describe("older pile cards", () => {
+  it("are fixed: only the latest capture can be rearranged", () => {
+    const s = mk({ stealPileTop: true }); s.hands = [[card(9), card(7)], [card(8, 1), card(3, 1)]]; s.table = [loose(card(4)), loose(card(5, 1))]; s.piles[0] = [card(1), card(2)]; s.fresh = [0, 0];
+    const t = act(s, { type: "capture", card: card(9), take: [card(4), card(5, 1)] });
+    expect(d.view(t, 0).pileFresh).toBe(3);
+    expect(apply(t, { type: "arrange", order: [card(2), card(1), card(5, 1), card(4), card(9)] }, 0)).toBeNull(); // whole pile: refused
+    expect(apply(t, { type: "arrange", order: [card(4), card(5, 1), card(9)] }, 0)!.state.piles[0]).toEqual([card(1), card(2), card(4), card(5, 1), card(9)]);
   });
 });
 
@@ -280,15 +328,12 @@ describe("South African Casino", () => {
     expect(t.summary[0].lines.some(l => l.startsWith("Mummy"))).toBe(true);
     expect(t.summary[1].lines.some(l => l.startsWith("Spy Two"))).toBe(true);
   });
-  it("puts the lowest card of a capture on top of the pile, and an opponent can take it", () => {
+  it("puts the capturing card on top of the pile, and an opponent can only build with it", () => {
     const s = sa(2); s.hands = [[card(9), card(2, 1)], [card(8, 1), card(3, 1)]]; s.table = [loose(card(4)), loose(card(5, 1)), loose(card(4, 3))]; s.turn = 0;
     const t = act(s, { type: "capture", card: card(9), take: [card(4), card(5, 1)] });
-    expect(t.piles[0][t.piles[0].length - 1]).toBe(card(4)); // 9, 5, then the 4 on top
-    expect(d.view(t, 1).pileTops[0]).toBe(card(4));
-    // the other player adds the 4 on top of the pile to the 4 on the table to make 8
-    const u = act(t, { type: "capture", card: card(8, 1), take: [200 + 0, card(4, 3)] });
-    expect(u.piles[0]).toEqual([card(9), card(5, 1)]);
-    expect(u.piles[1].length).toBe(3);
+    expect(t.piles[0][t.piles[0].length - 1]).toBe(card(9)); // 5, then 4, then the 9 on top
+    expect(d.view(t, 1).pileTops[0]).toBe(card(9));
+    expect(apply(t, { type: "capture", card: card(9, 1), take: [200 + 0] }, 1)).toBeNull();
   });
   it("Crazy Casino refills the hand after every turn and forbids trailing with a build", () => {
     const s = sa(2, { dealMode: "crazy" });

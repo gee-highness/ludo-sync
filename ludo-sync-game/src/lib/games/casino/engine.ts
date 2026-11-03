@@ -24,6 +24,10 @@ export interface CState {
   deck: number[];
   table: Item[];
   piles: number[][];
+  /** Per player: the card that made their latest capture, which stays on top of their pile (older saves have none). */
+  locked?: (number | null)[];
+  /** Per player: how many cards on top of their pile came from the latest capture. Only those can be rearranged; older ones are fixed. */
+  fresh?: number[];
   sweeps: number[];
   /** Match score, per unit (a player, or a team in team play). */
   score: number[];
@@ -42,6 +46,8 @@ export type CAction =
   | { type: "capture"; card: number; take: number[] }
   | { type: "build"; card: number; take: number[]; value: number }
   | { type: "trail"; card: number }
+  /** Reorders your own pile (bottom first). The card of your latest capture must stay on top. Allowed at any time during play. */
+  | { type: "arrange"; order: number[] }
   | { type: "next" };
 
 export const unitOf = (rules: RuleValues, n: number, p: number) => (flag(rules, "teams") && n === 4 ? p % 2 : p);
@@ -92,7 +98,7 @@ export const candidates = (pos: Position): Item[] => {
 };
 
 export const isCapture = (pos: Position, card: number, items: Item[]): boolean => {
-  if (!items.length) return false;
+  if (!items.length || items.some(i => i.pile)) return false; // a card on an opponent's pile can only be added to a build
   const opts = items.map(it => optOf(pos.rules, it));
   if (solo(pos.rules, card)) return items.every(it => (it.build ? it.value === rankOf(card) : it.cards.length === 1 && rankOf(it.cards[0]) === rankOf(card)));
   return valuesOf(pos.rules, card).some(v => partition(opts, v, false));
@@ -101,6 +107,8 @@ export const isCapture = (pos: Position, card: number, items: Item[]): boolean =
 export const buildOptions = (pos: Position, card: number, items: Item[]): number[] => {
   const r = pos.rules;
   if (!flag(r, "builds") || !items.length || solo(r, card)) return [];
+  // an opponent's pile card must go into a build made on something already on the table: a card to build on, or a build you own
+  if (items.some(i => i.pile) && !items.some(i => !i.pile)) return [];
   if (items.some(i => solo(r, i.cards[0]) && !i.build)) return [];
   const mine = unitOf(r, pos.n, pos.me);
   for (const it of items) if (it.build) {
@@ -193,7 +201,7 @@ export const create = (seats: SeatInfo[], rules: RuleValues, seed: number): CSta
   const n = seats.length;
   const sh = shuffled(deckIds(rules), seed >>> 0);
   const s: CState = {
-    rules, n, names: seats.map(x => x.name), hands: seats.map(() => []), deck: sh.value, table: [], piles: seats.map(() => []), sweeps: seats.map(() => 0),
+    rules, n, names: seats.map(x => x.name), hands: seats.map(() => []), deck: sh.value, table: [], piles: seats.map(() => []), locked: seats.map(() => null), fresh: seats.map(() => 0), sweeps: seats.map(() => 0),
     score: seats.map(() => 0), dealer: 0, turn: 0, lastCapture: -1, deal: 1, phase: "play", nextBuild: 0, rng: sh.rng, summary: [],
   };
   startDeal(s, true);
@@ -211,7 +219,7 @@ const startDeal = (s: CState, first: boolean) => {
     s.deck = sh.value; s.rng = sh.rng;
     s.table = [];
     for (let i = 0; i < dealPlan(s.rules, s.n).table; i++) { const c = s.deck.pop(); if (c !== undefined) s.table.push({ id: c, cards: [c], build: false, value: 0, owner: -1 }); }
-    s.piles = s.names.map(() => []); s.sweeps = s.names.map(() => 0); s.lastCapture = -1;
+    s.piles = s.names.map(() => []); s.locked = s.names.map(() => null); s.fresh = s.names.map(() => 0); s.sweeps = s.names.map(() => 0); s.lastCapture = -1;
   }
   dealHands(s);
   s.turn = nextFrom(s.rules, s.n, s.dealer);
@@ -219,7 +227,7 @@ const startDeal = (s: CState, first: boolean) => {
 
 export const positionOf = (s: CState, me: number): Position => ({ rules: s.rules, n: s.n, me, hand: s.hands[me], table: s.table, pileTops: s.piles.map(p => (p.length ? p[p.length - 1] : null)) });
 
-const cloneS = (s: CState): CState => ({ ...s, hands: s.hands.map(h => h.slice()), deck: s.deck.slice(), table: s.table.map(t => ({ ...t, cards: t.cards.slice() })), piles: s.piles.map(p => p.slice()), sweeps: s.sweeps.slice(), score: s.score.slice(), summary: s.summary });
+const cloneS = (s: CState): CState => ({ ...s, hands: s.hands.map(h => h.slice()), deck: s.deck.slice(), table: s.table.map(t => ({ ...t, cards: t.cards.slice() })), piles: s.piles.map(p => p.slice()), locked: s.locked ? s.locked.slice() : s.names.map(() => null), fresh: s.fresh ? s.fresh.slice() : s.names.map(() => 0), sweeps: s.sweeps.slice(), score: s.score.slice(), summary: s.summary });
 
 const takeItems = (s: CState, ids: number[]): Item[] | null => {
   const out: Item[] = [];
@@ -237,7 +245,7 @@ const takeItems = (s: CState, ids: number[]): Item[] | null => {
 
 const removeTaken = (s: CState, items: Item[]) => {
   for (const it of items) {
-    if (it.pile) s.piles[it.owner].pop();
+    if (it.pile) { const gone = s.piles[it.owner].pop(); if (s.locked && s.locked[it.owner] === gone) s.locked[it.owner] = null; if (s.fresh) s.fresh[it.owner] = Math.max(0, s.fresh[it.owner] - 1); }
     else s.table = s.table.filter(t => t.id !== it.id);
   }
 };
@@ -252,6 +260,19 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
     startDeal(s, true);
     events.push({ type: "deal", deal: s.deal });
     return { state: s, events };
+  }
+  if (a.type === "arrange") {
+    if (s.phase !== "play") return null;
+    // only the cards of the latest capture can be moved: the order covers just those, and the capturing card stays on top
+    const pile = s.piles[by];
+    const k = Math.min(s.fresh?.[by] ?? 0, pile?.length ?? 0);
+    const cur = pile ? pile.slice(pile.length - k) : [];
+    const o = a.order;
+    if (!pile || !Array.isArray(o) || o.length !== k || new Set(o).size !== o.length || !o.every(c => cur.includes(c))) return null;
+    const lock = s.locked?.[by];
+    if (lock !== null && lock !== undefined && cur.includes(lock) && o[o.length - 1] !== lock) return null;
+    s.piles[by] = [...pile.slice(0, pile.length - k), ...o];
+    return { state: s, events: [{ type: "arrange", p: by }] };
   }
   if (s.phase !== "play" || by !== s.turn) return null;
   const hand = s.hands[by];
@@ -274,13 +295,15 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
       hand.splice(hand.indexOf(a.card), 1);
       removeTaken(s, items);
       const got = [a.card, ...items.flatMap(i => i.cards)];
-      // the new cards go on the pile with the lowest on top, which is the card an opponent may take
-      s.piles[by].push(...[...got].sort((x, y) => rankOf(y) - rankOf(x)));
+      // the captured cards go on the pile with the lowest nearest the top, and the card that made the capture always on the very top
+      s.piles[by].push(...got.slice(1).sort((x, y) => rankOf(y) - rankOf(x)), a.card);
+      if (s.locked) s.locked[by] = a.card;
+      if (s.fresh) s.fresh[by] = got.length;
       s.lastCapture = by;
       events.push({ type: "capture", p: by, card: a.card, cards: got.slice(1) });
       if (s.table.length === 0 && (!lastPlay || flag(s.rules, "sweepLast"))) { s.sweeps[unit] += 1; events.push({ type: "sweep", p: by }); }
     } else {
-      if (!buildOptions(pos, a.card, items).includes(a.value)) return null;
+      if (!buildOptions(pos, a.card, items).includes(a.value)) return null; // includes the rule that a pile card needs something on the table to build on
       hand.splice(hand.indexOf(a.card), 1);
       removeTaken(s, items);
       const cards = [a.card, ...items.flatMap(i => i.cards)];
@@ -309,7 +332,7 @@ export const unitsOf = (s: CState): number[] => (flag(s.rules, "teams") && s.n =
 
 const endDeal = (s: CState, events: GameEvent[]) => {
   if (flag(s.rules, "tableToLast") && s.lastCapture >= 0 && s.table.length) {
-    s.piles[s.lastCapture].push(...s.table.flatMap(t => t.cards));
+    s.piles[s.lastCapture].unshift(...s.table.flatMap(t => t.cards));
     s.table = [];
   }
   const units = unitsOf(s);

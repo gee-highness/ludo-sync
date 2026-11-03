@@ -23,7 +23,7 @@ export const SCHEMA: RuleSchema = {
     { key: "ownBuildBlocksTrail", kind: "bool", label: "No trailing while you own a build", hint: "You must capture or build again", def: true, group: "Building", when: v => v.builds === true },
 
     { key: "mustCapture", kind: "bool", label: "Must capture when you can", hint: "Off: you may trail a card even if you could capture", def: false, group: "Play" },
-    { key: "stealPileTop", kind: "bool", label: "Take the top card of an opponent's pile", hint: "South African Casino: capture piles lie face up (lowest card on top) and the top card can be captured or built with", def: true, group: "Play" },
+    { key: "stealPileTop", kind: "bool", label: "Take the top card of an opponent's pile", hint: "South African Casino: the top card of an opponent's pile (the card that made their capture) can be added to a build, but only when you build on a card or build already on the table", def: true, group: "Play" },
     { key: "tableToLast", kind: "bool", label: "Last capture takes the cards left on the table", def: true, group: "Play" },
 
     { key: "ptsCards", kind: "number", label: "Most cards", def: 2, min: 0, max: 10, group: "Scoring" },

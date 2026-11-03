@@ -11,6 +11,12 @@ export interface CView {
   handCounts: number[];
   table: Item[];
   pileCounts: number[];
+  /** Your own pile, bottom to top, face up to you. */
+  myPile: number[];
+  /** The card that made your latest capture: it stays on top of your pile. */
+  pileLock: number | null;
+  /** How many cards on top of your pile you can still rearrange: the ones from your latest capture. */
+  pileFresh: number;
   /** Top card of each pile, only shown when the rules let opponents take it. */
   pileTops: (number | null)[];
   deckCount: number;
@@ -25,14 +31,14 @@ export interface CView {
 }
 
 const view = (s: CState, viewer: number | null): CView => ({
-  rules: s.rules, me: viewer, hand: viewer === null ? [] : s.hands[viewer], handCounts: s.hands.map(h => h.length), table: s.table, pileCounts: s.piles.map(p => p.length),
+  rules: s.rules, me: viewer, hand: viewer === null ? [] : s.hands[viewer], handCounts: s.hands.map(h => h.length), table: s.table, pileCounts: s.piles.map(p => p.length), myPile: viewer === null ? [] : s.piles[viewer].slice(), pileLock: viewer === null ? null : (s.locked?.[viewer] ?? null), pileFresh: viewer === null ? 0 : Math.min(s.fresh?.[viewer] ?? 0, s.piles[viewer].length),
   pileTops: s.piles.map(p => (flag(s.rules, "stealPileTop") && p.length ? p[p.length - 1] : null)), deckCount: s.deck.length, scores: s.score, units: s.names.map((_, i) => unitOf(s.rules, s.n, i)),
   sweeps: s.sweeps, turn: s.turn, dealer: s.dealer, deal: s.deal, phase: s.phase, summary: s.summary,
 });
 
 /** How much a move is worth to a bot: the cards it wins, the special cards, a sweep, and what it leaves for the next player. */
 const worth = (s: CState, p: number, m: CAction, level: BotLevel): number => {
-  if (m.type === "next") return -1e9;
+  if (m.type === "next" || m.type === "arrange") return -1e9;
   const r = s.rules;
   const point = (c: number) => (c === BIG ? 2 + num(r, "ptsBig") : c === LITTLE ? 1 + num(r, "ptsLittle") : rankOf(c) === 1 ? 1 + num(r, "ptsAce") : suitOf(c) === 3 ? 0.6 : 0.3);
   const next = apply(s, m, p);
@@ -91,10 +97,13 @@ export const casino: GameDriver<CState, CAction, CView> = {
   scores: s => s.names.map((_, i) => s.score[unitOf(s.rules, s.n, i)]),
   winners: winnersOf,
   view, bot,
+  // you may tidy your own pile at any time, even when it is not your turn
+  mayAct: (s, p) => s.phase === "play" && Math.min(s.fresh?.[p] ?? 0, s.piles[p]?.length ?? 0) > 2,
   parseAction: raw => {
     if (!raw || typeof raw !== "object") return null;
     const o = raw as Record<string, unknown>;
     if (o.type === "next") return { type: "next" };
+    if (o.type === "arrange") { const order = ints(o.order, 52); return order ? { type: "arrange", order } : null; }
     if (!Number.isInteger(o.card) || (o.card as number) < 0 || (o.card as number) > 51) return null;
     if (o.type === "trail") return { type: "trail", card: o.card as number };
     const take = ints(o.take);
