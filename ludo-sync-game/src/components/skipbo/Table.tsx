@@ -3,7 +3,8 @@
 import { Badge, Box, Button, Flex, HStack, IconButton, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
 import { MenuLauncher } from "../platform/InGameMenu";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSkipBoMotion } from "./useSkipBoMotion";
 import { WILD, type Action, type Source } from "@/lib/skipbo/types";
 import type { PlayerView, TableView } from "@/lib/skipbo/view";
 import { CardFace, Slot, type CardSize } from "./CardFace";
@@ -69,6 +70,8 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
   const input = useTableInput(view, act, frame, rejected);
   const { me, myTurn, selected, setSelected, banner, popped, cardOf, targets, picked, tryPlay, onHand, onStock, onDiscard, onBuilding, wantHint, hintSrc, hintTarget, mustEnd, status } = input;
   const [dropOver, setDropOver] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useSkipBoMotion(rootRef, frame, view.you);
   const [showLog, setShowLog] = useState(false);
   const hint = input.hintLine;
 
@@ -97,7 +100,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
 
   const others = useMemo(() => view.players.map((p, i) => ({ p, i })).filter(x => x.i !== view.you), [view.players, view.you]);
   return (
-    <Box minH="100dvh" color="white" position="relative" overflow="hidden" bg={`radial-gradient(ellipse at 50% 30%, ${felt.base} 0%, ${felt.base} 35%, ${felt.dark} 100%)`}>
+    <Box ref={rootRef} minH="100dvh" color="white" position="relative" overflow="hidden" bg={`radial-gradient(ellipse at 50% 30%, ${felt.base} 0%, ${felt.base} 35%, ${felt.dark} 100%)`}>
     <PointsFloaters items={floaters} />
     <Flex direction="column" minH="100dvh" maxW="900px" mx="auto" position="relative"
       pt="max(8px, env(safe-area-inset-top))" pb="max(10px, env(safe-area-inset-bottom))" px={2}>
@@ -120,14 +123,14 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
 
       {/* the other players */}
       <Flex position="relative" zIndex={1} wrap="wrap" gap={2} justify="center" mb={2}>
-        {others.map(({ p, i }) => <Opponent key={i} p={p} active={view.phase === "play" && view.turn === i} dealer={view.dealer === i} tournament={view.rules.tournament} away={away?.has(i)} size={sizes.side} />)}
+        {others.map(({ p, i }) => <Opponent key={i} idx={i} p={p} active={view.phase === "play" && view.turn === i} dealer={view.dealer === i} tournament={view.rules.tournament} away={away?.has(i)} size={sizes.side} />)}
       </Flex>
 
       {/* the middle */}
       <VStack position="relative" zIndex={1} spacing={3} py={2} borderRadius="2xl" bg="rgba(0,0,0,.2)" border="1px solid rgba(255,255,255,.12)" mb={2}>
         <HStack spacing={sizes.pile === "lg" ? 4 : 2.5} justify="center" wrap="wrap" align="flex-start">
           <VStack spacing={1}>
-            <Box position="relative" role="img" aria-label={`Draw pile, ${view.drawCount} cards`}>
+            <Box position="relative" data-anchor="draw" role="img" aria-label={`Draw pile, ${view.drawCount} cards`}>
               {view.drawCount > 0 ? <CardFace faceDown size={sizes.pile} /> : <Slot size={sizes.pile} label="∅" />}
             </Box>
             <Text fontSize="xs" color="whiteAlpha.800">Draw · {view.drawCount}</Text>
@@ -140,7 +143,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
             const over = dropOver === `build${i}`;
             return (
               <VStack key={i} spacing={1}>
-                <Box role="button" tabIndex={myTurn && selected ? 0 : -1} aria-label={`Pile ${i + 1}, ${pile.length ? `at ${pile.length}` : "empty, needs a 1"}`}
+                <Box data-anchor={`build${i}`} role="button" tabIndex={myTurn && selected ? 0 : -1} aria-label={`Pile ${i + 1}, ${pile.length ? `at ${pile.length}` : "empty, needs a 1"}`}
                   cursor={hot ? "pointer" : "default"} onClick={() => onBuilding(i)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onBuilding(i); }} {...dropOn("build", i)}
                   borderRadius="10px" transition="transform .15s" transform={over ? "scale(1.07)" : undefined}
                   sx={popped?.pile === i && frame.id === popped.id ? { animation: "sbPop .35s ease-out", "@keyframes sbPop": { "0%": { transform: "scale(.82) translateY(-14px)", opacity: 0.4 }, "100%": { transform: "none", opacity: 1 } } } : undefined}>
@@ -166,7 +169,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
           </HStack>
           <HStack spacing={3} align="flex-end" justify="center" wrap="wrap">
             <VStack spacing={1}>
-              <Box role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Your stock pile, top card ${me.stockTop === WILD ? "Skip-Bo" : me.stockTop}, ${me.stockCount} cards`} cursor={myTurn ? "pointer" : "default"}
+              <Box data-anchor={`stock${view.you}`} role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Your stock pile, top card ${me.stockTop === WILD ? "Skip-Bo" : me.stockTop}, ${me.stockCount} cards`} cursor={myTurn ? "pointer" : "default"}
                 onClick={onStock} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onStock(); }} draggable={myTurn && me.stockTop !== null} onDragStart={dragStart({ from: "stock" })}>
                 {me.stockTop !== null && <CardFace value={me.stockTop} size={sizes.pile} selected={sameSource(selected, { from: "stock" })} glow={sameSource(hintSrc, { from: "stock" })} />}
               </Box>
@@ -179,7 +182,7 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
                 const dropHot = selected?.from === "hand";
                 return (
                   <VStack key={i} spacing={1}>
-                    <Box role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Discard pile ${i + 1}${top !== undefined ? `, top card ${top === WILD ? "Skip-Bo" : top}, ${d.length} cards` : ", empty"}`}
+                    <Box data-anchor={`disc${view.you}-${i}`} role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Discard pile ${i + 1}${top !== undefined ? `, top card ${top === WILD ? "Skip-Bo" : top}, ${d.length} cards` : ", empty"}`}
                       cursor={myTurn ? "pointer" : "default"} onClick={() => onDiscard(i)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onDiscard(i); }}
                       draggable={myTurn && top !== undefined} onDragStart={dragStart({ from: "discard", pile: i })} {...dropOn("discard", i)}
                       borderRadius="8px" transform={dropOver === `discard${i}` ? "scale(1.08)" : undefined} transition="transform .15s">
@@ -193,9 +196,9 @@ function FlatTable({ award, floaters, view, act, frame, log, rejected, title, on
             </HStack>
           </HStack>
           <Text fontSize="2xs" color="whiteAlpha.700" mt={-1}>Discard piles: tap a hand card, then a pile, to end your turn</Text>
-          <HStack spacing={sizes.hand === "lg" ? 3 : 2} justify="center" minH={`${Math.round({ xs: 30, sm: 44, md: 56, lg: 68 }[sizes.hand] * 1.42) + 14}px`} pt="10px" w="100%">
+          <HStack data-anchor="hand" spacing={sizes.hand === "lg" ? 3 : 2} justify="center" minH={`${Math.round({ xs: 30, sm: 44, md: 56, lg: 68 }[sizes.hand] * 1.42) + 14}px`} pt="10px" w="100%">
             {(me.hand ?? []).map((c, i) => (
-              <Box key={`${i}-${c}`} role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Hand card ${i + 1}: ${c === WILD ? "Skip-Bo" : c}`} cursor={myTurn ? "pointer" : "default"} onClick={() => onHand(i)}
+              <Box key={`${i}-${c}`} data-anchor={`hand${i}`} data-val={c} role="button" tabIndex={myTurn ? 0 : -1} aria-label={`Hand card ${i + 1}: ${c === WILD ? "Skip-Bo" : c}`} cursor={myTurn ? "pointer" : "default"} onClick={() => onHand(i)}
                 onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onHand(i); }} draggable={myTurn} onDragStart={dragStart({ from: "hand", index: i })}
                 sx={{ animation: "sbDeal .3s ease-out backwards", animationDelay: `${i * 40}ms`, "@keyframes sbDeal": { from: { transform: "translateY(26px) scale(.8)", opacity: 0 }, to: { transform: "none", opacity: 1 } } }}>
                 <CardFace value={c} size={sizes.hand} selected={sameSource(selected, { from: "hand", index: i })} glow={sameSource(hintSrc, { from: "hand", index: i })} dim={!myTurn} />
@@ -257,10 +260,10 @@ export function Table(props: TableProps) {
   );
 }
 
-function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView; active: boolean; dealer: boolean; tournament: boolean; away?: boolean; size: CardSize }) {
+function Opponent({ idx, p, active, dealer, tournament, away, size }: { idx: number; p: PlayerView; active: boolean; dealer: boolean; tournament: boolean; away?: boolean; size: CardSize }) {
   return (
     <VStack role="group" spacing={1} p={2} borderRadius="xl" flex="1 1 150px" maxW="230px" minW="140px" bg={active ? "rgba(253,224,71,.14)" : "rgba(0,0,0,.2)"} border="2px solid" borderColor={active ? "#fde047" : "rgba(255,255,255,.12)"}
-      transition="all .2s" opacity={away ? 0.6 : 1} aria-label={`${p.name}${active ? ", their turn" : ""}`}>
+      transition="all .2s" opacity={away ? 0.6 : 1} data-anchor={`opp${idx}`} aria-label={`${p.name}${active ? ", their turn" : ""}`}>
       <HStack w="100%" justify="space-between" spacing={1}>
         <Text fontWeight={800} fontSize="sm" noOfLines={1}>{p.name}</Text>
         <HStack spacing={1}>
@@ -271,7 +274,7 @@ function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView
       </HStack>
       <HStack spacing={3} align="center" justify="center" w="100%">
         <VStack spacing={0.5}>
-          {p.stockTop !== null ? <CardFace value={p.stockTop} size={size} /> : <Slot size={size} label="✓" />}
+          <Box data-anchor={`stock${idx}`}>{p.stockTop !== null ? <CardFace value={p.stockTop} size={size} /> : <Slot size={size} label="✓" />}</Box>
           <Text fontSize="2xs" color="#fde047" fontWeight={800}>Stock {p.stockCount}</Text>
         </VStack>
         <VStack spacing={0.5} align="flex-start">
@@ -281,7 +284,7 @@ function Opponent({ p, active, dealer, tournament, away, size }: { p: PlayerView
         </VStack>
       </HStack>
       <HStack spacing="3px" align="flex-end" justify="center" role="group" aria-label={`${p.name}'s discard piles`}>
-        {p.discards.map((d, i) => d.length ? <CardFace key={i} value={d.at(-1)!} size="xs" count={d.length} /> : <Slot key={i} size="xs" />)}
+        {p.discards.map((d, i) => <Box key={i} data-anchor={`disc${idx}-${i}`}>{d.length ? <CardFace value={d.at(-1)!} size="xs" count={d.length} /> : <Slot size="xs" />}</Box>)}
       </HStack>
     </VStack>
   );

@@ -405,6 +405,26 @@ test("Cards travel instead of vanishing: a played card flies to the table in Cas
   expect(errors).toEqual([]);
 });
 
+test("Skip-Bo cards fly: a discarded card travels to its pile and the layer is cleaned up", async ({ page }) => {
+  const errors = watch(page);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("ludo-sync:v1:settings", JSON.stringify({ music: false, sound: false, speed: "normal" }));
+      localStorage.setItem("ludo-sync:v1:calm-v1", "true");
+      localStorage.setItem("ludo-sync:v1:road-v1", "true");
+    } catch { /* private window */ }
+  });
+  await page.goto("/skipbo/play?name=Tester&bots=1&level=easy&mode=quick&stock=10");
+  await expect(page.getByText("· your turn")).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(() => { (window as unknown as { __max: number }).__max = 0; const f = () => { const w = window as unknown as { __max: number }; w.__max = Math.max(w.__max, document.querySelectorAll("[data-motion-layer] > *").length); requestAnimationFrame(f); }; f(); });
+  await page.locator('[aria-label^="Hand card 1"]').click();
+  await page.locator('[aria-label^="Discard pile 1"]').click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __max: number }).__max), { timeout: 3000 }).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => document.querySelectorAll("[data-motion-layer] > *").length), { timeout: 8000 }).toBe(0);
+  await expect(page.locator('[data-anchor][style*="visibility: hidden"], [data-anchor] [style*="visibility: hidden"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("Cards page: a card back designed once shows up in every card game", async ({ page }) => {
   const errors = watch(page);
   await page.addInitScript(() => {
