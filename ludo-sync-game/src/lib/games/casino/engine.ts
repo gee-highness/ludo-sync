@@ -104,7 +104,17 @@ export const isCapture = (pos: Position, card: number, items: Item[]): boolean =
   return valuesOf(pos.rules, card).some(v => partition(opts, v, false));
 };
 
-export const buildOptions = (pos: Position, card: number, items: Item[]): number[] => {
+/** The builds a card can make with these table items. Only one build of a number can stand on the table: to make a second of the same number you must add to the first (or capture it). */
+export const buildOptions = (pos: Position, card: number, items: Item[]): number[] =>
+  buildOptionsAny(pos, card, items).filter(b => !pos.table.some(t => t.build && t.value === b && !items.some(i => i.id === t.id)));
+
+/** The numbers that would be a legal build but for another build of that number already standing: the player must capture or add to that build instead. */
+export const blockedBuilds = (pos: Position, card: number, items: Item[]): number[] => {
+  const ok = new Set(buildOptions(pos, card, items));
+  return buildOptionsAny(pos, card, items).filter(b => !ok.has(b));
+};
+
+const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] => {
   const r = pos.rules;
   if (!flag(r, "builds") || !items.length || solo(r, card)) return [];
   // an opponent's pile card must go into a build made on something already on the table: a card to build on, or a build you own
@@ -114,11 +124,15 @@ export const buildOptions = (pos: Position, card: number, items: Item[]): number
   for (const it of items) if (it.build) {
     if (unitOf(r, pos.n, it.owner) === mine ? !flag(r, "increaseOwn") : !flag(r, "increaseOpponents")) return [];
   }
+  // an established build is only repeated with loose cards from the table that, with your card, add up to its number: your card alone is not enough
+  if (items.some(i => i.build) && !items.some(i => !i.build)) return [];
   const opts: Opt[] = [...items.map(it => optOf(r, it)), { vals: valuesOf(r, card), solo: false }];
   const out: number[] = [];
   const max = num(r, "maxBuild");
   for (let b = 2; b <= max; b++) {
     if (!partition(opts, b, false)) continue;
+    // an established build never goes up: you can only repeat its number (a 5 and a 5, or a 3 and a 2, onto a build of 5)
+    if (items.some(i => i.build && i.value !== b)) continue;
     // at least one group must hold the played card plus something, so a build is never just a trail
     const multiple = items.length > 0;
     if (!multiple) continue;

@@ -3,7 +3,7 @@ import { sanitizeRules } from "../../platform/rules";
 import { GameTable, simulate } from "../../platform/table";
 import type { BotLevel } from "../../platform/types";
 import { casino as d } from "./driver";
-import { BIG, LITTLE, apply, buildId, movesFor, positionOf, type CAction, type CState, type Item } from "./engine";
+import { BIG, LITTLE, apply, blockedBuilds, buildId, buildOptions, movesFor, positionOf, type CAction, type CState, type Item } from "./engine";
 import { SCHEMA } from "./rules";
 
 const card = (rank: number, suit = 0) => suit * 13 + rank - 1; // rank 1 = ace
@@ -78,12 +78,13 @@ describe("building", () => {
     const low = mk({ maxBuild: 8 }); low.hands[0] = [card(5), card(9, 1)]; low.hands[1] = [card(3)]; low.table = [loose(card(4))];
     expect(apply(low, { type: "build", card: card(5), take: [card(4)], value: 9 }, 0)).toBeNull();
   });
-  it("lets an opponent capture a build with its value, and take it over by adding to it", () => {
-    let s = mk({ maxBuild: 13, faces: "rank" }); s.hands[0] = [card(5), card(9, 1), card(2)]; s.hands[1] = [card(3, 1), card(9, 2), card(12, 3)]; s.table = [loose(card(4))];
+  it("lets an opponent capture a build with its value, and take it over by repeating its number", () => {
+    let s = mk({ maxBuild: 13, faces: "rank" }); s.hands[0] = [card(5), card(9, 1), card(2)]; s.hands[1] = [card(5, 1), card(9, 2), card(9), card(12, 3)]; s.table = [loose(card(4)), loose(card(9, 3))];
     s = act(s, { type: "build", card: card(5), take: [card(4)], value: 9 });
     const id = buildId(0);
-    const raise = act(structuredClone(s), { type: "build", card: card(3, 1), take: [id], value: 12 });
-    expect(raise.table[0]).toMatchObject({ value: 12, owner: 1 });
+    expect(apply(s, { type: "build", card: card(3, 1), take: [id], value: 12 }, 1)).toBeNull(); // the number cannot go up
+    const again = act(structuredClone(s), { type: "build", card: card(9, 2), take: [id, card(9, 3)], value: 9 });
+    expect(again.table.find(i => i.build)).toMatchObject({ value: 9, owner: 1 });
     const cap = act(s, { type: "capture", card: card(9, 2), take: [id] });
     expect(cap.piles[1].length).toBe(3);
   });
@@ -131,6 +132,39 @@ describe("taking from an opponent's pile (African rule)", () => {
     on.hands[0] = [card(5), card(8)]; on.table = [{ id: buildId(0), cards: [card(5, 1), card(3, 1)], build: true, value: 8, owner: 0 }]; on.piles[1] = [card(1), card(3, 2)];
     const t = act(on, { type: "build", card: card(5), take: [buildId(0), 201], value: 8 }, 0); // the pile 3 and your 5 make a second 8 with the build
     expect(t.piles[1]).toEqual([card(1)]);
+  });
+});
+
+describe("established builds", () => {
+  const ob = (value: number, cards: number[], owner = 0): Item => ({ id: buildId(0), cards, build: true, value, owner });
+  const has = (s: CState, card0: number, take: number[], value: number) => movesFor(positionOf(s, 0), card0).some(m => m.type === "build" && m.value === value && m.take.length === take.length && take.every(t => m.take.includes(t)));
+  it("can be repeated but never raised", () => {
+    const s = mk(); s.hands[0] = [card(5, 2), card(5, 3), card(9)]; s.hands[1] = [card(3)];
+    s.table = [ob(5, [card(5), card(2, 1), card(3, 1)]), loose(card(5, 1)), loose(card(4)), loose(card(1, 1))];
+    expect(has(s, card(5, 2), [buildId(0), card(5, 1)], 5)).toBe(true); // a 5 and a 5 in a 5 build
+    expect(has(s, card(1), [buildId(0)], 6)).toBe(false);
+    expect(has(s, card(5, 2), [buildId(0)], 5)).toBe(false); // your card alone cannot be added: loose table cards must come with it
+    s.hands[0] = [card(1), card(5, 3), card(9)];
+    expect(has(s, card(1), [buildId(0), card(4)], 5)).toBe(true); // 4 + 1 added to a 5 build
+    expect(has(s, card(1), [buildId(0), card(4)], 6)).toBe(false);
+    expect(apply(s, { type: "build", card: card(1), take: [buildId(0), card(4)], value: 6 }, 0)).toBeNull();
+    const t = act(s, { type: "build", card: card(1), take: [buildId(0), card(4)], value: 5 });
+    expect(t.table.filter(i => i.build).length).toBe(1);
+    expect(t.table.find(i => i.build)!.cards.length).toBe(5);
+  });
+});
+
+describe("one build of a number", () => {
+  it("refuses a second build of a number that already stands, and says which", () => {
+    const s = mk(); s.hands[0] = [card(2, 2), card(8), card(5, 1)]; s.hands[1] = [card(3, 1)];
+    s.table = [{ id: buildId(0), cards: [card(5), card(3, 2)], build: true, value: 8, owner: 1 }, loose(card(2)), loose(card(4))];
+    const pos = positionOf(s, 0);
+    // 2 + 4 + 2 is a build of 8 and the 8 is in hand, but a build of 8 already stands
+    expect(buildOptions(pos, card(2, 2), [loose(card(4)), loose(card(2))])).not.toContain(8);
+    expect(blockedBuilds(pos, card(2, 2), [loose(card(4)), loose(card(2))])).toContain(8);
+    expect(apply(s, { type: "build", card: card(2, 2), take: [card(4), card(2)], value: 8 }, 0)).toBeNull();
+    // adding to the standing build is the way to do it
+    expect(buildOptions(pos, card(2, 2), [{ id: buildId(0), cards: [card(5), card(3, 2)], build: true, value: 8, owner: 1 }, loose(card(4)), loose(card(2))])).toContain(8);
   });
 });
 

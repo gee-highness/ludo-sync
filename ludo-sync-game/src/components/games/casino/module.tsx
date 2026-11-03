@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { sound } from "@/lib/client/audio";
 import { buzz } from "@/lib/client/haptics";
 import { casino } from "@/lib/games/casino/driver";
-import { BIG, LITTLE, PILE_ID, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, unitOf, rankOf, suitOf, type CAction, type Item, type Position } from "@/lib/games/casino/engine";
+import { BIG, LITTLE, PILE_ID, blockedBuilds, buildOptions, candidates, isCapture, ownsBuild, trailAllowed, unitOf, rankOf, suitOf, type CAction, type Item, type Position } from "@/lib/games/casino/engine";
 import { flag } from "@/lib/platform/rules";
 import type { GameModule, TableProps } from "@/lib/platform/types";
 import { CardBacks, PlayingCard, cardLabel } from "../../platform/PlayingCard";
@@ -95,6 +95,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   const chosen = items.filter(i => picked.includes(i.id));
   const canCapture = !!pos && card !== null && isCapture(pos, card, chosen);
   const buildValues = pos && card !== null && chosen.length ? buildOptions(pos, card, chosen) : [];
+  const blocked = pos && card !== null && chosen.length ? blockedBuilds(pos, card, chosen) : [];
   const canTrail = !!pos && card !== null && picked.length === 0 && trailAllowed(pos, card);
 
   // table cards that take part in some legal play of the selected card glow, so the options are easy to see
@@ -220,6 +221,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
             <Button size="sm" variant="ghost" color="white" isDisabled={!myTurn || card === null} onClick={bestCapture}>Pick the most I can take</Button>
             {picked.length > 0 && <Button size="sm" variant="ghost" color="white" onClick={() => setPicked([])}>Clear</Button>}
           </HStack>
+          {myTurn && blocked.length > 0 && <Text textAlign="center" fontSize="xs" color="orange.200" role="status">There is already a build of {blocked.join(" and ")} on the table, and two builds of one number cannot stand. Capture it, or add to it with loose cards that make {blocked.length === 1 ? "that number" : "the number"}.</Text>}
           {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. An opponent\u2019s pile card can only be added to a build.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
           <VStack spacing={2} data-anchor={`pile-${me}`} aria-label="Your pile">

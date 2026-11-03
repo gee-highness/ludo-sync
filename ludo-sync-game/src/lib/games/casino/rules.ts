@@ -17,8 +17,8 @@ export const SCHEMA: RuleSchema = {
     { key: "builds", kind: "bool", label: "Building allowed", def: true, group: "Building" },
     { key: "maxBuild", kind: "number", label: "Highest build", def: 10, min: 4, max: 14, group: "Building", when: v => v.builds === true },
     { key: "buildNeedsCard", kind: "bool", label: "Must hold a card to take the build", hint: "To make a build you must hold (or already own a build of) the value you build", def: true, group: "Building", when: v => v.builds === true },
-    { key: "increaseOwn", kind: "bool", label: "Add to your own builds", def: true, group: "Building", when: v => v.builds === true },
-    { key: "increaseOpponents", kind: "bool", label: "Add to opponents' builds (and take them over)", def: true, group: "Building", when: v => v.builds === true },
+    { key: "increaseOwn", kind: "bool", label: "Repeat your own builds", hint: "Add another set of the same number to a build you own (a 5 and a 5, or a 3 and a 2, onto a build of 5). A build's number never goes up", def: true, group: "Building", when: v => v.builds === true },
+    { key: "increaseOpponents", kind: "bool", label: "Repeat opponents' builds (and take them over)", hint: "Add another set of the same number to an opponent's build. A build's number never goes up", def: true, group: "Building", when: v => v.builds === true },
     { key: "multiBuilds", kind: "bool", label: "Multiple builds", hint: "Combine several sets of the same value into one build", def: true, group: "Building", when: v => v.builds === true },
     { key: "ownBuildBlocksTrail", kind: "bool", label: "No trailing while you own a build", hint: "You must capture or build again", def: true, group: "Building", when: v => v.builds === true },
 
