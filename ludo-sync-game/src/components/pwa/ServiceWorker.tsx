@@ -18,11 +18,7 @@ export const ServiceWorker = () => {
       if (!hadController) { hadController = true; return; }
       if (!refreshing) { refreshing = true; window.location.reload(); }
     };
-    // a reload must never eat what a person is doing: new versions wait for a quiet moment
-    let touched = false;
-    const touch = () => { touched = true; };
-    window.addEventListener("pointerdown", touch, { once: true, capture: true });
-    window.addEventListener("keydown", touch, { once: true, capture: true });
+    // a reload must never eat what a person is doing: in a game the new version waits for the Update tap or for the app to be put away
     let pending: ServiceWorker | null = null;
     const applyWhenHidden = () => { if (document.visibilityState === "hidden" && pending) { pending.postMessage({ type: "SKIP_WAITING" }); pending = null; } };
     document.addEventListener("visibilitychange", applyWhenHidden);
@@ -38,10 +34,11 @@ export const ServiceWorker = () => {
     const MENUS = new Set(["/", "/profile", "/ludo", "/skipbo", "/garage", "/pieces", "/island"]);
     const announce = (worker: ServiceWorker) => {
       if (MENUS.has(window.location.pathname)) {
-        // right at the start nothing has been touched yet, so it is safe now; otherwise as soon as the app is put away
-        if (!touched) worker.postMessage({ type: "SKIP_WAITING" }); else pending = worker;
+        // a menu holds nothing to lose: the new version takes over at once
+        worker.postMessage({ type: "SKIP_WAITING" });
         return;
       }
+      pending = worker;
       toast({
         id: "sw-update", duration: null, isClosable: true, position: "bottom",
         render: ({ onClose }) => (
@@ -66,9 +63,13 @@ export const ServiceWorker = () => {
       });
       void navigator.serviceWorker.ready.then(warm);
       // an installed app can stay open for days: look for a new version whenever it comes back to the front
-      const check = () => { if (document.visibilityState === "visible") void reg.update().catch(() => undefined); };
+      const check = () => { if (document.visibilityState === "visible" && navigator.onLine) void reg.update().catch(() => undefined); };
+      // ...and while it is open, look again every minute and the moment the connection returns
+      const timer = window.setInterval(check, 60_000);
       document.addEventListener("visibilitychange", check);
-      stopChecking = () => document.removeEventListener("visibilitychange", check);
+      window.addEventListener("online", check);
+      window.addEventListener("focus", check);
+      stopChecking = () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", check); window.removeEventListener("online", check); window.removeEventListener("focus", check); };
       check();
     }).catch(() => undefined);
     navigator.serviceWorker.addEventListener("controllerchange", onChange);
@@ -76,7 +77,7 @@ export const ServiceWorker = () => {
     // keep saved games and settings from being evicted under storage pressure
     void navigator.storage?.persist?.().catch(() => undefined);
 
-    return () => { cancelled = true; stopChecking(); document.removeEventListener("visibilitychange", applyWhenHidden); window.removeEventListener("pointerdown", touch, true); window.removeEventListener("keydown", touch, true); navigator.serviceWorker.removeEventListener("controllerchange", onChange); };
+    return () => { cancelled = true; stopChecking(); document.removeEventListener("visibilitychange", applyWhenHidden); navigator.serviceWorker.removeEventListener("controllerchange", onChange); };
   }, [toast]);
 
   return null;
