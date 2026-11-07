@@ -1,3 +1,4 @@
+import { apiUrl } from "../native";
 import { randomBytes, toB64 } from "../net/crypto";
 import type { FMsg } from "../friends/protocol";
 import { FRIEND_PROTOCOL } from "../friends/protocol";
@@ -14,7 +15,7 @@ export interface MailboxLike {
   fetch(): Promise<unknown[] | null>;
 }
 
-export const fetchMailApi = (url = "/api/mailbox"): MailApi => ({
+export const fetchMailApi = (url = apiUrl("/api/mailbox")): MailApi => ({
   post: async body => {
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });

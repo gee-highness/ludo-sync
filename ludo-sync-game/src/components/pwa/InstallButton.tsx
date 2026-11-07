@@ -2,6 +2,7 @@
 
 import { Button } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
+import { isNative } from "@/lib/native";
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -18,7 +19,7 @@ export const InstallButton = () => {
     window.addEventListener("appinstalled", onInstalled);
     return () => { window.removeEventListener("beforeinstallprompt", onPrompt); window.removeEventListener("appinstalled", onInstalled); };
   }, []);
-  if (!event) return null;
+  if (!event || isNative()) return null;
   return (
     <Button
       variant="outline" colorScheme="green" size="lg" w="100%"

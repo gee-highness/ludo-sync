@@ -1,4 +1,5 @@
 import { randomBytes, toB64 } from "./crypto";
+import { apiUrl } from "../native";
 import { TransportError, type Bytes, type Endpoint, type EndpointStatus, type Link, type Network } from "./transport";
 
 /** The few parts of a WebRTC connection this needs. A real RTCPeerConnection fits; tests use a fake. */
@@ -25,7 +26,7 @@ export interface RtcPeerLike {
 }
 export interface SignalApi { post(body: unknown): Promise<{ status: number; body: unknown } | null> }
 
-export const fetchSignalApi = (url = "/api/signal"): SignalApi => ({
+export const fetchSignalApi = (url = apiUrl("/api/signal")): SignalApi => ({
   post: async body => {
     try {
       const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), cache: "no-store" });

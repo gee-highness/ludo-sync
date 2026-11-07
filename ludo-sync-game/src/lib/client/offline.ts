@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isNative } from "@/lib/native";
 
 export type OfflineState =
   /** No service worker here (an old browser, or a development build). */
@@ -19,6 +20,8 @@ export const useOfflineState = (): OfflineState => {
   const [state, setState] = useState<OfflineState>({ kind: "checking" });
 
   useEffect(() => {
+    // inside the Android app everything is already on the device
+    if (isNative()) { setState({ kind: "ready" }); return; }
     if (!("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") { setState({ kind: "unsupported" }); return; }
     let cancelled = false;
     const onMessage = (e: MessageEvent) => {

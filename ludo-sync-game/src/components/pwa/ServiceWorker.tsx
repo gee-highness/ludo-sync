@@ -2,13 +2,15 @@
 
 import { Button, useToast } from "@chakra-ui/react";
 import { useEffect } from "react";
+import { isNative } from "@/lib/native";
 
 /** Registers the offline service worker, warms its cache with what this page loaded, and offers updates. */
 export const ServiceWorker = () => {
   const toast = useToast();
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") return;
+    // the Android app carries every file inside itself: no worker, no update toast (a new version arrives as a new app)
+    if (isNative() || !("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") return;
     let refreshing = false;
     // the first time a worker takes charge is not an update: reloading then would throw away a tap made in the first seconds
     let hadController = !!navigator.serviceWorker.controller;

@@ -98,3 +98,13 @@ The track squares are drawn a little dimmer so the dots, pieces and highlights s
 The default board look is neon: dark squares with glowing outlines (a bright thin line over a faint wide one). The track is outlined in pale cyan, stars in yellow,
 and each player's start square, path, home and centre wedge in their own colours, so colour choices show up as light. It is drawn on both boards
 (`Board2D.tsx`, `components/board/neon3d.ts`). Settings > Board theme switches back to Classic and the other palettes. The page background is `#303030`.
+
+## Android app (Capacitor) and PWA backup
+
+The Android app is the main way to play; the PWA is the backup. Both work fully offline (only online rooms and the friends mailbox need a connection).
+
+- `npm run build:native` exports the site to `out/` (server routes set aside) and syncs it into `android/`.
+- `npm run android:debug` builds `android/app/build/outputs/apk/debug/app-debug.apk` (needs JDK 21 and the Android SDK). The same APK is built by the **Android APK** GitHub workflow.
+- Online features in the app call `NEXT_PUBLIC_API_BASE` (default `https://gss-ludo-sync.vercel.app`); the API routes answer CORS for the app's origin.
+- `npx playwright test e2e/native.spec.ts` plays through the exported app, served like Capacitor serves it, with no internet. `e2e/offline.spec.ts` does the same for the PWA.
+- In the app, screens are reached by in-app navigation (Capacitor answers any extension-less address with the home page), and the back button steps back through them.

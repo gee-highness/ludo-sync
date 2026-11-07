@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import { ChakraProviders } from "@/components/ChakraProviders"; // Import the client component
 import { ServiceWorker } from "@/components/pwa/ServiceWorker";
+import { NativeShell } from "@/components/native/NativeShell";
 import { FriendsProvider } from "@/components/friends/FriendsProvider";
 import type { Metadata, Viewport } from "next";
 
@@ -37,6 +38,7 @@ export default function RootLayout({
         <ChakraProviders> {/* Use the client-side ChakraProviders */}
           <FriendsProvider><main id="main">{children}</main></FriendsProvider>
           <ServiceWorker />
+          <NativeShell />
         </ChakraProviders>
       </body>
     </html>

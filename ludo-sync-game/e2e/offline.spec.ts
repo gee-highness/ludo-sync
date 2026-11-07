@@ -81,3 +81,42 @@ test("the 3D tables load from the stored copy with no connection", async ({ page
   await page.goto("/play?preset=bot&quick=1");
   await expect(page.locator("canvas")).toBeVisible({ timeout: 40_000 });
 });
+
+const GAMES = ["fourinrow", "checkers", "casino", "fourcolors", "snakes", "memory", "crazyeights", "solitaire"];
+
+test("every table game opens its play screen and the cards screen with no connection, reached by tapping through the app", async ({ page, context }) => {
+  test.setTimeout(300_000);
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem("ludo-sync:v1:settings", JSON.stringify({ music: false, sound: false, speed: "instant" }));
+      localStorage.setItem("ludo-sync:v1:calm-v1", "true");
+      localStorage.setItem("ludo-sync:v1:road-v1", "true");
+    } catch { /* private window */ }
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("offline-ready")).toBeVisible({ timeout: 120_000 });
+  await context.setOffline(true);
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+
+  for (const id of GAMES) {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.locator(`a[href="/g/${id}"]`).first().click();
+    await expect(page.getByText("Rules: you decide"), `/g/${id} offline`).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/g/${id}/play`));
+    await expect(page.getByRole("heading", { name: "Something went wrong" })).toHaveCount(0);
+    await page.waitForTimeout(1200);
+    // a reload in the middle of a game, still offline, comes back to the same table
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator("canvas, svg, button").first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Something went wrong" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "That page is not on the table" })).toHaveCount(0);
+  }
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.locator('a[href="/cards"]').first().click();
+  await expect(page).toHaveURL(/\/cards$/);
+  await expect(page.getByRole("heading", { name: "That page is not on the table" })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
