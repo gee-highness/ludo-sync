@@ -32,7 +32,7 @@ export default function GarageClient() {
           <Heading as="h1" size="md">Garage</Heading>
         </HStack>
 
-        <SimpleGrid columns={{ base: 3, sm: 5 }} gap={2}>
+        <SimpleGrid columns={{ base: 2, sm: 5 }} gap={2} sx={{ "& > :last-child:nth-child(odd)": { gridColumn: { base: "1 / -1", sm: "auto" } } }}>
           <Tile label="Played" value={stats.played} />
           <Tile label="Won" value={stats.won} />
           <Tile label="Win streak" value={stats.streak} />

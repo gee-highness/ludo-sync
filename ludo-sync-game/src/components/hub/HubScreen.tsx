@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Flex, HStack, Heading, IconButton, Image, Progress, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, HStack, Heading, IconButton, Image, Progress, SimpleGrid, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { sound } from "@/lib/client/audio";
@@ -29,8 +29,8 @@ const Art = ({ id, icon }: { id: string; icon?: string }) =>
 
 interface Tile { key: string; href: string; accent: string; title: string; sub: string; tag?: string }
 
-const Section = ({ label, tone = "gray.400", children, as = "section" }: { label: string; tone?: string; children: React.ReactNode; as?: "section" }) => (
-  <VStack w="100%" align="stretch" spacing={3} as={as} aria-label={label}>
+const Section = ({ label, aria, tone = "gray.400", children, as = "section" }: { label: string; aria?: string; tone?: string; children: React.ReactNode; as?: "section" }) => (
+  <VStack w="100%" align="stretch" spacing={3} as={as} aria-label={aria ?? label}>
     <Text fontSize="xs" textTransform="uppercase" letterSpacing=".12em" color={tone} fontWeight={800} px={1}>{label}</Text>
     {children}
   </VStack>
@@ -120,7 +120,7 @@ export default function HubScreen() {
 
   return (
     <Flex minH="100dvh" color="white" justify="center" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
-      <VStack w="100%" maxW="520px" spacing={6} py={4}>
+      <VStack w="100%" maxW={{ base: "520px", lg: "1000px" }} spacing={6} py={4}>
         {level && (
           <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" border="1px solid" borderColor="whiteAlpha.200" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} title={`${level.into} of ${level.need} experience to the next level`}>
             <Flex w="42px" h="42px" borderRadius="full" bg="linear-gradient(135deg,#6d28d9,#2563eb)" border="3px solid #fde047" align="center" justify="center" fontWeight={900} flexShrink={0}>{level.level}</Flex>
@@ -148,10 +148,10 @@ export default function HubScreen() {
         </Flex>
 
         {pinned.length > 0 && (
-          <Section label="★ Your favourites" tone="yellow.200"><VStack w="100%" spacing={4} as="ul" m={0} p={0} listStyleType="none">{pinned.map(renderCard)}</VStack></Section>
+          <Section label="★ Your favourites" aria="Pinned games" tone="yellow.200"><SimpleGrid w="100%" columns={{ base: 1, lg: 2 }} spacing={4} as="ul" m={0} p={0} listStyleType="none">{pinned.map(renderCard)}</SimpleGrid></Section>
         )}
         <Section label={pinned.length > 0 ? "All games" : "Games"}>
-          <VStack w="100%" spacing={4} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">{others.map(renderCard)}</VStack>
+          <SimpleGrid w="100%" columns={{ base: 1, lg: 2 }} spacing={4} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">{others.map(renderCard)}</SimpleGrid>
         </Section>
 
         {tiles.today.length > 0 && (
