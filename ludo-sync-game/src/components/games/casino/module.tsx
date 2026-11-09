@@ -88,7 +88,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
   }, [frame]);
 
   const pos: Position | null = useMemo(() => me === null ? null : ({
-    rules: view.rules, n: base.players.length, me, hand: view.hand, table: view.table, pileTops: view.pileTops,
+    rules: view.rules, n: base.players.length, deal: view.deal, me, hand: view.hand, table: view.table, pileTops: view.pileTops,
   }), [view, base.players.length, me]);
 
   const items = useMemo(() => (pos ? candidates(pos) : view.table), [pos, view.table]);
@@ -225,7 +225,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
             {picked.length > 0 && <Button size="sm" variant="ghost" color="white" onClick={() => setPicked([])}>Clear</Button>}
           </HStack>
           {myTurn && blocked.length > 0 && <Text textAlign="center" fontSize="xs" color="orange.200" role="status">There is already a build of {blocked.join(" and ")} on the table, and two builds of one number cannot stand. Capture it, or add to it with loose cards that make {blocked.length === 1 ? "that number" : "the number"}.</Text>}
-          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. An opponent\u2019s pile top can join a card or build already on the table (you must hold the card that takes it): tap both, then take it before you play.</Text>}
+          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. To take an opponent\u2019s pile top, tap your card, then their card, then Build (you must hold another card that takes it). Or tap a table card and their pile top to take it before you play.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
           <VStack spacing={2} data-anchor={`pile-${me}`} aria-label="Your pile">
             <HStack justify="center" spacing={3} fontSize="sm" color="gray.200">

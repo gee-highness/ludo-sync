@@ -91,7 +91,11 @@ const sums = (sets: number[][], v: number): boolean => {
 // ---- what a player may do (used by the engine, the bots and the table's hints) ------------------
 
 /** Everything about a position that move rules need: this works from a viewer's own information, so the table can offer exactly the legal moves. */
-export interface Position { rules: RuleValues; n: number; me: number; hand: number[]; table: Item[]; pileTops: (number | null)[] }
+export interface Position { rules: RuleValues; n: number; /** which deal of the match this is (1 is the first) */ deal?: number; me: number; hand: number[]; table: Item[]; pileTops: (number | null)[] }
+
+/** Two players, first deal only: each side may have just one build standing. You can add to it or trail, but a second build has to wait until yours is taken. */
+export const oneBuildOnly = (pos: Position) => flag(pos.rules, "firstDealOneBuild") && pos.n === 2 && pos.deal === 1;
+const otherOwnBuild = (pos: Position, taken: Item[]) => pos.table.some(o => o.build && unitOf(pos.rules, pos.n, o.owner) === unitOf(pos.rules, pos.n, pos.me) && !taken.some(i => i.id === o.id));
 
 export const candidates = (pos: Position): Item[] => {
   const items = [...pos.table];
@@ -122,9 +126,8 @@ export const blockedBuilds = (pos: Position, card: number, items: Item[]): numbe
 const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] => {
   const r = pos.rules;
   if (!flag(r, "builds") || !items.length || solo(r, card)) return [];
-  // an opponent's pile card must go into a build made on something already on the table: a card to build on, or a build you own
-  if (items.some(i => i.pile) && !items.some(i => !i.pile)) return [];
   if (items.some(i => solo(r, i.cards[0]) && !i.build)) return [];
+  if (oneBuildOnly(pos) && otherOwnBuild(pos, items)) return []; // you already have a build: add to it instead
   const mine = unitOf(r, pos.n, pos.me);
   for (const it of items) if (it.build) {
     if (unitOf(r, pos.n, it.owner) === mine ? !flag(r, "increaseOwn") : !flag(r, "increaseOpponents")) return [];
@@ -158,6 +161,7 @@ const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] =
 export const stealValue = (pos: Position, targetId: number, pileId: number): number | null => {
   const r = pos.rules;
   if (!flag(r, "builds") || !flag(r, "stealPileTop")) return null;
+  if (oneBuildOnly(pos) && otherOwnBuild(pos, pos.table.filter(i => i.id === targetId))) return null;
   const top = candidates(pos).find(i => i.id === pileId && i.pile);
   const t = pos.table.find(i => i.id === targetId);
   if (!top || !t) return null;
@@ -202,7 +206,7 @@ export const trailAllowed = (pos: Position, card: number): boolean => {
   const r = pos.rules;
   if (reservedCard(pos, card, [])) return false;
   if (flag(r, "mustCapture") && playsFor(pos, card).some(m => m.type === "capture")) return false;
-  if (flag(r, "ownBuildBlocksTrail") && ownsBuild(pos) && pos.hand.some(c => playsFor(pos, c, 1).length > 0)) return false;
+  if (flag(r, "ownBuildBlocksTrail") && !oneBuildOnly(pos) && ownsBuild(pos) && pos.hand.some(c => playsFor(pos, c, 1).length > 0)) return false;
   return true;
 };
 
@@ -270,7 +274,7 @@ const startDeal = (s: CState, first: boolean) => {
   s.turn = nextFrom(s.rules, s.n, s.dealer);
 };
 
-export const positionOf = (s: CState, me: number): Position => ({ rules: s.rules, n: s.n, me, hand: s.hands[me], table: s.table, pileTops: s.piles.map(p => (p.length ? p[p.length - 1] : null)) });
+export const positionOf = (s: CState, me: number): Position => ({ rules: s.rules, n: s.n, deal: s.deal, me, hand: s.hands[me], table: s.table, pileTops: s.piles.map(p => (p.length ? p[p.length - 1] : null)) });
 
 const cloneS = (s: CState): CState => ({ ...s, hands: s.hands.map(h => h.slice()), deck: s.deck.slice(), table: s.table.map(t => ({ ...t, cards: t.cards.slice() })), piles: s.piles.map(p => p.slice()), locked: s.locked ? s.locked.slice() : s.names.map(() => null), fresh: s.fresh ? s.fresh.slice() : s.names.map(() => 0), sweeps: s.sweeps.slice(), score: s.score.slice(), summary: s.summary });
 

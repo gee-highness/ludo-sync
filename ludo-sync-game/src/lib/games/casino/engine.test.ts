@@ -95,7 +95,7 @@ describe("building", () => {
     expect(apply(s, { type: "build", card: card(3, 1), take: [buildId(0)], value: 12 }, 1)).toBeNull();
   });
   it("a build owner may not trail while owning one (when the rule is on)", () => {
-    const s = mk(); s.hands[0] = [card(2), card(9, 1)]; s.hands[1] = [card(3)]; s.table = [{ id: buildId(0), cards: [card(4), card(5)], build: true, value: 9, owner: 0 }];
+    const s = mk(); s.deal = 2; s.hands[0] = [card(2), card(9, 1)]; s.hands[1] = [card(3)]; s.table = [{ id: buildId(0), cards: [card(4), card(5)], build: true, value: 9, owner: 0 }];
     expect(apply(s, { type: "trail", card: card(2) }, 0)).toBeNull();
     const free = mk({ ownBuildBlocksTrail: false }); free.hands[0] = [card(2), card(9, 1)]; free.hands[1] = [card(3)]; free.table = [{ id: buildId(0), cards: [card(4), card(5)], build: true, value: 9, owner: 0 }];
     expect(apply(free, { type: "trail", card: card(2) }, 0)).not.toBeNull();
@@ -119,14 +119,21 @@ describe("taking from an opponent's pile (African rule)", () => {
     expect(d.view(on, 0).pileTops[1]).toBe(card(2, 3));
     expect(d.view(base({}), 0).pileTops[1]).toBeNull();
   });
-  it("never lets a pile card be played on its own, only joined to something on the table", () => {
+  it("never lets a pile card be captured on its own", () => {
     const on = base({ stealPileTop: true });
     on.hands[0] = [card(2), card(8)];
     expect(apply(on, { type: "capture", card: card(2), take: [201] }, 0)).toBeNull();
-    on.table = [];
-    expect(apply(on, { type: "build", card: card(2), take: [201], value: 4 }, 0)).toBeNull();
     on.table = [loose(card(2, 1))];
     expect(act(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }).piles[1]).toEqual([card(5)]);
+  });
+  it("builds with a card you play and the same card on an opponent's pile, if you hold another", () => {
+    const on = base({ stealPileTop: true, faces: "rank", maxBuild: 13 });
+    on.hands[0] = [card(12), card(12, 1), card(3)]; on.table = []; on.piles[1] = [card(1), card(12, 2)];
+    const t = act(on, { type: "build", card: card(12), take: [201], value: 12 });
+    expect(t.piles[1]).toEqual([card(1)]);
+    expect(t.table.find(i => i.build)!.cards.length).toBe(2);
+    on.hands[0] = [card(12), card(3)]; // no second Q
+    expect(apply(on, { type: "build", card: card(12), take: [201], value: 12 }, 0)).toBeNull();
   });
   it("a 4 on a 5 builds 9 and takes the opponent's 9 on top", () => {
     const on = base({ stealPileTop: true });
@@ -170,6 +177,21 @@ describe("the card that takes your build stays in your hand", () => {
     const s = mk({}); s.hands[0] = [card(9), card(9, 1), card(3)]; s.hands[1] = [card(8)];
     s.table = [{ id: buildId(0), cards: [card(5, 1), card(4, 1)], build: true, value: 9, owner: 0 }, loose(card(6)), loose(card(3, 2))];
     expect(act(s, { type: "capture", card: card(9), take: [card(6), card(3, 2)] }).table.length).toBe(1);
+  });
+});
+
+describe("two players, first deal: one build each", () => {
+  const setup = (deal: number, n = 2) => { const s = mk({}, n); s.deal = deal; s.hands[0] = [card(4), card(7), card(9), card(7, 1)]; s.hands[1] = [card(8)]; s.table = [{ id: buildId(0), cards: [card(5, 1), card(4, 1)], build: true, value: 9, owner: 0 }, loose(card(3, 2)), loose(card(2, 3))]; return s; };
+  const second: CAction = { type: "build", card: card(4), take: [card(3, 2)], value: 7 };
+  it("blocks a second build, but lets you add to your own build and trail", () => {
+    const s = setup(1);
+    expect(apply(s, second, 0)).toBeNull();
+    expect(act(s, { type: "build", card: card(7), take: [buildId(0), card(2, 3)], value: 9 }).table.filter(i => i.build).length).toBe(1);
+    expect(act(s, { type: "trail", card: card(7, 1) }).table.length).toBe(4);
+  });
+  it("does not apply from the second deal, or with more players", () => {
+    expect(act(setup(2), second).table.filter(i => i.build).length).toBe(2);
+    expect(act(setup(1, 3), second).table.filter(i => i.build).length).toBe(2);
   });
 });
 

@@ -20,10 +20,11 @@ export const SCHEMA: RuleSchema = {
     { key: "increaseOwn", kind: "bool", label: "Repeat your own builds", hint: "Add another set of the same number to a build you own (a 5 and a 5, or a 3 and a 2, onto a build of 5). A build's number never goes up", def: true, group: "Building", when: v => v.builds === true },
     { key: "increaseOpponents", kind: "bool", label: "Repeat opponents' builds (and take them over)", hint: "Add another set of the same number to an opponent's build. A build's number never goes up", def: true, group: "Building", when: v => v.builds === true },
     { key: "multiBuilds", kind: "bool", label: "Multiple builds", hint: "Combine several sets of the same value into one build", def: true, group: "Building", when: v => v.builds === true },
+    { key: "firstDealOneBuild", kind: "bool", label: "Two players: one build each in the first deal", hint: "Only in the first deal of a two-player game: you can add to your build or trail, but you cannot make a second build until yours is taken. Later deals have no limit", def: true, group: "Building", when: v => v.builds === true },
     { key: "ownBuildBlocksTrail", kind: "bool", label: "No trailing while you own a build", hint: "You must capture or build again", def: true, group: "Building", when: v => v.builds === true },
 
     { key: "mustCapture", kind: "bool", label: "Must capture when you can", hint: "Off: you may trail a card even if you could capture", def: false, group: "Play" },
-    { key: "stealPileTop", kind: "bool", label: "Take the top card of an opponent's pile", hint: "South African Casino: the top card of an opponent's pile (the card that made their capture) can join a card or build already on the table, in a build or a capture (a 4 on a 5 takes their 9; or before playing, put their 9 on a 9 on the table if you hold a 9)", def: true, group: "Play" },
+    { key: "stealPileTop", kind: "bool", label: "Take the top card of an opponent's pile", hint: "South African Casino: the top card of an opponent's pile (the card that made their capture) can join a card or build on the table, in a build or a capture (a 4 on a 5 takes their 9), or be built with the card you play (a Q and their Q make a 12 if you hold another Q). Before playing you can also put it on a matching table card", def: true, group: "Play" },
     { key: "tableToLast", kind: "bool", label: "Last capture takes the cards left on the table", def: true, group: "Play" },
 
     { key: "ptsCards", kind: "number", label: "Most cards", def: 2, min: 0, max: 10, group: "Scoring" },
