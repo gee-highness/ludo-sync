@@ -38,7 +38,7 @@ const view = (s: CState, viewer: number | null): CView => ({
 
 /** How much a move is worth to a bot: the cards it wins, the special cards, a sweep, and what it leaves for the next player. */
 const worth = (s: CState, p: number, m: CAction, level: BotLevel): number => {
-  if (m.type === "next" || m.type === "arrange") return -1e9;
+  if (m.type === "next" || m.type === "arrange" || m.type === "steal") return -1e9;
   const r = s.rules;
   const point = (c: number) => (c === BIG ? 2 + num(r, "ptsBig") : c === LITTLE ? 1 + num(r, "ptsLittle") : rankOf(c) === 1 ? 1 + num(r, "ptsAce") : suitOf(c) === 3 ? 0.6 : 0.3);
   const next = apply(s, m, p);
@@ -103,6 +103,7 @@ export const casino: GameDriver<CState, CAction, CView> = {
     if (!raw || typeof raw !== "object") return null;
     const o = raw as Record<string, unknown>;
     if (o.type === "next") return { type: "next" };
+    if (o.type === "steal") return Number.isInteger(o.target) && Number.isInteger(o.pile) ? { type: "steal", target: o.target as number, pile: o.pile as number } : null;
     if (o.type === "arrange") { const order = ints(o.order, 52); return order ? { type: "arrange", order } : null; }
     if (!Number.isInteger(o.card) || (o.card as number) < 0 || (o.card as number) > 51) return null;
     if (o.type === "trail") return { type: "trail", card: o.card as number };
@@ -118,6 +119,7 @@ export const casino: GameDriver<CState, CAction, CView> = {
     switch (e.type) {
       case "capture": return `${who} captured ${list(e.cards)} with ${cardName(e.card as number)}`;
       case "build": return `${who} built ${e.value}`;
+      case "steal": return `${who} took a card from a pile and built ${e.value}`;
       case "trail": return `${who} trailed ${cardName(e.card as number)}`;
       case "sweep": return `${who} swept the table!`;
       case "redeal": return "New cards dealt";

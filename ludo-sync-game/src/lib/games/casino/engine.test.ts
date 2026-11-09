@@ -119,15 +119,14 @@ describe("taking from an opponent's pile (African rule)", () => {
     expect(d.view(on, 0).pileTops[1]).toBe(card(2, 3));
     expect(d.view(base({}), 0).pileTops[1]).toBeNull();
   });
-  it("treats the pile top as a table card: capture it, or sum it into a capture", () => {
+  it("never lets a pile card be played on its own, only joined to something on the table", () => {
     const on = base({ stealPileTop: true });
     on.hands[0] = [card(2), card(8)];
-    expect(act(on, { type: "capture", card: card(2), take: [201] }).piles[1]).toEqual([card(5)]);
+    expect(apply(on, { type: "capture", card: card(2), take: [201] }, 0)).toBeNull();
+    on.table = [];
+    expect(apply(on, { type: "build", card: card(2), take: [201], value: 4 }, 0)).toBeNull();
     on.table = [loose(card(2, 1))];
-    expect(act(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }).table.length).toBe(0);
-    const off = base({});
-    off.hands[0] = [card(2), card(8)];
-    expect(apply(off, { type: "capture", card: card(2), take: [201] }, 0)).toBeNull();
+    expect(act(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }).piles[1]).toEqual([card(5)]);
   });
   it("a 4 on a 5 builds 9 and takes the opponent's 9 on top", () => {
     const on = base({ stealPileTop: true });
@@ -136,18 +135,41 @@ describe("taking from an opponent's pile (African rule)", () => {
     expect(t.piles[1]).toEqual([card(1)]);
     expect(t.table.find(i => i.build)!.cards.length).toBe(3);
   });
-  it("a 9 played builds with the opponent's 9 on top when no 9 is on the table", () => {
+  it("before playing, puts their 9 on a 9 on the table when you hold a 9, and the turn goes on", () => {
     const on = base({ stealPileTop: true });
-    on.hands[0] = [card(9), card(9, 1)]; on.table = []; on.piles[1] = [card(1), card(9, 2)];
-    const t = act(on, { type: "build", card: card(9), take: [201], value: 9 });
+    on.hands[0] = [card(9, 1), card(3)]; on.table = [loose(card(9))]; on.piles[1] = [card(1), card(9, 2)];
+    const t = act(on, { type: "steal", target: card(9), pile: 201 });
+    expect(t.turn).toBe(0);
+    expect(t.hands[0].length).toBe(2);
     expect(t.piles[1]).toEqual([card(1)]);
-    expect(t.table.find(i => i.build)!.cards.length).toBe(2);
+    const b = t.table.find(i => i.build)!;
+    expect(b.value).toBe(9); expect(b.cards.length).toBe(2); expect(b.owner).toBe(0);
+    expect(act(t, { type: "capture", card: card(9, 1), take: [b.id] }).table.length).toBe(0);
+    on.hands[0] = [card(3)]; // no 9 to take it with
+    expect(apply(on, { type: "steal", target: card(9), pile: 201 }, 0)).toBeNull();
+    expect(apply(base({}), { type: "steal", target: card(9), pile: 201 }, 0)).toBeNull();
   });
   it("lets you add a pile card to a build you already own", () => {
     const on = base({ stealPileTop: true });
     on.hands[0] = [card(5), card(8)]; on.table = [{ id: buildId(0), cards: [card(5, 1), card(3, 1)], build: true, value: 8, owner: 0 }]; on.piles[1] = [card(1), card(3, 2)];
     const t = act(on, { type: "build", card: card(5), take: [buildId(0), 201], value: 8 }, 0); // the pile 3 and your 5 make a second 8 with the build
     expect(t.piles[1]).toEqual([card(1)]);
+  });
+});
+
+describe("the card that takes your build stays in your hand", () => {
+  it("cannot be trailed, used elsewhere or built with while the build stands, only used to capture it", () => {
+    const s = mk({}); s.hands[0] = [card(9), card(3)]; s.hands[1] = [card(8)];
+    s.table = [{ id: buildId(0), cards: [card(5, 1), card(4, 1)], build: true, value: 9, owner: 0 }, loose(card(6)), loose(card(3, 2))];
+    expect(apply(s, { type: "trail", card: card(9) }, 0)).toBeNull();
+    expect(apply(s, { type: "capture", card: card(9), take: [card(6), card(3, 2)] }, 0)).toBeNull();
+    expect(act(s, { type: "capture", card: card(9), take: [buildId(0)] }).table.length).toBe(2);
+    expect(act(s, { type: "capture", card: card(9), take: [buildId(0), card(6), card(3, 2)] }).table.length).toBe(0);
+  });
+  it("is free to use when you hold a second one", () => {
+    const s = mk({}); s.hands[0] = [card(9), card(9, 1), card(3)]; s.hands[1] = [card(8)];
+    s.table = [{ id: buildId(0), cards: [card(5, 1), card(4, 1)], build: true, value: 9, owner: 0 }, loose(card(6)), loose(card(3, 2))];
+    expect(act(s, { type: "capture", card: card(9), take: [card(6), card(3, 2)] }).table.length).toBe(1);
   });
 });
 

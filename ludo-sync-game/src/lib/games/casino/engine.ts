@@ -46,6 +46,8 @@ export type CAction =
   | { type: "capture"; card: number; take: number[] }
   | { type: "build"; card: number; take: number[]; value: number }
   | { type: "trail"; card: number }
+  /** Before playing: put the top card of an opponent's pile on a matching card or build already on the table to make (or join) a build. Your turn goes on. */
+  | { type: "steal"; target: number; pile: number }
   /** Reorders your own pile (bottom first). The card of your latest capture must stay on top. Allowed at any time during play. */
   | { type: "arrange"; order: number[] }
   | { type: "next" };
@@ -98,7 +100,7 @@ export const candidates = (pos: Position): Item[] => {
 };
 
 export const isCapture = (pos: Position, card: number, items: Item[]): boolean => {
-  if (!items.length) return false; // an opponent's pile top counts as a loose card: it can be captured, or summed into a capture
+  if (!items.length || !items.some(i => !i.pile)) return false; // an opponent's pile top only joins a base that is already on the table
   const opts = items.map(it => optOf(pos.rules, it));
   if (solo(pos.rules, card)) return items.every(it => (it.build ? it.value === rankOf(card) : it.cards.length === 1 && rankOf(it.cards[0]) === rankOf(card)));
   return valuesOf(pos.rules, card).some(v => partition(opts, v, false));
@@ -120,6 +122,8 @@ export const blockedBuilds = (pos: Position, card: number, items: Item[]): numbe
 const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] => {
   const r = pos.rules;
   if (!flag(r, "builds") || !items.length || solo(r, card)) return [];
+  // an opponent's pile card must go into a build made on something already on the table: a card to build on, or a build you own
+  if (items.some(i => i.pile) && !items.some(i => !i.pile)) return [];
   if (items.some(i => solo(r, i.cards[0]) && !i.build)) return [];
   const mine = unitOf(r, pos.n, pos.me);
   for (const it of items) if (it.build) {
@@ -150,6 +154,31 @@ const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] =
   return out;
 };
 
+/** Can the pile top (id PILE_ID+o) be put on this table item before you play? Returns the build's number. */
+export const stealValue = (pos: Position, targetId: number, pileId: number): number | null => {
+  const r = pos.rules;
+  if (!flag(r, "builds") || !flag(r, "stealPileTop")) return null;
+  const top = candidates(pos).find(i => i.id === pileId && i.pile);
+  const t = pos.table.find(i => i.id === targetId);
+  if (!top || !t) return null;
+  // you must hold a card that can capture the build (or already own another build of that number)
+  const holds = (v: number) => !flag(r, "buildNeedsCard") || pos.hand.some(c => valuesOf(r, c).includes(v)) || pos.table.some(o => o.build && o.owner === pos.me && o.value === v && o.id !== targetId);
+  if (t.build) {
+    if (unitOf(r, pos.n, t.owner) === unitOf(r, pos.n, pos.me) ? !flag(r, "increaseOwn") : !flag(r, "increaseOpponents")) return null;
+    return valuesOf(r, top.cards[0]).includes(t.value) && holds(t.value) ? t.value : null;
+  }
+  if (solo(r, t.cards[0]) || solo(r, top.cards[0])) return null;
+  const v = valuesOf(r, t.cards[0]).find(x => valuesOf(r, top.cards[0]).includes(x));
+  if (v === undefined || v < 2 || v > num(r, "maxBuild")) return null;
+  if (pos.table.some(o => o.build && o.value === v)) return null; // only one build of a number
+  return holds(v) ? v : null;
+};
+
+/** Is this card the only one in your hand that can take a build you own, and is it being used for anything but taking that build? Then it must stay in your hand. */
+export const reservedCard = (pos: Position, card: number, taken: Item[]): boolean =>
+  flag(pos.rules, "buildNeedsCard") && pos.table.some(o => o.build && unitOf(pos.rules, pos.n, o.owner) === unitOf(pos.rules, pos.n, pos.me) && !taken.some(i => i.id === o.id)
+    && valuesOf(pos.rules, card).includes(o.value) && !pos.hand.some(c => c !== card && valuesOf(pos.rules, c).includes(o.value)));
+
 export interface Move { action: CAction; label: string; cards: number; }
 
 export const ownsBuild = (pos: Position) => pos.table.some(t => t.build && unitOf(pos.rules, pos.n, t.owner) === unitOf(pos.rules, pos.n, pos.me));
@@ -161,6 +190,7 @@ const playsFor = (pos: Position, card: number, limit = 4096): CAction[] => {
   const pool = cands.slice(0, Math.min(cands.length, 13));
   for (let mask = 1; mask < 1 << pool.length && out.length < limit; mask++) {
     const items = pool.filter((_, i) => (mask >> i) & 1);
+    if (reservedCard(pos, card, items)) continue;
     if (isCapture(pos, card, items)) out.push({ type: "capture", card, take: items.map(i => i.id) });
     for (const b of buildOptions(pos, card, items)) out.push({ type: "build", card, take: items.map(i => i.id), value: b });
   }
@@ -170,6 +200,7 @@ const playsFor = (pos: Position, card: number, limit = 4096): CAction[] => {
 /** May this card simply be put on the table? Trailing can be restricted, but a player is never left with no move at all. */
 export const trailAllowed = (pos: Position, card: number): boolean => {
   const r = pos.rules;
+  if (reservedCard(pos, card, [])) return false;
   if (flag(r, "mustCapture") && playsFor(pos, card).some(m => m.type === "capture")) return false;
   if (flag(r, "ownBuildBlocksTrail") && ownsBuild(pos) && pos.hand.some(c => playsFor(pos, c, 1).length > 0)) return false;
   return true;
@@ -289,6 +320,17 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
     return { state: s, events: [{ type: "arrange", p: by }] };
   }
   if (s.phase !== "play" || by !== s.turn) return null;
+  if (a.type === "steal") {
+    const v = stealValue(positionOf(s, by), a.target, a.pile);
+    if (v === null) return null;
+    const [pileItem] = takeItems(s, [a.pile]) ?? [];
+    const target = s.table.find(t => t.id === a.target);
+    if (!pileItem || !target) return null;
+    removeTaken(s, [pileItem]);
+    s.table = s.table.filter(t => t.id !== target.id);
+    s.table.push({ id: buildId(s.nextBuild++), cards: [...target.cards, ...pileItem.cards], build: true, value: v, owner: by });
+    return { state: s, events: [{ type: "steal", p: by, value: v }] };
+  }
   const hand = s.hands[by];
   if (!hand.includes(a.card)) return null;
   const pos = positionOf(s, by);
@@ -304,6 +346,7 @@ export const apply = (state: CState, a: CAction, by: number): { state: CState; e
     if (!Array.isArray(a.take) || a.take.length < 1 || a.take.length > 14) return null;
     const items = takeItems(s, a.take);
     if (!items) return null;
+    if (reservedCard(pos, a.card, items)) return null;
     if (a.type === "capture") {
       if (!isCapture(pos, a.card, items)) return null;
       hand.splice(hand.indexOf(a.card), 1);
