@@ -119,14 +119,29 @@ describe("taking from an opponent's pile (African rule)", () => {
     expect(d.view(on, 0).pileTops[1]).toBe(card(2, 3));
     expect(d.view(base({}), 0).pileTops[1]).toBeNull();
   });
-  it("never lets a pile card be captured, and never builds on the pile card alone", () => {
+  it("treats the pile top as a table card: capture it, or sum it into a capture", () => {
     const on = base({ stealPileTop: true });
     on.hands[0] = [card(2), card(8)];
-    expect(apply(on, { type: "capture", card: card(2), take: [200 + 1] }, 0)).toBeNull();
+    expect(act(on, { type: "capture", card: card(2), take: [201] }).piles[1]).toEqual([card(5)]);
     on.table = [loose(card(2, 1))];
-    expect(apply(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }, 0)).toBeNull();
-    on.table = [];
-    expect(apply(on, { type: "build", card: card(2), take: [201], value: 4 }, 0)).toBeNull();
+    expect(act(on, { type: "capture", card: card(2), take: [card(2, 1), 201] }).table.length).toBe(0);
+    const off = base({});
+    off.hands[0] = [card(2), card(8)];
+    expect(apply(off, { type: "capture", card: card(2), take: [201] }, 0)).toBeNull();
+  });
+  it("a 4 on a 5 builds 9 and takes the opponent's 9 on top", () => {
+    const on = base({ stealPileTop: true });
+    on.hands[0] = [card(4, 1), card(9)]; on.table = [loose(card(5))]; on.piles[1] = [card(1), card(9, 2)];
+    const t = act(on, { type: "build", card: card(4, 1), take: [card(5), 201], value: 9 });
+    expect(t.piles[1]).toEqual([card(1)]);
+    expect(t.table.find(i => i.build)!.cards.length).toBe(3);
+  });
+  it("a 9 played builds with the opponent's 9 on top when no 9 is on the table", () => {
+    const on = base({ stealPileTop: true });
+    on.hands[0] = [card(9), card(9, 1)]; on.table = []; on.piles[1] = [card(1), card(9, 2)];
+    const t = act(on, { type: "build", card: card(9), take: [201], value: 9 });
+    expect(t.piles[1]).toEqual([card(1)]);
+    expect(t.table.find(i => i.build)!.cards.length).toBe(2);
   });
   it("lets you add a pile card to a build you already own", () => {
     const on = base({ stealPileTop: true });

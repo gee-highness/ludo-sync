@@ -222,7 +222,7 @@ function Table({ base, view, act, frame }: TableProps<CView, CAction>) {
             {picked.length > 0 && <Button size="sm" variant="ghost" color="white" onClick={() => setPicked([])}>Clear</Button>}
           </HStack>
           {myTurn && blocked.length > 0 && <Text textAlign="center" fontSize="xs" color="orange.200" role="status">There is already a build of {blocked.join(" and ")} on the table, and two builds of one number cannot stand. Capture it, or add to it with loose cards that make {blocked.length === 1 ? "that number" : "the number"}.</Text>}
-          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. An opponent\u2019s pile card can only be added to a build.</Text>}
+          {myTurn && card === null && <Text textAlign="center" fontSize="sm" color="gray.300">Tap a card in your hand, then the table cards you want to take or build with. An opponent\u2019s pile top counts as a table card: capture it or add it to a build.</Text>}
           {myTurn && card !== null && owns && <Text textAlign="center" fontSize="xs" color="orange.200">You own a build, so trailing is not allowed while you can capture or build.</Text>}
           <VStack spacing={2} data-anchor={`pile-${me}`} aria-label="Your pile">
             <HStack justify="center" spacing={3} fontSize="sm" color="gray.200">

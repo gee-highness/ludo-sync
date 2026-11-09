@@ -98,7 +98,7 @@ export const candidates = (pos: Position): Item[] => {
 };
 
 export const isCapture = (pos: Position, card: number, items: Item[]): boolean => {
-  if (!items.length || items.some(i => i.pile)) return false; // a card on an opponent's pile can only be added to a build
+  if (!items.length) return false; // an opponent's pile top counts as a loose card: it can be captured, or summed into a capture
   const opts = items.map(it => optOf(pos.rules, it));
   if (solo(pos.rules, card)) return items.every(it => (it.build ? it.value === rankOf(card) : it.cards.length === 1 && rankOf(it.cards[0]) === rankOf(card)));
   return valuesOf(pos.rules, card).some(v => partition(opts, v, false));
@@ -120,8 +120,6 @@ export const blockedBuilds = (pos: Position, card: number, items: Item[]): numbe
 const buildOptionsAny = (pos: Position, card: number, items: Item[]): number[] => {
   const r = pos.rules;
   if (!flag(r, "builds") || !items.length || solo(r, card)) return [];
-  // an opponent's pile card must go into a build made on something already on the table: a card to build on, or a build you own
-  if (items.some(i => i.pile) && !items.some(i => !i.pile)) return [];
   if (items.some(i => solo(r, i.cards[0]) && !i.build)) return [];
   const mine = unitOf(r, pos.n, pos.me);
   for (const it of items) if (it.build) {
