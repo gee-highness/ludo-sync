@@ -46,7 +46,7 @@ export default function ProfileClient() {
   const total = ACHIEVEMENTS.length + sbAch.length;
 
   return (
-    <Flex minH="100dvh" bg="#303030" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+    <Flex minH="100dvh" bg="transparent" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="680px" spacing={5} align="stretch">
         <HStack>
           <IconButton as={Link} href="/" aria-label="Back to games" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" />

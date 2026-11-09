@@ -5,7 +5,7 @@ export const metadata = { title: "Not found · Ludo Sync" };
 
 export default function NotFound() {
   return (
-    <Center minH="100dvh" bg="#303030" color="white" p={6}>
+    <Center minH="100dvh" bg="#0b1020" color="white" p={6}>
       <VStack spacing={4} textAlign="center" maxW="360px">
         <Text fontSize="5xl" aria-hidden>🃏</Text>
         <Heading as="h1" size="lg">That page is not on the table</Heading>

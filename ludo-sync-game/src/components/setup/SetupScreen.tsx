@@ -72,7 +72,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
   };
 
   return (
-    <Flex minH="100dvh" bg="#303030" color="white" justify="center" position="relative" isolation="isolate" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+    <Flex minH="100dvh" bg="transparent" color="white" justify="center" position="relative" isolation="isolate" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="560px" align="stretch" spacing={5} p={3} borderRadius="2xl">
         <HStack>
           <IconButton aria-label="Back to menu" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
@@ -85,7 +85,7 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
             const info = SEAT_INFO[seat];
             return (
               <VStack key={seat} align="stretch" spacing={2}>
-              <HStack bg="whiteAlpha.100" p={3} borderRadius="xl" spacing={3} border="2px solid" borderColor={s.kind === "off" ? "transparent" : info.main}>
+              <HStack bg="whiteAlpha.100" p={3} borderRadius="2xl" spacing={3} wrap="wrap" border="2px solid" borderColor={s.kind === "off" ? "transparent" : info.main}>
                 <Box w="30px" h="30px" borderRadius="full" flexShrink={0} bg={s.kind === "off" ? "gray.600" : info.main} border="2px solid #fff" aria-hidden />
                 <Select
                   w="112px" minW="104px" flexShrink={0} size="sm" bg="gray.700" aria-label={`${info.name} player type`} value={s.kind}
@@ -95,12 +95,12 @@ export default function SetupScreen({ preset, onStart, onBack }: Props) {
                 </Select>
                 {s.kind === "human" && (
                   <Input
-                    size="sm" minW={0} bg="gray.700" placeholder={`Player ${seat + 1}`} value={s.name} maxLength={20} aria-label={`${info.name} player name`}
+                    size="sm" flex="1 1 120px" minW="120px" bg="gray.700" placeholder={`Player ${seat + 1}`} value={s.name} maxLength={20} aria-label={`${info.name} player name`}
                     onChange={e => patch(seat, { name: e.target.value })}
                   />
                 )}
                 {s.kind === "bot" && (
-                  <Select size="sm" bg="gray.700" aria-label={`${info.name} bot level`} value={s.level} onChange={e => patch(seat, { level: e.target.value as BotLevel })}>
+                  <Select size="sm" flex="1 1 90px" minW="90px" bg="gray.700" aria-label={`${info.name} bot level`} value={s.level} onChange={e => patch(seat, { level: e.target.value as BotLevel })}>
                     <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option>
                   </Select>
                 )}

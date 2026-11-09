@@ -20,7 +20,7 @@ import { GuestPairing } from "./GuestPairing";
 const TITLE = "Nearby game";
 
 const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
-  <Flex minH="100dvh" bg="#303030" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
+  <Flex minH="100dvh" bg="transparent" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
     <VStack w="100%" maxW="460px" spacing={4} align="stretch">
       <HStack>
         <IconButton aria-label="Back" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
@@ -50,7 +50,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
 
   if (!session || !snap || snap.status === "opening") {
-    return <Center minH="100dvh" bg="#303030"><VStack color="white"><Spinner size="xl" /><Text>Getting ready…</Text></VStack></Center>;
+    return <Center minH="100dvh" bg="#0b1020"><VStack color="white"><Spinner size="xl" /><Text>Getting ready…</Text></VStack></Center>;
   }
   if (snap.status === "error") return <Notice title="Could not start" text={snap.error ?? "Try again."} onBack={leave} />;
   if (snap.status === "closed") return <Notice title="Game closed" text="This game is no longer open." onBack={leave} />;
@@ -101,7 +101,7 @@ function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit
   usePaletteSync(snap?.room ?? null, client ? c => client.setColors(c) : undefined);
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
 
-  if (!client || !snap) return <Center minH="100dvh" bg="#303030"><Spinner size="xl" color="white" /></Center>;
+  if (!client || !snap) return <Center minH="100dvh" bg="#0b1020"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this game." onBack={leave} />;
   if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the game or lost the connection." onBack={leave} />;
   if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={leave} />;
@@ -162,7 +162,7 @@ export default function NearbyClient() {
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 
-  if (!ready) return <Center minH="100dvh" bg="#303030"><Spinner color="white" size="xl" /></Center>;
+  if (!ready) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   if (step.kind === "host") return <HostFlow name={finalName} onExit={exit} />;
   if (step.kind === "join") return <GuestFlow name={finalName} note={step.note} onExit={exit} />;
 

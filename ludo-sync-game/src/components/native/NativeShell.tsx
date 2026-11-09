@@ -21,7 +21,7 @@ export const NativeShell = () => {
         });
         off = () => void h.remove();
         await StatusBar.setStyle({ style: Style.Dark }).catch(() => undefined);
-        await StatusBar.setBackgroundColor({ color: "#303030" }).catch(() => undefined);
+        await StatusBar.setBackgroundColor({ color: "#0b1020" }).catch(() => undefined);
         await SplashScreen.hide().catch(() => undefined);
       } catch { /* a plugin that is missing must never stop the games */ }
     })();

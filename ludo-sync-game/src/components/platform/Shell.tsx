@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 import { usePins } from "@/lib/client/pins";
 
-export const BG = "#0f172a";
+export const BG = "transparent";
 
 /** Pins or unpins a game; pinned games sit at the top of the home screen. */
 export const PinButton = ({ id, name }: { id: string; name: string }) => {
@@ -19,11 +19,11 @@ export const PinButton = ({ id, name }: { id: string; name: string }) => {
 };
 
 export const Shell = ({ title, onBack, children, accent = "#eab308", pinId }: { title: string; onBack: () => void; children: ReactNode; accent?: string; pinId?: string }) => (
-  <Flex minH="100dvh" bg={BG} color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))" borderTop="4px solid" borderTopColor={accent}>
+  <Flex minH="100dvh" bg={BG} color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))" bgGradient={`linear(to-b, ${accent}2e, transparent 240px)`}>
     <VStack w="100%" maxW="480px" spacing={4} align="stretch" as="main">
       <HStack>
         <IconButton aria-label="Back" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
-        <Heading as="h1" size="md" flex={1}>{title}</Heading>
+        <Heading as="h1" size="md" flex={1} letterSpacing="-0.01em">{title}</Heading>
         {pinId && <PinButton id={pinId} name={title} />}
       </HStack>
       {children}

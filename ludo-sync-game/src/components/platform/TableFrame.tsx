@@ -12,7 +12,6 @@ import { describeStreak } from "@/lib/client/streak";
 import { metaOf } from "@/lib/platform/registry";
 import { describeRules, type RuleValues } from "@/lib/platform/rules";
 import type { BaseView, GameModule, GameEvent } from "@/lib/platform/types";
-import { BG } from "./Shell";
 
 export const SEAT_COLOURS = ["#ef4444", "#eab308", "#22c55e", "#3b82f6", "#a855f7", "#f97316", "#14b8a6", "#ec4899", "#84cc16", "#64748b"];
 
@@ -82,10 +81,10 @@ export function TableFrame(p: FrameProps) {
   const streak = p.award?.streak ? describeStreak(p.award.streak) : null;
 
   return (
-    <Flex direction="column" minH="100dvh" bg={BG} color="white" pt="max(8px, env(safe-area-inset-top))" pb="max(8px, env(safe-area-inset-bottom))" px={2} borderTop="4px solid" borderTopColor={mod.accent}>
+    <Flex direction="column" minH="100dvh" bg={`linear-gradient(180deg, ${mod.accent}33 0%, transparent 220px), #0b1020`} color="white" pt="max(8px, env(safe-area-inset-top))" pb="max(8px, env(safe-area-inset-bottom))" px={2}>
       <HStack spacing={1} mb={1}>
         <IconButton aria-label="Leave the table" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={leave.onOpen} />
-        <Text fontWeight={800} flex={1} noOfLines={1} as="h1">{p.title}</Text>
+        <Text fontWeight={900} fontSize="lg" letterSpacing="-0.01em" flex={1} noOfLines={1} as="h1">{p.title}</Text>
         {p.note && <Badge colorScheme="orange">{p.note}</Badge>}
         {p.headerExtra}
         <Button size="sm" variant="outline" color="white" onClick={() => openMenu("settings")} aria-label="Menu: settings, rules, how to play, log, controls" leftIcon={<span aria-hidden>☰</span>}>Menu</Button>
@@ -95,7 +94,7 @@ export function TableFrame(p: FrameProps) {
         {base.players.map((pl, i) => {
           const active = base.actors.includes(i);
           return (
-            <HStack key={i} role="listitem" spacing={2} px={3} py={1} borderRadius="full" flexShrink={0} bg={active ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={active ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "transparent"}>
+            <HStack key={i} role="listitem" spacing={2} px={3} py={1} borderRadius="full" flexShrink={0} bg={active ? "whiteAlpha.300" : "whiteAlpha.100"} border="2px solid" borderColor={active ? SEAT_COLOURS[i % SEAT_COLOURS.length] : "whiteAlpha.100"} boxShadow={active ? `0 0 0 4px ${SEAT_COLOURS[i % SEAT_COLOURS.length]}33` : "none"} transition="all .2s">
               <Box w="10px" h="10px" borderRadius="full" bg={SEAT_COLOURS[i % SEAT_COLOURS.length]} aria-hidden />
               <Text fontSize="sm" fontWeight={700} noOfLines={1} maxW="110px">{pl.name}{you === i ? " (you)" : ""}</Text>
               {pl.kind === "bot" && <Badge fontSize="2xs">{pl.level}</Badge>}
@@ -106,7 +105,7 @@ export function TableFrame(p: FrameProps) {
         })}
       </HStack>
 
-      <Box role="status" aria-live="polite" textAlign="center" py={1} fontWeight={800} color={myTurn ? "yellow.200" : "gray.300"}>
+      <Box role="status" aria-live="polite" textAlign="center" alignSelf="center" my={1} px={4} py="3px" borderRadius="full" fontWeight={800} bg={myTurn ? "rgba(250,204,21,.14)" : "whiteAlpha.100"} border="1px solid" borderColor={myTurn ? "rgba(250,204,21,.45)" : "whiteAlpha.100"} color={myTurn ? "yellow.200" : "gray.300"}>
         {p.rejected ? `That move is not allowed (${p.rejected.replace(/-/g, " ")})` : base.prompt}
       </Box>
 
@@ -121,7 +120,7 @@ export function TableFrame(p: FrameProps) {
 
       {base.over && (
         <Flex position="fixed" inset={0} zIndex={50} bg="blackAlpha.700" align="center" justify="center" p={4} role="dialog" aria-modal="true" aria-label="Game over">
-          <VStack bg="gray.800" borderRadius="2xl" p={6} spacing={3} maxW="380px" w="100%" textAlign="center" border="2px solid" borderColor={mod.accent}>
+          <VStack bg={`linear-gradient(180deg, ${mod.accent}33, #151a2b 55%)`} borderRadius="3xl" p={7} spacing={3} maxW="380px" w="100%" textAlign="center" border="1px solid" borderColor={mod.accent} boxShadow="lift">
             <Text fontSize="4xl" aria-hidden>{won ? "🏆" : "🎲"}</Text>
             <Text fontSize="xl" fontWeight={900}>{you === null ? `${winnerNames || "Nobody"} won` : won ? "You won!" : winnerNames ? `${winnerNames} won` : "A draw"}</Text>
             {p.award && (

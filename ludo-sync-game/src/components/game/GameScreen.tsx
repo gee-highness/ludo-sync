@@ -503,7 +503,7 @@ export default function GameScreen(props: GameScreenProps) {
 
   return (
     <Flex
-      direction="column" h="100dvh" w="100%" bg={immersive ? "#0a0d16" : "#303030"} color="white" overflow="hidden" position="relative" isolation="isolate"
+      direction="column" h="100dvh" w="100%" bg={immersive ? "#0a0d16" : "#0b1020"} color="white" overflow="hidden" position="relative" isolation="isolate"
       pt="env(safe-area-inset-top)" pb="env(safe-area-inset-bottom)" pl="env(safe-area-inset-left)" pr="env(safe-area-inset-right)"
     >
       {showScenery && <Scenery phase={phase} weather={settings.weather} traffic={settings.traffic} seats={seatList} reduceMotion={reduceMotion} />}

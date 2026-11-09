@@ -20,7 +20,7 @@ function LocalTable({ mod, initial, onExit }: { mod: GameModule; initial: Parame
       <TableFrame mod={mod} base={t.base} view={t.view} rules={t.rules} frame={t.frame} log={t.log} act={t.act} title={hotseat ? `${mod.driver.name} · pass and play` : mod.driver.name}
         onExit={onExit} onRematch={t.rematch} award={t.award} />
       {t.covered && (
-        <Center position="fixed" inset={0} zIndex={100} bg={BG} color="white" p={6} role="dialog" aria-modal="true" aria-label={`Pass the device to ${t.coverName}`}>
+        <Center position="fixed" inset={0} zIndex={100} bg="#0b1020" color="white" p={6} role="dialog" aria-modal="true" aria-label={`Pass the device to ${t.coverName}`}>
           <VStack spacing={4} textAlign="center" maxW="360px">
             <Text fontSize="5xl" aria-hidden>🤫</Text>
             <Heading size="lg">Pass to {t.coverName}</Heading>
@@ -58,7 +58,7 @@ export default function PlayClient({ gameId }: { gameId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (state === "none") return <Center minH="100dvh" bg={BG} color="white"><Text>That game does not exist.</Text></Center>;
-  if (!state) return <Center minH="100dvh" bg={BG}><Spinner color="white" size="xl" /></Center>;
+  if (state === "none") return <Center minH="100dvh" bg="#0b1020" color="white"><Text>That game does not exist.</Text></Center>;
+  if (!state) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   return <LocalTable mod={state.mod} initial={state.initial} onExit={() => router.push(`/g/${gameId}`)} />;
 }

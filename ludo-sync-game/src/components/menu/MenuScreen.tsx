@@ -1,7 +1,7 @@
 "use client";
 
 import { Credit } from "@/components/platform/Credit";
-import { Box, Button, Flex, HStack, Heading, Image, Text, VStack, useDisclosure } from "@chakra-ui/react";
+import { Box, Button, Flex, HStack, Heading, Image, SimpleGrid, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -33,12 +33,12 @@ export default function MenuScreen() {
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
   return (
-    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #444444 0%, #303030 60%)" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
+    <Flex minH="100dvh" bg="transparent" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
       px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
       <VStack w="100%" maxW="420px" spacing={4} py={6} px={4} borderRadius="2xl">
         <Button as={Link} href="/" variant="ghost" color="whiteAlpha.800" size="sm" alignSelf="flex-start" leftIcon={<span aria-hidden>‹</span>}>All games</Button>
-        <Image src="/icons/icon-192x192.png" alt="" w="96px" h="96px" borderRadius="22px" boxShadow="0 10px 30px rgba(0,0,0,.45)" />
-        <Heading size="2xl" letterSpacing="-0.02em">Ludo</Heading>
+        <Image src="/icons/icon-192x192.png" alt="" w="96px" h="96px" borderRadius="22px" boxShadow="0 12px 34px -8px rgba(229,62,62,.6)" />
+        <Heading size="2xl" letterSpacing="-0.03em" bgGradient="linear(to-r, #fff, #fca5a5)" bgClip="text">Ludo</Heading>
         <Text color="gray.300" textAlign="center">Classic Ludo for 2 to 4 players. Works fully offline.</Text>
         <OfflineBadge />
 
@@ -76,16 +76,14 @@ export default function MenuScreen() {
           <Button colorScheme="cyan" size="lg" w="100%" h="auto" py={3} onClick={go("/nearby")}>
             <VStack spacing={0}><Text>Play nearby</Text><Text fontSize="xs" fontWeight={400}>Two phones, no internet needed</Text></VStack>
           </Button>
-          <HStack w="100%" spacing={2}>
-            <Button variant="outline" color="white" flex={1} onClick={go("/pieces")}>Piece maker</Button>
-            <Button variant="outline" color="white" flex={1} onClick={go("/island")}>Island maker</Button>
-          </HStack>
-          <Button variant="outline" color="white" w="100%" onClick={go("/garage")}>Garage and achievements</Button>
+          <SimpleGrid columns={2} spacing={3} w="100%" pt={1}>
+            <Button variant="outline" h="64px" flexDir="column" gap={0} onClick={go("/pieces")}><Text fontSize="xl" aria-hidden>🚗</Text><Text fontSize="sm">Piece maker</Text></Button>
+            <Button variant="outline" h="64px" flexDir="column" gap={0} onClick={go("/island")}><Text fontSize="xl" aria-hidden>🏝️</Text><Text fontSize="sm">Island maker</Text></Button>
+            <Button variant="outline" h="64px" flexDir="column" gap={0} onClick={go("/garage")}><Text fontSize="xl" aria-hidden>🏆</Text><Text fontSize="sm">Garage</Text></Button>
+            <Button variant="outline" h="64px" flexDir="column" gap={0} onClick={prefs.onOpen}><Text fontSize="xl" aria-hidden>⚙️</Text><Text fontSize="sm">Settings</Text></Button>
+          </SimpleGrid>
           <InstallButton />
-          <HStack w="100%" spacing={3}>
-            <Button variant="outline" color="white" flex={1} onClick={help.onOpen}>How to play</Button>
-            <Button variant="outline" color="white" flex={1} onClick={prefs.onOpen}>Settings</Button>
-          </HStack>
+          <Button variant="ghost" color="gray.200" w="100%" onClick={help.onOpen}>How to play</Button>
         </VStack>
 
         {stats && stats.played > 0 && (

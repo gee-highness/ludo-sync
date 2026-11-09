@@ -83,7 +83,7 @@ export default function PlayClient() {
   const exit = useCallback(() => router.push("/ludo"), [router]);
   const key = useMemo(() => started?.state.seq === 0 ? `${started.state.rng}` : "game", [started]);
 
-  if (!ready) return <Center h="100dvh" bg="#303030"><Spinner color="white" size="xl" /></Center>;
+  if (!ready) return <Center h="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   if (started) return <LocalGame key={key} initial={started} onExit={exit} />;
   return <SetupScreen preset={preset} onStart={onStart} onBack={exit} />;
 }

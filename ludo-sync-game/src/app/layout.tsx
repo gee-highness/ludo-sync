@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#303030',
+  themeColor: '#0b1020',
   colorScheme: 'dark',
 };
 
@@ -33,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" style={{ background: "#303030" }}>
+    <html lang="en" style={{ background: "#0b1020" }}>
       <body className={inter.variable} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
         <ChakraProviders> {/* Use the client-side ChakraProviders */}
           <FriendsProvider><main id="main">{children}</main></FriendsProvider>

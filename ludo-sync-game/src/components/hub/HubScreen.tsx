@@ -27,12 +27,28 @@ const Art = ({ id, icon }: { id: string; icon?: string }) =>
 
 interface Tile { key: string; href: string; accent: string; title: string; sub: string; tag?: string }
 
+const Section = ({ label, tone = "gray.400", children, as = "section" }: { label: string; tone?: string; children: React.ReactNode; as?: "section" }) => (
+  <VStack w="100%" align="stretch" spacing={3} as={as} aria-label={label}>
+    <Text fontSize="xs" textTransform="uppercase" letterSpacing=".12em" color={tone} fontWeight={800} px={1}>{label}</Text>
+    {children}
+  </VStack>
+);
+
 const TileLink = ({ t }: { t: Tile }) => (
-  <Flex as={Link} href={t.href} direction="column" gap={0} p={3} borderRadius="xl" bg="whiteAlpha.100" borderLeft="5px solid" borderLeftColor={t.accent} flex="1 1 200px" minW={0}
-    _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => { sound.unlock(); sound.play("click"); }}>
-    {t.tag && <Text fontSize="2xs" fontWeight={800} textTransform="uppercase" color="yellow.200">{t.tag}</Text>}
+  <Flex as={Link} href={t.href} direction="column" gap={1} p={4} borderRadius="2xl" bg={`linear-gradient(135deg, ${t.accent}38, rgba(255,255,255,.04) 70%)`} border="1px solid" borderColor="whiteAlpha.200" boxShadow="card" flex="1 1 200px" minW={0}
+    transition="transform .15s, border-color .15s" _hover={{ transform: "translateY(-2px)", borderColor: t.accent }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => { sound.unlock(); sound.play("click"); }}>
+    {t.tag && <Text fontSize="2xs" fontWeight={800} letterSpacing=".1em" textTransform="uppercase" color="yellow.200">{t.tag}</Text>}
     <Text fontWeight={800} noOfLines={1}>{t.title}</Text>
     <Text fontSize="xs" color="gray.300" noOfLines={2}>{t.sub}</Text>
+  </Flex>
+);
+
+const QuickTile = ({ href, icon, title, sub, badge }: { href: string; icon: string; title: string; sub: string; badge?: number }) => (
+  <Flex as={Link} href={href} flex="1 1 160px" minW={0} align="center" gap={3} p={3} borderRadius="2xl" bg="whiteAlpha.100" border="1px solid" borderColor={badge ? "sky.400" : "whiteAlpha.200"} boxShadow="card"
+    transition="all .15s" _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => sound.play("click")}>
+    <Flex w="44px" h="44px" borderRadius="14px" bg="whiteAlpha.200" align="center" justify="center" fontSize="22px" flexShrink={0} aria-hidden>{icon}</Flex>
+    <Box minW={0} flex={1}><Text fontWeight={800}>{title}</Text><Text fontSize="xs" color="gray.300" noOfLines={2}>{sub}</Text></Box>
+    {!!badge && <Text as="span" fontSize="xs" fontWeight={800} bg="sky.400" color="black" borderRadius="full" px={2} py="1px" aria-label={`${badge} waiting`}>{badge}</Text>}
   </Flex>
 );
 
@@ -51,14 +67,16 @@ export default function HubScreen() {
 
   const renderCard = (g: (typeof GAMES)[number]) => (
     <Box as="li" key={g.id} w="100%" position="relative">
-      <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} pr={14} borderRadius="2xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" borderLeftColor={g.accent} borderLeftWidth="6px"
-        _hover={{ bg: "whiteAlpha.200", transform: "translateY(-2px)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .15s"
+      <Flex as={Link} href={g.href} prefetch w="100%" textAlign="left" align="center" gap={4} p={4} pr={14} borderRadius="3xl" overflow="hidden" position="relative"
+        bg={`linear-gradient(135deg, ${g.accent}40 0%, rgba(255,255,255,.05) 55%, rgba(255,255,255,.02) 100%)`} border="1px solid" borderColor="whiteAlpha.200" boxShadow="card"
+        _hover={{ transform: "translateY(-3px)", boxShadow: "lift", borderColor: g.accent }} _active={{ transform: "scale(.99)" }} _focusVisible={{ outline: "3px solid #fde047" }} transition="all .18s"
         onClick={() => { sound.unlock(); sound.play("click"); }}>
+        <Box position="absolute" left={0} top="14%" bottom="14%" w="4px" borderRightRadius="full" bg={g.accent} aria-hidden />
         <Box w="84px" display="grid" placeItems="center" flexShrink={0}><Art id={g.id} icon={g.icon} /></Box>
         <VStack align="start" spacing={1} flex={1} minW={0}>
-          <HStack wrap="wrap"><Heading size="md">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}{(streaks[g.id]?.n ?? 0) >= 2 && <Text as="span" fontSize="xs" fontWeight={800} bg="red.500" color="white" borderRadius="full" px={2} py="1px" aria-label={`${streaks[g.id].n} wins in a row against ${streaks[g.id].level} bots`}>🔥 {streaks[g.id].n}</Text>}</HStack>
-          <Text fontSize="sm" color="gray.300">{g.tagline}</Text>
-          <Text fontSize="xs" color="gray.400">{g.players}</Text>
+          <HStack wrap="wrap" spacing={2}><Heading size="md" letterSpacing="-0.01em">{g.name}</Heading>{resume[g.id] && <Text as="span" fontSize="xs" fontWeight={800} bg="orange.400" color="black" borderRadius="full" px={2} py="1px">Saved game</Text>}{(streaks[g.id]?.n ?? 0) >= 2 && <Text as="span" fontSize="xs" fontWeight={800} bg="red.500" color="white" borderRadius="full" px={2} py="1px" aria-label={`${streaks[g.id].n} wins in a row against ${streaks[g.id].level} bots`}>🔥 {streaks[g.id].n}</Text>}</HStack>
+          <Text fontSize="sm" color="gray.200" lineHeight="1.4" noOfLines={3}>{g.tagline}</Text>
+          <Text fontSize="xs" color="gray.400" fontWeight={600}>{g.players}</Text>
         </VStack>
       </Flex>
       <IconButton aria-label={isPinned(g.id) ? `Unpin ${g.name}` : `Pin ${g.name} to the top`} aria-pressed={isPinned(g.id)} title={isPinned(g.id) ? "Unpin" : "Pin to the top"}
@@ -92,12 +110,11 @@ export default function HubScreen() {
   }, []);
 
   return (
-    <Flex minH="100dvh" bg="radial-gradient(circle at 50% 0%, #444444 0%, #303030 60%)" color="white" justify="center" px={4}
-      pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
-      <VStack w="100%" maxW="500px" spacing={5} py={4}>
+    <Flex minH="100dvh" color="white" justify="center" px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(24px, env(safe-area-inset-bottom))">
+      <VStack w="100%" maxW="520px" spacing={6} py={4}>
         {level && (
-          <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} title={`${level.into} of ${level.need} experience to the next level`}>
-            <Flex w="42px" h="42px" borderRadius="full" bg="linear-gradient(135deg,#4c1d95,#1e3a8a)" border="3px solid #fde047" align="center" justify="center" fontWeight={900} flexShrink={0}>{level.level}</Flex>
+          <Flex as={Link} href="/profile" w="100%" align="center" gap={3} p={2} pr={4} borderRadius="full" bg="whiteAlpha.100" border="1px solid" borderColor="whiteAlpha.200" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} title={`${level.into} of ${level.need} experience to the next level`}>
+            <Flex w="42px" h="42px" borderRadius="full" bg="linear-gradient(135deg,#6d28d9,#2563eb)" border="3px solid #fde047" align="center" justify="center" fontWeight={900} flexShrink={0}>{level.level}</Flex>
             <Box flex={1} minW={0}>
               <Text fontSize="sm" fontWeight={800}>Level {level.level}{rank ? ` · ${rank.rank.icon} ${rank.rank.name} · ★ ${rank.points.toLocaleString()}` : ""}</Text>
               <Progress value={level.fraction * 100} size="xs" borderRadius="full" colorScheme="yellow" bg="whiteAlpha.300" aria-hidden />
@@ -105,42 +122,31 @@ export default function HubScreen() {
             <Text fontSize="xs" color="gray.300">Profile ›</Text>
           </Flex>
         )}
-        <Heading as="h1" size="2xl" letterSpacing="-0.02em">Ludo Sync</Heading>
-        <Text color="gray.300" textAlign="center">Classic games for you and your friends. Play on your own, with friends online, or with no internet at all.</Text>
-        <OfflineBadge />
+        <VStack spacing={3} pt={2}>
+          <Image src="/icons/icon-192x192.png" alt="" w="72px" h="72px" borderRadius="22px" boxShadow="0 12px 34px -8px rgba(99,102,241,.7)" />
+          <Heading as="h1" fontSize={{ base: "4xl", sm: "5xl" }} fontWeight={900} letterSpacing="-0.03em" bgGradient="linear(to-r, #fff, #c7d2fe 60%, #f0abfc)" bgClip="text">Ludo Sync</Heading>
+          <Text color="gray.300" textAlign="center" maxW="360px" lineHeight="1.5">Classic games for you and your friends. Play on your own, with friends online, or with no internet at all.</Text>
+          <OfflineBadge />
+        </VStack>
 
         {tiles.continue.length > 0 && (
-          <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="Continue">
-            <Text fontSize="xs" textTransform="uppercase" color="gray.400" fontWeight={800}>Pick up where you left off</Text>
-            <Flex gap={2} wrap="wrap">{tiles.continue.map(t => <TileLink key={t.key} t={t} />)}</Flex>
-          </VStack>
+          <Section label="Pick up where you left off"><Flex gap={3} wrap="wrap">{tiles.continue.map(t => <TileLink key={t.key} t={t} />)}</Flex></Section>
         )}
 
-        <Flex as={Link} href="/friends" w="100%" align="center" justify="space-between" p={3} borderRadius="xl" bg="whiteAlpha.100" border="2px solid" borderColor={friendAlerts ? "sky.400" : "whiteAlpha.200"} _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => sound.play("click")}>
-          <HStack spacing={3}><Text fontSize="2xl" aria-hidden>👥</Text><Box><Text fontWeight={800}>Friends</Text><Text fontSize="xs" color="gray.300">{friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"}: invite them with one tap` : "Add friends to invite them with one tap"}</Text></Box></HStack>
-          {friendAlerts > 0 && <Text as="span" fontSize="xs" fontWeight={800} bg="sky.400" color="black" borderRadius="full" px={2} py="1px" aria-label={`${friendAlerts} waiting`}>{friendAlerts}</Text>}
-        </Flex>
-        <Flex as={Link} href="/cards" w="100%" align="center" justify="space-between" p={3} borderRadius="xl" bg="whiteAlpha.100" border="2px solid" borderColor="whiteAlpha.200" _hover={{ bg: "whiteAlpha.200" }} _focusVisible={{ outline: "3px solid #fde047" }} onClick={() => sound.play("click")}>
-          <HStack spacing={3}><Text fontSize="2xl" aria-hidden>🎴</Text><Box><Text fontWeight={800}>Cards</Text><Text fontSize="xs" color="gray.300">Design your card backs and court cards for every card game</Text></Box></HStack>
-          <Text color="gray.400" aria-hidden>›</Text>
+        <Flex w="100%" gap={3} wrap="wrap">
+          <QuickTile href="/friends" icon="👥" title="Friends" sub={friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"} · invite in a tap` : "Invite in one tap"} badge={friendAlerts} />
+          <QuickTile href="/cards" icon="🎴" title="Cards" sub="Card backs and courts" />
         </Flex>
 
         {pinned.length > 0 && (
-          <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="Pinned games">
-            <Text fontSize="xs" textTransform="uppercase" color="yellow.200" fontWeight={800}>★ Your favourites</Text>
-            <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none">{pinned.map(renderCard)}</VStack>
-          </VStack>
+          <Section label="★ Your favourites" tone="yellow.200"><VStack w="100%" spacing={4} as="ul" m={0} p={0} listStyleType="none">{pinned.map(renderCard)}</VStack></Section>
         )}
-        <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="All games">
-          {pinned.length > 0 && <Text fontSize="xs" textTransform="uppercase" color="gray.400" fontWeight={800}>All games</Text>}
-          <VStack w="100%" spacing={3} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">{others.map(renderCard)}</VStack>
-        </VStack>
+        <Section label={pinned.length > 0 ? "All games" : "Games"}>
+          <VStack w="100%" spacing={4} as="ul" m={0} p={0} listStyleType="none" aria-label="Games">{others.map(renderCard)}</VStack>
+        </Section>
 
         {tiles.today.length > 0 && (
-          <VStack w="100%" align="stretch" spacing={2} as="section" aria-label="Today's challenges">
-            <Text fontSize="xs" textTransform="uppercase" color="gray.400" fontWeight={800}>Today&apos;s challenges</Text>
-            <Flex gap={2} wrap="wrap">{tiles.today.map(t => <TileLink key={t.key} t={t} />)}</Flex>
-          </VStack>
+          <Section label="Today's challenges"><Flex gap={3} wrap="wrap">{tiles.today.map(t => <TileLink key={t.key} t={t} />)}</Flex></Section>
         )}
 
         <Text fontSize="sm" color="gray.500">More games are on the way.</Text>
