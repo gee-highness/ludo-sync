@@ -7,7 +7,6 @@ import { getSettings } from "@/lib/client/settings";
 import { readJSON } from "@/lib/client/storage";
 import { loadModule } from "@/lib/platform/registry";
 import type { GameModule } from "@/lib/platform/types";
-import { BG } from "./Shell";
 import { TableFrame } from "./TableFrame";
 import { loadSaved, saveKey, setupKey, type LocalSetup, useLocalTable } from "./useLocalTable";
 import { writeJSON } from "@/lib/client/storage";
