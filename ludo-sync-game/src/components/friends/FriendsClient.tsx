@@ -12,6 +12,8 @@ import type { RequestResult } from "@/lib/friends/service";
 import { extractFriendCode, formatFriendCode, friendLink } from "@/lib/friends/store";
 import { cleanName } from "@/lib/ludo/engine";
 import { ScanButton } from "../online/ScanButton";
+import { enablePush, pushSupported, type PushResult } from "@/lib/push/client";
+import { isNative } from "@/lib/native";
 import { useFriends } from "./FriendsProvider";
 
 const RESULT_TEXT: Record<RequestResult, string> = {
@@ -30,6 +32,7 @@ export default function FriendsClient() {
   const [online, setOnline] = useState<Record<string, boolean | undefined>>({});
   const [copied, setCopied] = useState(false);
   const [notify, setNotify] = useState<NotificationPermission | "none">("none");
+  const [push, setPush] = useState<PushResult | "idle" | "working">("idle");
 
   useEffect(() => { setName(getSettings().playerName); if (typeof Notification !== "undefined") setNotify(Notification.permission); const a = extractFriendCode(params.get("add") ?? ""); if (a) setTyped(a); }, [params]);
 
@@ -83,8 +86,18 @@ export default function FriendsClient() {
             <Box><Text fontSize="sm" fontWeight={600}>Let friends invite me</Text><Text fontSize="xs" color="gray.400">{snap?.status === "ready" ? "Connected: invites arrive while this app is open." : snap?.status === "connecting" ? "Connecting…" : snap?.error ?? "Not connected."}</Text></Box>
             <Switch isChecked={snap?.listening ?? true} colorScheme="green" aria-label="Let friends invite me" onChange={e => void service?.setListening(e.target.checked)} />
           </HStack>
-          {notify !== "none" && notify !== "granted" && notify !== "denied" && <Button size="sm" variant="outline" color="white" onClick={() => void Notification.requestPermission().then(setNotify)}>Notify me when a friend invites me</Button>}
-          {notify === "granted" && <Text fontSize="xs" color="green.300">Notifications on: you will see invites even when the app is in the background.</Text>}
+          {pushSupported() && !isNative() && push !== "on" && (
+            <Button size="sm" variant="outline" color="white" isLoading={push === "working"} onClick={async () => {
+              if (!service) return;
+              setPush("working");
+              const r = await enablePush(() => service.pushKey(), sub => service.savePush(sub));
+              setPush(r); setNotify(Notification.permission);
+            }}>Notify me when a friend invites me</Button>
+          )}
+          {push === "on" && <Text fontSize="xs" color="green.300">Notifications on: a friend&apos;s invite will wake this device, even when the app is closed.</Text>}
+          {push === "denied" && <Text fontSize="xs" color="orange.300">Notifications are blocked for this app. Allow them in the browser or phone settings, then try again.</Text>}
+          {push === "unavailable" && <Text fontSize="xs" color="orange.300">Could not switch notifications on right now. Check your connection and try again.</Text>}
+          {notify === "granted" && push === "idle" && <Text fontSize="xs" color="green.300">Notifications are allowed. Tap the button above once to be woken when the app is closed.</Text>}
         </VStack>
 
         <VStack align="stretch" spacing={2} bg="whiteAlpha.100" borderRadius="xl" p={4} as="section" aria-label="Add a friend">

@@ -8,6 +8,7 @@ import { getSettings } from "@/lib/client/settings";
 import { FriendsService, type FriendsSnapshot } from "@/lib/friends/service";
 import { gameName, joinPathFor } from "@/lib/friends/routes";
 import { deviceStore, loadMyCode } from "@/lib/friends/store";
+import { hasPushAddress } from "@/lib/push/client";
 import { MailboxClient, fetchMailApi } from "@/lib/mailbox/client";
 import { PeerNetwork } from "@/lib/net/peerTransport";
 
@@ -29,6 +30,8 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
     setCtx({ service, snap: service.getSnapshot() });
     const off = service.subscribe(snap => setCtx({ service, snap }));
     void service.start();
+    // a device that asked to be woken keeps its push address fresh on the server
+    void hasPushAddress().then(sub => { if (sub) void service.savePush(sub.toJSON()); });
     // coming back online, or back to the app, makes sure we are listening again
     const wake = () => { if (navigator.onLine && service.getSnapshot().status !== "ready" && service.getSnapshot().status !== "connecting") void service.start(); };
     window.addEventListener("online", wake);

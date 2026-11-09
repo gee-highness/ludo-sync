@@ -148,6 +148,12 @@ export class FriendsService {
     this.refresh();
   }
 
+  /** Whether the server can wake this device when a friend invites it while the app is closed. */
+  async pushReady(): Promise<boolean> { return !!(await this.o.mailbox?.pushKey?.().catch(() => null)); }
+  async pushKey(): Promise<string | null> { return (await this.o.mailbox?.pushKey?.().catch(() => null)) ?? null; }
+  async savePush(sub: unknown): Promise<boolean> { return (await this.o.mailbox?.savePush?.(sub).catch(() => false)) ?? false; }
+  async dropPush(): Promise<void> { await this.o.mailbox?.dropPush?.().catch(() => undefined); }
+
   /** Switches listening on or off: off means friends can no longer invite you, but you can still invite them. */
   async setListening(on: boolean) {
     this.listening = on;

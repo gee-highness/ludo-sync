@@ -25,7 +25,7 @@ const validKey = (k: unknown): k is string => typeof k === "string" && k.length 
 
 const readJson = async <T,>(store: MailStore, path: string): Promise<T | null> => { try { const t = await store.get(path); return t ? (JSON.parse(t) as T) : null; } catch { return null; } };
 
-const owns = async (store: MailStore, code: string, key: unknown): Promise<boolean> => {
+export const owns = async (store: MailStore, code: string, key: unknown): Promise<boolean> => {
   if (!isFriendCode(code) || !validKey(key)) return false;
   const k = await readJson<{ hash: string }>(store, keyPath(code));
   return !!k && safeEq(k.hash, sha(key));

@@ -13,6 +13,10 @@ export interface MailboxLike {
   setAllowed(codes: string[]): Promise<void>;
   send(to: string, msg: FMsg): Promise<QueueResult>;
   fetch(): Promise<unknown[] | null>;
+  /** The server's public push key, or null when it cannot wake devices. */
+  pushKey?(): Promise<string | null>;
+  savePush?(sub: unknown): Promise<boolean>;
+  dropPush?(): Promise<void>;
 }
 
 export const fetchMailApi = (url = apiUrl("/api/mailbox")): MailApi => ({
@@ -65,4 +69,17 @@ export class MailboxClient implements MailboxLike {
     const msgs = (r?.body as { msgs?: unknown } | null)?.msgs;
     return r?.status === 200 && Array.isArray(msgs) ? msgs : null;
   }
+
+  async pushKey(): Promise<string | null> {
+    const r = await this.api.post({ op: "vapid" });
+    const k = (r?.body as { key?: unknown } | null)?.key;
+    return r?.status === 200 && typeof k === "string" ? k : null;
+  }
+
+  async savePush(sub: unknown): Promise<boolean> {
+    if (!(await this.ensure())) return false;
+    return (await this.api.post({ op: "push", code: this.code, key: this.key(), sub }))?.status === 200;
+  }
+
+  async dropPush() { if (this.state === "on") await this.api.post({ op: "unpush", code: this.code, key: this.key() }); }
 }

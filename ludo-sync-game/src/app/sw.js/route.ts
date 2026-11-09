@@ -106,6 +106,31 @@ self.addEventListener("message", event => {
   }
 });
 
+/** A friend's invite, delivered by the server while the app is closed. */
+self.addEventListener("push", event => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; } catch { /* a notice with no details */ }
+  event.waitUntil((async () => {
+    // an app that is open and in front already shows the invite itself
+    const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    if (open.some(c => c.visibilityState === "visible")) return;
+    await self.registration.showNotification(d.title || "Ludo Sync", {
+      body: d.body || "A friend invited you to play", icon: "/icons/icon-192x192.png", badge: "/icons/icon-192x192.png",
+      tag: "friend-invite", renotify: true, data: { url: typeof d.url === "string" && d.url.startsWith("/") ? d.url : "/friends" },
+    });
+  })());
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || "/friends";
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const c of wins) { if ("focus" in c) { await c.focus(); if ("navigate" in c) { try { await c.navigate(url); } catch { /* stays where it is */ } } return; } }
+    await self.clients.openWindow(url);
+  })());
+});
+
 self.addEventListener("fetch", event => {
   const req = event.request;
   if (req.method !== "GET") return;
