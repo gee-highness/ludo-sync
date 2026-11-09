@@ -176,6 +176,8 @@ export default function Board2D({
   const interactiveSeat = options.length ? state.players[state.turn].seat : null;
   const [preview, setPreview] = useState<string | null>(null);
   const [bursts, setBursts] = useState<Burst[]>([]);
+  // pieces whose own position just changed: only these play a hop, drive or spin. A piece that is not moving stays perfectly still.
+  const [moved, setMoved] = useState<ReadonlySet<string>>(new Set());
   const prev = useRef<Map<string, number>>(new Map());
   const burstId = useRef(0);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
@@ -210,11 +212,13 @@ export default function Board2D({
   useEffect(() => {
     const next = new Map<string, number>();
     const fresh: Burst[] = [];
+    const changed = new Set<string>();
     for (const t of tokens) {
       const key = tokenKey(t.seat, t.token);
       const before = prev.current.get(key);
       next.set(key, t.progress);
       if (before === undefined) continue;
+      if (before !== t.progress) changed.add(key);
       if (before >= 0 && before < FINISH && t.progress === YARD) {
         const p = pointOf(t.seat, t.token, before);
         fresh.push({ id: ++burstId.current, x: p.x, y: p.y, color: "#FACC15", kind: "capture" });
@@ -228,6 +232,7 @@ export default function Board2D({
       }
     }
     prev.current = next;
+    setMoved(changed);
     if (!fresh.length) return;
     // keep a small cap so a fast game can never pile up particles, and let every burst expire on its own
     setBursts(b => [...b, ...fresh].slice(-MAX_BURSTS));
@@ -240,10 +245,9 @@ export default function Board2D({
     return () => { live.forEach(clearTimeout); live.clear(); };
   }, []);
 
-  const placed = useMemo(() => {
-    const movableLast = (t: TokenView) => (t.seat === interactiveSeat && byToken.has(t.token) ? 1 : 0);
-    return placeTokens(tokens, moving).sort((x, y) => movableLast(x) - movableLast(y));
-  }, [tokens, interactiveSeat, byToken, moving]);
+  // The order is fixed. Re-sorting the pieces (to draw the movable ones last) moved their elements about in the page, and the browser
+  // replays an element's animation whenever it is moved: every piece spun after every turn. Pieces that cannot move let clicks pass through instead.
+  const placed = useMemo(() => placeTokens(tokens, moving), [tokens, moving]);
 
   const cells = useMemo(() => {
   const cells: React.ReactNode[] = [];
@@ -684,7 +688,7 @@ export default function Board2D({
             <g
               key={tokenKey(t.seat, t.token)}
               className={`tok tok-btn${t.progress === YARD ? " tok-ret" : ""}`}
-              style={{ transform: `translate(${t.at.x}px, ${t.at.y}px)`, cursor: movable ? "pointer" : "default", outline: "none" }}
+              style={{ transform: `translate(${t.at.x}px, ${t.at.y}px)`, cursor: movable ? "pointer" : "default", outline: "none", pointerEvents: movable ? undefined : "none" }}
               role={movable ? "button" : "img"} aria-label={label} tabIndex={movable ? 0 : -1}
               onClick={activate}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); } }}
@@ -699,6 +703,7 @@ export default function Board2D({
                 <g className={movable ? "tok-bounce" : IDLE_CLASS[design.idle]} style={{ animationDelay: `${(t.token * 0.4 + t.seat * 0.2).toFixed(1)}s` }}>
                 <g key={t.progress} className={
                   state.winner === t.seat && t.progress === FINISH ? "tok-dance"
+                    : !moved.has(tokenKey(t.seat, t.token)) ? undefined
                     : design.vehicle !== "none" ? (t.progress === YARD && road ? "tok-hop" : t.progress === FINISH ? "tok-step" : "tok-drive")
                     : t.progress === YARD ? "tok-spin" : rich && t.progress === FINISH ? "tok-step" : "tok-hop"
                 }>
