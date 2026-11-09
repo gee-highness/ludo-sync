@@ -14,13 +14,19 @@ export const DEFAULT_TURN_MS = 0;
 const CHAT_BURST = 5;
 const CHAT_WINDOW_MS = 5_000;
 
-type Slot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
+export type Slot = { kind: "empty" } | { kind: "bot"; level: BotLevel; name: string } | { kind: "human"; id: string };
 interface Member { id: string; name: string; host: boolean; chan: SecureChannel | null; check: string; lastReact: number; chatAt: number[] }
 export interface MemberView { id: string; name: string; slot: number | null; connected: boolean; check: string; host: boolean }
 export type HostStatus = "opening" | "ready" | "error" | "closed";
 export interface HostSnapshot { status: HostStatus; error?: string; online: boolean; code: string; room: RoomView; members: MemberView[]; chat: ChatItem[] }
 export interface Reaction { slot: number | null; name: string; emoji: string; id: number }
-export interface HostOptions { network: Network; name: string; rules?: unknown; turnMs?: number; now?: () => number; code?: string; botDelayMs?: number }
+/** Everything a host needs to open the same room again after leaving or closing the page. JSON-serialisable. */
+export interface HostSave {
+  v: 1; code: string; name: string; rules: RuleValues; turnMs: number; phase: "lobby" | "playing"; gameId: number; n: number;
+  slots: Slot[]; playerSlots: number[]; members: { id: string; name: string }[]; banned: string[]; seats: SeatInfo[]; state: unknown | null;
+  chat: ChatItem[]; chatId: number; reactionId: number;
+}
+export interface HostOptions { network: Network; name: string; rules?: unknown; turnMs?: number; now?: () => number; code?: string; botDelayMs?: number; save?: HostSave }
 
 /**
  * The authoritative side of a room for any game. Guests only ask; the host checks whose move it is, applies it with the driver and
@@ -61,8 +67,28 @@ export class GameHost<S, A, V> {
     this.slots = Array.from({ length: driver.maxPlayers }, () => ({ kind: "empty" as const }));
     this.members.set(HOST_ID, { id: HOST_ID, name: cleanText(opts.name, "Host"), host: true, chan: null, check: "", lastReact: 0, chatAt: [] });
     this.slots[0] = { kind: "human", id: HOST_ID };
+    const sv = opts.save;
+    if (sv) {
+      this.code = sv.code; this.rules = sanitizeRules(driver.schema, sv.rules); this.turnMs = sv.turnMs; this.phase = sv.phase; this.gameId = sv.gameId; this.n = sv.n;
+      this.slots = sv.slots.slice(0, driver.maxPlayers); this.playerSlots = sv.playerSlots.slice(); this.banned = new Set(sv.banned);
+      this.chat = sv.chat.slice(-CHAT_HISTORY); this.chatId = sv.chatId; this.reactionId = sv.reactionId;
+      for (const m of sv.members) if (m.id !== HOST_ID) this.members.set(m.id, { id: m.id, name: cleanText(m.name, "Player"), host: false, chan: null, check: "", lastReact: 0, chatAt: [] });
+      if (sv.phase === "playing" && sv.state !== null) { this.table = new GameTable(driver, sv.seats.map(x => ({ ...x })), this.rules, 0, sv.state as S); this.lastActionAt = this.now(); }
+      else this.phase = "lobby";
+    }
     this.refresh();
   }
+
+  /** A copy of the room that can be stored and passed back as `save` to open it again. */
+  exportSave(): HostSave {
+    return {
+      v: 1, code: this.code, name: this.members.get(HOST_ID)!.name, rules: this.rules, turnMs: this.turnMs, phase: this.phase, gameId: this.gameId, n: this.n,
+      slots: this.slots.map(x => ({ ...x })), playerSlots: this.playerSlots.slice(), members: [...this.members.values()].map(m => ({ id: m.id, name: m.name })),
+      banned: [...this.banned], seats: this.table ? this.table.seats.map(x => ({ ...x })) : [], state: this.table ? this.table.state : null, chat: this.chat.slice(), chatId: this.chatId, reactionId: this.reactionId,
+    };
+  }
+  /** True while there is an unfinished game worth coming back to. */
+  get resumable(): boolean { return this.phase === "playing" && !!this.table && !this.table.over; }
 
   async open(): Promise<void> {
     for (let attempt = 0; attempt < 6; attempt++) {
@@ -74,9 +100,12 @@ export class GameHost<S, A, V> {
         endpoint.onStatus(s => { this.online = s === "open"; if (s === "closed" && this.status === "ready") this.status = "closed"; this.refresh(); });
         this.status = "ready";
         this.refresh();
+        if (this.table) { this.emitHostFrame([]); this.scheduleBot(); }
         return;
       } catch (e) {
-        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code) { this.code = newRoomCode(); continue; }
+        if (e instanceof TransportError && e.kind === "unavailable-id" && !this.opts.code && !this.opts.save) { this.code = newRoomCode(); continue; }
+        // the pairing service can take a moment to let go of a room that was just left: try again for a few seconds
+        if (e instanceof TransportError && e.kind === "unavailable-id" && this.opts.save && attempt < 5) { await new Promise(r => setTimeout(r, 1500)); continue; }
         this.status = "error";
         this.error = e instanceof TransportError && e.kind === "network" ? "Could not reach the pairing service. Check your connection and try again." : "Could not open a room on this device.";
         this.refresh();

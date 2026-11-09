@@ -66,7 +66,7 @@ export default function LessonClient() {
 
   if (finished) {
     return (
-      <Center minH="100dvh" bg="#0c3a27" color="white" p={6}>
+      <Center minH="100dvh" bg="#0b1020" color="white" p={6}>
         <VStack spacing={4} textAlign="center" maxW="380px">
           <Text fontSize="5xl" aria-hidden>🎓</Text>
           <Heading size="lg">You know how to play</Heading>

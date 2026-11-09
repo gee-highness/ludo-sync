@@ -9,7 +9,7 @@ import { getSettings, updateSettings } from "@/lib/client/settings";
 import { cleanName } from "@/lib/ludo/engine";
 import { cleanRoomCode, isRoomCode } from "@/lib/net/crypto";
 import { extractRoomCode } from "@/lib/net/identity";
-import type { MemberView } from "@/lib/platform/net/host";
+import type { HostSave, MemberView } from "@/lib/platform/net/host";
 import type { RoomView, SlotView } from "@/lib/platform/net/protocol";
 import { loadModule } from "@/lib/platform/registry";
 import { describeRules, loadLastRules, type RuleValues } from "@/lib/platform/rules";
@@ -21,7 +21,7 @@ import { Reactions } from "../skipbo/Reactions";
 import { RulesPanel } from "./RulesPanel";
 import { Notice, Shell, BG } from "./Shell";
 import { TableFrame } from "./TableFrame";
-import { clearRoom, loadRoom, useGameGuest, useGameHost, useOnlineAward, useReactionLog } from "./useGameOnline";
+import { clearRoom, loadHostRoom, loadRoom, useGameGuest, useGameHost, useOnlineAward, useReactionLog } from "./useGameOnline";
 
 const TURN_CHOICES = [{ ms: 0, label: "No limit" }, { ms: 30_000, label: "30 seconds" }, { ms: 60_000, label: "60 seconds" }, { ms: 120_000, label: "2 minutes" }];
 
@@ -97,8 +97,8 @@ const Lobby = ({ mod, room, host, check, chat }: { mod: GameModule; room: RoomVi
 
 const Loading = ({ text }: { text: string }) => <Center minH="100dvh" bg={BG}><VStack color="white"><Spinner size="xl" /><Text>{text}</Text></VStack></Center>;
 
-function HostFlow({ mod, name, rules, onExit }: { mod: GameModule; name: string; rules: RuleValues; onExit: () => void }) {
-  const { session, snap, feed, endRoom } = useGameHost(mod.driver, name, rules);
+function HostFlow({ mod, name, rules, save, onExit }: { mod: GameModule; name: string; rules: RuleValues; save?: HostSave; onExit: () => void }) {
+  const { session, snap, feed, endRoom } = useGameHost(mod.driver, name, rules, undefined, save);
   const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   const humans = snap?.room.slots.filter(s => s.kind === "human").length ?? 0;
@@ -111,7 +111,7 @@ function HostFlow({ mod, name, rules, onExit }: { mod: GameModule; name: string;
     const over = room.frame.base.over;
     return (
       <TableFrame mod={mod} base={room.frame.base} view={room.frame.view} rules={room.rules} frame={feed.frame} log={feed.log} act={a => session.act(a)} title={`Room ${room.code.slice(0, 3)}-${room.code.slice(3)}`}
-        onExit={() => { endRoom(); onExit(); }} exitLabel="Close the room" note={snap.online ? undefined : "Pairing service offline"} away={new Set(room.away)} award={award}
+        onExit={() => { endRoom(); onExit(); }} exitLabel="Leave (reopen it from the menu)" note={snap.online ? undefined : "Pairing service offline"} away={new Set(room.away)} award={award}
         onRematch={over ? session.rematch : undefined} rematchLabel="Rematch" headerExtra={chat ? <ChatButton chat={chat} /> : undefined}
         footer={<Reactions items={reactions} onSend={e => session.sendReaction(e)} />} />
     );
@@ -124,22 +124,22 @@ function HostFlow({ mod, name, rules, onExit }: { mod: GameModule; name: string;
   );
 }
 
-function GuestFlow({ mod, code, name, rejoin, onExit }: { mod: GameModule; code: string; name: string; rejoin?: boolean; onExit: () => void }) {
-  const { client, snap, feed, quitForGood } = useGameGuest(mod.driver, code, name, rejoin);
+function GuestFlow({ mod, code, name, rejoin, onExit, onForget }: { mod: GameModule; code: string; name: string; rejoin?: boolean; onExit: () => void; onForget: () => void }) {
+  const { client, snap, feed } = useGameGuest(mod.driver, code, name, rejoin);
   const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
   const award = useOnlineAward(mod.driver, snap?.frame, 2);
   if (!client || !snap) return <Loading text="Joining…" />;
-  if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onExit} />;
-  if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the room or lost their connection." onBack={onExit} />;
-  if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={onExit} />;
+  if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onForget} />;
+  if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the room or lost their connection. If they open it again you can rejoin from the game menu." onBack={onExit} />;
+  if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={onForget} />;
   if (!snap.room) return <Loading text={snap.status === "reconnecting" ? "Reconnecting…" : "Joining room…"} />;
   const room = snap.room;
   if (room.phase === "playing" && snap.frame) {
     return (
       <TableFrame mod={mod} base={snap.frame.base} view={snap.frame.view} rules={room.rules} frame={feed.frame} log={feed.log} act={a => client.act(a)} rejected={snap.rejected} title={`${room.hostName}'s room`} away={away}
-        onExit={() => { quitForGood(); onExit(); }} exitLabel="Leave the room" note={snap.status === "reconnecting" ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…" award={award}
+        onExit={onExit} exitLabel="Leave (rejoin from the menu)" note={snap.status === "reconnecting" ? "Reconnecting…" : undefined} waitingText="Waiting for the host to start a rematch…" award={award}
         headerExtra={chat ? <ChatButton chat={chat} /> : undefined} footer={<Reactions items={reactions} onSend={e => client.react(e)} />} />
     );
   }
@@ -151,7 +151,7 @@ function GuestFlow({ mod, code, name, rejoin, onExit }: { mod: GameModule; code:
   );
 }
 
-type Step = { kind: "choose" } | { kind: "host" } | { kind: "join"; code: string; rejoin?: boolean };
+type Step = { kind: "choose" } | { kind: "host"; save?: HostSave } | { kind: "join"; code: string; rejoin?: boolean };
 
 export default function OnlineClient({ gameId }: { gameId: string }) {
   const router = useRouter();
@@ -171,6 +171,7 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
       setRules(loadLastRules(gameId, m.driver.schema));
       setName(getSettings().playerName);
       if (params.get("rejoin") === "1") { const rec = loadRoom(gameId); if (rec) { setName(rec.name); setStep({ kind: "join", code: rec.code, rejoin: true }); } }
+      else if (params.get("reopen") === "1") { const rec = loadHostRoom(gameId); if (rec) { setName(rec.save.name); setStep({ kind: "host", save: rec.save }); } }
       else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     });
     // read once, when the screen opens
@@ -183,8 +184,8 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
 
   if (mod === undefined) return <Loading text="Loading…" />;
   if (mod === null) return <Notice title="Unknown game" text="That game does not exist." onBack={() => router.push("/")} />;
-  if (step.kind === "host") return <HostFlow mod={mod} name={finalName} rules={rules} onExit={exit} />;
-  if (step.kind === "join") return <GuestFlow mod={mod} code={step.code} name={finalName} rejoin={step.rejoin} onExit={() => { clearRoom(gameId); exit(); }} />;
+  if (step.kind === "host") return <HostFlow mod={mod} name={finalName} rules={rules} save={step.save} onExit={exit} />;
+  if (step.kind === "join") return <GuestFlow mod={mod} code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} onForget={() => { clearRoom(gameId); exit(); }} />;
 
   const code = cleanRoomCode(typed);
   return (

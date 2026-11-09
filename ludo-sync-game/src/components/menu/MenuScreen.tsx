@@ -1,8 +1,8 @@
 "use client";
 
 import { Credit } from "@/components/platform/Credit";
-import { Box, Button, Flex, HStack, Heading, Image, SimpleGrid, Text, VStack, useDisclosure } from "@chakra-ui/react";
-import Link from "next/link";
+import { Badge, Box, Button, HStack, SimpleGrid, Text, VStack, useDisclosure } from "@chakra-ui/react";
+import { Shell } from "@/components/platform/Shell";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { loadGame, type SavedGame } from "@/lib/client/save";
@@ -33,16 +33,11 @@ export default function MenuScreen() {
   const go = (path: string) => () => { sound.unlock(); sound.play("click"); router.push(path); };
 
   return (
-    <Flex minH="100dvh" bg="transparent" color="white" justify="center" align="center" position="relative" isolation="isolate" overflow="hidden"
-      px={4} pt="max(16px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
-      <VStack w="100%" maxW="420px" spacing={4} py={6} px={4} borderRadius="2xl">
-        <Button as={Link} href="/" variant="ghost" color="whiteAlpha.800" size="sm" alignSelf="flex-start" leftIcon={<span aria-hidden>‹</span>}>All games</Button>
-        <Image src="/icons/icon-192x192.png" alt="" w="96px" h="96px" borderRadius="22px" boxShadow="0 12px 34px -8px rgba(229,62,62,.6)" />
-        <Heading size="2xl" letterSpacing="-0.03em" bgGradient="linear(to-r, #fff, #fca5a5)" bgClip="text">Ludo</Heading>
-        <Text color="gray.300" textAlign="center">Classic Ludo for 2 to 4 players. Works fully offline.</Text>
-        <OfflineBadge />
+    <Shell title="Ludo" onBack={() => router.push("/")} accent="#E53E3E" pinId="ludo">
+        <Text color="gray.300" fontSize="md" lineHeight="1.5">Classic Ludo for 2 to 4 players. Works fully offline.</Text>
+        <HStack wrap="wrap"><Badge colorScheme="purple">2 to 4 players</Badge><OfflineBadge /></HStack>
 
-        <VStack w="100%" spacing={3} pt={2}>
+        <VStack w="100%" spacing={3}>
           {saved && (
             <Button colorScheme="orange" size="lg" w="100%" h="auto" py={3} onClick={go("/play?resume=1")}>
               <VStack spacing={0}>
@@ -91,12 +86,9 @@ export default function MenuScreen() {
             {stats.played} played · {stats.won} won · {stats.captures} sent home{stats.streak > 1 ? ` · 🔥 ${stats.streak} in a row` : ""}
           </Text>
         )}
-        <Box pt={4}>
-          <Credit />
-        </Box>
-      </VStack>
+        <Box pt={4} alignSelf="center"><Credit /></Box>
       <HowToPlay isOpen={help.isOpen} onClose={help.onClose} />
       <SettingsDrawer isOpen={prefs.isOpen} onClose={prefs.onClose} />
-    </Flex>
+    </Shell>
   );
 }

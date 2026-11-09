@@ -28,7 +28,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
 
-  if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0c3a27"><VStack color="white"><Spinner size="xl" /><Text>Getting ready…</Text></VStack></Center>;
+  if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0b1020"><VStack color="white"><Spinner size="xl" /><Text>Getting ready…</Text></VStack></Center>;
   if (snap.status === "error") return <Notice title="Could not start" text={snap.error ?? "Try again."} onBack={leave} />;
   if (snap.status === "closed") return <Notice title="Game closed" text="This game is no longer open." onBack={leave} />;
   const room = snap.room;
@@ -72,7 +72,7 @@ function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
   const leave = useCallback(() => { network.desk.close(); onExit(); }, [network, onExit]);
 
-  if (!client || !snap) return <Center minH="100dvh" bg="#0c3a27"><Spinner size="xl" color="white" /></Center>;
+  if (!client || !snap) return <Center minH="100dvh" bg="#0b1020"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this game." onBack={leave} />;
   if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the game or lost the connection." onBack={leave} />;
   if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={leave} />;
@@ -125,7 +125,7 @@ export default function SkipBoNearbyClient() {
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 
-  if (!ready) return <Center minH="100dvh" bg="#0c3a27"><Spinner color="white" size="xl" /></Center>;
+  if (!ready) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   if (step.kind === "host") return <HostFlow name={finalName} onExit={exit} />;
   if (step.kind === "join") return <GuestFlow name={finalName} note={step.note} onExit={exit} />;
   return (

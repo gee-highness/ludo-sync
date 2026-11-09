@@ -21,7 +21,7 @@ function LocalTable({ initial, you, hotseat, daily, onExit }: { initial: GameSta
       <Table view={view} act={act} frame={feed.frame} log={feed.log} title={hotseat ? "Skip-Bo · pass and play" : "Skip-Bo"} onExit={onExit} onRematch={rematch} rematchLabel="Play again"
         record={hotseat ? undefined : { daily }} badge={daily ? "Daily challenge" : undefined} />
       {covered && (
-        <Center position="fixed" inset={0} zIndex={100} bg="#0c3a27" color="white" p={6} role="dialog" aria-modal="true" aria-label={`Pass the device to ${coverName}`}>
+        <Center position="fixed" inset={0} zIndex={100} bg="#0b1020" color="white" p={6} role="dialog" aria-modal="true" aria-label={`Pass the device to ${coverName}`}>
           <VStack spacing={4} textAlign="center" maxW="360px">
             <Text fontSize="5xl" aria-hidden>🃏</Text>
             <Heading size="lg">Pass to {coverName}</Heading>
@@ -81,6 +81,6 @@ export default function SkipBoPlayClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!started) return <Center minH="100dvh" bg="#14573a"><Spinner color="white" size="xl" /></Center>;
+  if (!started) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   return <LocalTable initial={started.state} you={started.you} hotseat={started.hotseat} daily={started.daily} onExit={() => router.push("/skipbo")} />;
 }

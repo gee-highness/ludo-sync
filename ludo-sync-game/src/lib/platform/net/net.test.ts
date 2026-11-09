@@ -109,6 +109,29 @@ describe("generic online room", () => {
   });
 });
 
+describe("reopening a room", () => {
+  it("brings back the same game and code, and lets a guest rejoin their seat", async () => {
+    const { host, gs, net } = await setup(1);
+    host.start();
+    await until(() => gs[0].getSnapshot().frame !== null, "frame");
+    expect(host.act({ type: "drop", col: 3 })).toBe(true);
+    expect(host.resumable).toBe(true);
+    const save = JSON.parse(JSON.stringify(host.exportSave()));
+    host.close();
+    await until(() => gs[0].getSnapshot().status === "host-left", "guest sees the host leave");
+    const again = new GameHost(fourInRow, { network: net, name: "Hosty", botDelayMs: 0, save });
+    await again.open();
+    cleanup.push(() => again.close());
+    expect(again.code).toBe("ABC234");
+    expect((again.getSnapshot().room.frame!.view as { plies: number }).plies).toBe(1);
+    const g = new GameGuest({ network: net, gameId: "fourinrow", maxSlots: fourInRow.maxPlayers, code: "ABC234", name: "Guest1", clientId: newClientId(), retryDelays: [5, 5, 5, 5] });
+    cleanup.push(() => g.leave());
+    void g.start();
+    await until(() => g.getSnapshot().status === "connected", "new guest connected");
+    expect(again.getSnapshot().room.slots.filter(x => x.kind === "human").length).toBe(2);
+  });
+});
+
 describe("hidden information online (4 Colors)", () => {
   it("gives each guest only their own hand and never the deck", async () => {
     const { fourColors } = await import("../../games/fourcolors/driver");

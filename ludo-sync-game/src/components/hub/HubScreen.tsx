@@ -16,6 +16,8 @@ import { loadGame as loadLudo } from "@/lib/client/save";
 import { loadGame as loadSkipBo } from "@/lib/skipbo/save";
 import { dailyDone as sbDailyDone, loadDailyRecord as loadSbDaily, skipBoDaily } from "@/lib/skipbo/daily";
 import { loadSkipBoRoom } from "@/hooks/useSkipBoOnline";
+import { loadRoomRecord } from "@/lib/client/rooms";
+import { loadHostRoom, loadRoom as loadGameRoom } from "@/components/platform/useGameOnline";
 import { CardFace } from "@/components/skipbo/CardFace";
 import { InstallButton } from "@/components/pwa/InstallButton";
 import { OfflineBadge } from "@/components/pwa/OfflineBadge";
@@ -97,6 +99,13 @@ export default function HubScreen() {
     if (ludo) cont.push({ key: "c-ludo", href: "/play?resume=1", accent: "#E53E3E", title: "Continue Ludo", sub: ludo.state.players.map(p => p.name).join(" · ") });
     if (sb) cont.push({ key: "c-sb", href: "/skipbo/play?resume=1", accent: "#2563eb", title: "Continue Skip-Bo", sub: sb.state.players.map(p => p.name).join(" · ") });
     if (room) cont.push({ key: "c-room", href: "/skipbo/online?rejoin=1", accent: "#2563eb", title: room.role === "host" ? "Reopen your Skip-Bo room" : "Rejoin Skip-Bo room", sub: `Room ${room.code.slice(0, 3)}-${room.code.slice(3)}` });
+    const ludoRoom = loadRoomRecord();
+    if (ludoRoom) cont.push({ key: "c-ludo-room", href: "/online?rejoin=1", accent: "#E53E3E", title: ludoRoom.role === "host" ? "Reopen your Ludo room" : "Rejoin Ludo room", sub: `Room ${ludoRoom.code.slice(0, 3)}-${ludoRoom.code.slice(3)}` });
+    for (const g of GAMES.filter(x => x.icon)) {
+      const h = loadHostRoom(g.id), r = loadGameRoom(g.id);
+      if (h) cont.push({ key: `c-${g.id}-host`, href: `/g/${g.id}/online?reopen=1`, accent: g.accent, title: `Reopen your ${g.name} room`, sub: `Room ${h.save.code.slice(0, 3)}-${h.save.code.slice(3)}` });
+      if (r) cont.push({ key: `c-${g.id}-room`, href: `/g/${g.id}/online?rejoin=1`, accent: g.accent, title: `Rejoin ${g.name} room`, sub: `Room ${r.code.slice(0, 3)}-${r.code.slice(3)}` });
+    }
     const key = dateKey();
     const l = dailyChallenge(key), lr = loadDailyRecord(), s = skipBoDaily(key), sr = loadSbDaily();
     const state = (done: boolean, won: boolean, streak: number, blurb: string) => (done ? (won ? `Won today ✓${streak > 1 ? ` · ${streak} days in a row` : ""}` : "Played today. Try again for fun") : blurb);

@@ -16,6 +16,7 @@ import { RulesPanel } from "./RulesPanel";
 import { Shell, Notice, BG } from "./Shell";
 import { HowTo } from "./TableFrame";
 import { loadSaved, setupKey, type LocalSetup } from "./useLocalTable";
+import { clearHostRoom, clearRoom, loadHostRoom, loadRoom } from "./useGameOnline";
 
 const BOT_NAMES = ["Mia", "Leo", "Ava", "Max", "Zoe", "Kai", "Ivy", "Sam", "Eli"];
 
@@ -30,6 +31,7 @@ export default function GameMenu({ gameId }: { gameId: string }) {
   const [rules, setRules] = useState<RuleValues>({});
   const [passNames, setPassNames] = useState<string[]>(["", ""]);
   const [resume, setResume] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<{ guest: string | null; host: string | null }>({ guest: null, host: null });
   const [streak, setStreak] = useState<{ n: number; level: string; best: number } | null>(null);
 
   useEffect(() => {
@@ -42,6 +44,8 @@ export default function GameMenu({ gameId }: { gameId: string }) {
       setPassNames(Array.from({ length: m.driver.minPlayers }, () => ""));
       const s = loadSaved(gameId);
       setResume(s ? s.seats.map(x => x.name).join(" · ") : null);
+      const gr = loadRoom(gameId), hr = loadHostRoom(gameId);
+      setRooms({ guest: gr ? gr.code : null, host: hr ? hr.save.code : null });
       const h = headline(loadBook(), gameId);
       setStreak({ n: h.record.current, level: h.level, best: h.record.best });
     });
@@ -78,6 +82,23 @@ export default function GameMenu({ gameId }: { gameId: string }) {
       </HStack>
 
       {resume && <Button colorScheme="orange" size="lg" onClick={go(`/g/${gameId}/play?resume=1`)}>Resume game<Text as="span" fontSize="xs" ml={2} noOfLines={1}>{resume}</Text></Button>}
+
+      {(rooms.guest || rooms.host) && (
+        <VStack align="stretch" spacing={2} as="section" aria-label="Online games to return to">
+          {rooms.host && (
+            <HStack spacing={2} align="stretch">
+              <Button flex={1} colorScheme="orange" size="lg" h="auto" py={3} onClick={go(`/g/${gameId}/online?reopen=1`)}><VStack spacing={0}><Text>Reopen your online room</Text><Text fontSize="xs" fontWeight={400}>Room {rooms.host.slice(0, 3)}-{rooms.host.slice(3)} · you are hosting</Text></VStack></Button>
+              <Button variant="outline" h="auto" aria-label="Forget this room" title="Forget this room" onClick={() => { clearHostRoom(gameId); setRooms(r => ({ ...r, host: null })); }}>✕</Button>
+            </HStack>
+          )}
+          {rooms.guest && (
+            <HStack spacing={2} align="stretch">
+              <Button flex={1} colorScheme="orange" size="lg" h="auto" py={3} onClick={go(`/g/${gameId}/online?rejoin=1`)}><VStack spacing={0}><Text>Rejoin online game</Text><Text fontSize="xs" fontWeight={400}>Room {rooms.guest.slice(0, 3)}-{rooms.guest.slice(3)}</Text></VStack></Button>
+              <Button variant="outline" h="auto" aria-label="Forget this online game" title="Forget this online game" onClick={() => { clearRoom(gameId); setRooms(r => ({ ...r, guest: null })); }}>✕</Button>
+            </HStack>
+          )}
+        </VStack>
+      )}
 
       <VStack align="stretch" spacing={3} bg="whiteAlpha.100" border="1px solid" borderColor="whiteAlpha.200" boxShadow="card" borderRadius="2xl" p={4} as="section" aria-label="Play against bots">
         <Text fontWeight={800} fontSize="lg">Play against bots</Text>

@@ -22,7 +22,7 @@ import { ChatBox, ChatButton, type ChatSource } from "./ChatBox";
 import { Table } from "./Table";
 
 export const Shell = ({ title, onBack, children }: { title: string; onBack: () => void; children: React.ReactNode }) => (
-  <Flex minH="100dvh" bg="#0c3a27" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
+  <Flex minH="100dvh" bg="transparent" color="white" justify="center" px={4} pt="max(12px, env(safe-area-inset-top))" pb="max(16px, env(safe-area-inset-bottom))">
     <VStack w="100%" maxW="460px" spacing={4} align="stretch">
       <HStack>
         <IconButton aria-label="Back" icon={<ChevronLeftIcon boxSize={6} />} variant="ghost" color="white" onClick={onBack} />
@@ -142,7 +142,7 @@ function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume;
   const { session, snap, feed, endRoom } = useSkipBoHost(name, {}, {}, resume);
   const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
-  if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0c3a27"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
+  if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0b1020"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
   if (snap.status === "error") return <Notice title="Could not open a room" text={snap.error ?? "Try again."} onBack={onExit} />;
   if (snap.status === "closed") return <Notice title="Room closed" text="This room is no longer open." onBack={onExit} />;
   const room = snap.room;
@@ -170,11 +170,11 @@ function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string;
   const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
-  if (!client || !snap) return <Center minH="100dvh" bg="#0c3a27"><Spinner size="xl" color="white" /></Center>;
+  if (!client || !snap) return <Center minH="100dvh" bg="#0b1020"><Spinner size="xl" color="white" /></Center>;
   if (snap.status === "kicked") return <Notice title="Removed" text="The host removed you from this room." onBack={onExit} />;
   if (snap.status === "host-left") return <Notice title="Host left" text="The host closed the room or lost their connection." onBack={onExit} />;
   if (snap.status === "error") return <Notice title="Could not join" text={snap.error ?? "Something went wrong."} onBack={onExit} />;
-  if (!snap.room) return <Center minH="100dvh" bg="#0c3a27"><VStack color="white"><Spinner size="xl" /><Text>{snap.status === "reconnecting" ? "Reconnecting…" : "Joining room…"}</Text></VStack></Center>;
+  if (!snap.room) return <Center minH="100dvh" bg="#0b1020"><VStack color="white"><Spinner size="xl" /><Text>{snap.status === "reconnecting" ? "Reconnecting…" : "Joining room…"}</Text></VStack></Center>;
   const room = snap.room;
   if (room.phase === "playing" && snap.view) {
     return (
@@ -222,7 +222,7 @@ export default function SkipBoOnlineClient() {
   const finalName = cleanName(name, "Player");
   const remember = () => updateSettings({ playerName: finalName });
 
-  if (!ready) return <Center minH="100dvh" bg="#0c3a27"><Spinner color="white" size="xl" /></Center>;
+  if (!ready) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
   if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
   if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
 
