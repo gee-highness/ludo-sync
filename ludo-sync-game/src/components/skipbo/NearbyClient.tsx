@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { cleanName } from "@/lib/ludo/engine";
 import { getSettings, updateSettings } from "@/lib/client/settings";
 import { ManualNetwork, webRtcAvailable } from "@/lib/net/manualTransport";
+import { nearbyPlayers } from "@/lib/native/nearbyPlayers";
+import { hasHandOff, takeHandOff } from "@/lib/native/handoff";
 import { extractSignalText } from "@/lib/net/offerCodec";
 import { useReactionLog, useSkipBoGuest, useSkipBoHost } from "@/hooks/useSkipBoOnline";
 import { ConnectionTips, HostInvites } from "../nearby/HostInvites";
@@ -47,7 +49,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
           <DrawerContent bg="gray.800" color="white">
             <DrawerCloseButton />
             <DrawerHeader>Invite or reconnect a player</DrawerHeader>
-            <DrawerBody pb={8}><HostInvites desk={network.desk} /></DrawerBody>
+            <DrawerBody pb={8}><HostInvites desk={network.desk} nearby={{ onInvite: async peer => network.desk.adoptHostLink(await nearbyPlayers().invite(peer, { k: "skipbo" })) }} /></DrawerBody>
           </DrawerContent>
         </Drawer>
       </>
@@ -57,7 +59,7 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
     <Shell title="Your nearby game" onBack={leave}>
       <Lobby
         room={room}
-        invite={<HostInvites desk={network.desk} ready={snap.status === "ready"} />}
+        invite={<HostInvites desk={network.desk} nearby={{ onInvite: async peer => network.desk.adoptHostLink(await nearbyPlayers().invite(peer, { k: "skipbo" })) }} ready={snap.status === "ready"} />}
         host={{ setSlot: (s, k, l) => session.setSlot(s, k, l), kick: s => session.kick(s), setRules: r => session.setRules(r), setTurnMs: ms => session.setTurnMs(ms), start: () => session.start(), canStart: session.canStart(), members: snap.members }} chat={chat ?? undefined}
       />
     </Shell>
@@ -65,7 +67,8 @@ function HostFlow({ name, onExit }: { name: string; onExit: () => void }) {
 }
 
 function GuestFlow({ name, note, onExit }: { name: string; note?: string; onExit: () => void }) {
-  const [network] = useState(() => new ManualNetwork());
+  // invited from the people-nearby list: the connection is already made, so the game joins over it at once
+  const [network] = useState(() => { const n = new ManualNetwork(); const l = takeHandOff("skipbo"); if (l) n.desk.adoptGuestLink(l); return n; });
   const { client, snap, feed, quitForGood } = useSkipBoGuest("NEARBY", name, false, { network, persist: false });
   const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
@@ -115,7 +118,7 @@ export default function SkipBoNearbyClient() {
   const router = useRouter();
   const params = useSearchParams();
   const linkNote = extractSignalText(params.get("invite") ?? "");
-  const [step, setStep] = useState<Step>({ kind: "choose" });
+  const [step, setStep] = useState<Step>(() => (params.get("invited") === "1" && hasHandOff("skipbo") ? { kind: "join" } : { kind: "choose" }));
   const [name, setName] = useState("");
   const [ready, setReady] = useState(false);
   const [rtc, setRtc] = useState(true);

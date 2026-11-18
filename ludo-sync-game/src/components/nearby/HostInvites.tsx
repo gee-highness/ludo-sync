@@ -1,12 +1,15 @@
 "use client";
 
-import { Badge, Box, Button, HStack, Spinner, Text, Textarea, VStack } from "@chakra-ui/react";
+import { Badge, Box, Button, Collapse, HStack, Spinner, Text, Textarea, VStack } from "@chakra-ui/react";
 import { useState } from "react";
 import { extractSignalText } from "@/lib/net/offerCodec";
 import { MAX_INVITES, primeLocalAddresses, type InviteView, type NearbyDesk } from "@/lib/net/manualTransport";
 import { ScanButton } from "../online/ScanButton";
 import { PairCard } from "./PairCard";
 import { useDesk } from "./useDesk";
+import { NearbyPeople } from "./NearbyPeople";
+import { useNearby } from "./NearbyPlayersProvider";
+import type { NearbyPeer } from "@/lib/native/nearbyPlayers";
 
 const parseNote = (text: string) => extractSignalText(text);
 
@@ -84,21 +87,40 @@ const InviteSlot = ({ desk, invite }: { desk: NearbyDesk; invite: InviteView }) 
   );
 };
 
-/** The host's side of pairing: one invite per player, each with its note, a way to take the reply, and the state of the link. */
-export const HostInvites = ({ desk, ready = true }: { desk: NearbyDesk; ready?: boolean }) => {
+/** Inviting people found nearby by the Android app: one tap each, no notes to swap. */
+export interface NearbyInviting { onInvite: (peer: NearbyPeer) => Promise<void>; exclude?: string[] }
+
+/**
+ * The host's side of pairing. In the Android app, people nearby are listed first, one tap to invite; swapping QR notes
+ * (one invite per player, each with its reply) stays available underneath, and is the way in a browser.
+ */
+export const HostInvites = ({ desk, ready = true, nearby }: { desk: NearbyDesk; ready?: boolean; nearby?: NearbyInviting }) => {
   const snap = useDesk(desk);
+  const { supported } = useNearby();
   const [error, setError] = useState("");
+  const [showQr, setShowQr] = useState(false);
   const open = snap.invites.filter(i => i.state !== "connected" && i.state !== "failed").length;
-  const make = async () => { setError(""); const r = await desk.createInvite(); if (!r.ok) setError(r.error); };
+  const make = async () => { setError(""); setShowQr(true); const r = await desk.createInvite(); if (!r.ok) setError(r.error); };
+  const qrOpen = !nearby || !supported || showQr || snap.invites.length > 0;
   return (
     <VStack align="stretch" spacing={3} as="section" aria-label="Invite players">
-      <Text fontSize="xs" textTransform="uppercase" color="gray.400">Invite players nearby</Text>
-      {snap.invites.map(i => <InviteSlot key={i.id} desk={desk} invite={i} />)}
-      <Button colorScheme="cyan" isDisabled={!ready || open >= MAX_INVITES} onClick={make}>
-        {snap.invites.length ? "Invite another player" : "Invite a player"}
-      </Button>
-      {error && <Text color="orange.200" fontSize="sm" role="alert">{error}</Text>}
-      <ConnectionTips />
+      {nearby && <NearbyPeople onInvite={nearby.onInvite} exclude={nearby.exclude} />}
+      {nearby && supported && (
+        <Button variant="ghost" size="sm" color="gray.300" onClick={() => setShowQr(v => !v)} aria-expanded={qrOpen}>
+          {qrOpen ? "Hide QR pairing" : "Not showing up? Pair with QR codes instead"}
+        </Button>
+      )}
+      <Collapse in={qrOpen} animateOpacity>
+        <VStack align="stretch" spacing={3}>
+          <Text fontSize="xs" textTransform="uppercase" color="gray.400" letterSpacing=".1em" fontWeight={800}>{nearby && supported ? "Pair with QR codes" : "Invite players nearby"}</Text>
+          {snap.invites.map(i => <InviteSlot key={i.id} desk={desk} invite={i} />)}
+          <Button colorScheme="cyan" variant={nearby && supported ? "outline" : "solid"} isDisabled={!ready || open >= MAX_INVITES} onClick={make}>
+            {snap.invites.length ? "Invite another player" : "Invite a player with a QR code"}
+          </Button>
+          {error && <Text color="orange.200" fontSize="sm" role="alert">{error}</Text>}
+          <ConnectionTips />
+        </VStack>
+      </Collapse>
     </VStack>
   );
 };

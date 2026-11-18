@@ -337,6 +337,21 @@ export class NearbyDesk {
     });
   }
 
+  /** A connection made another way (the Android app finding a phone nearby) joins as if it came through an invite. */
+  adoptHostLink(link: Link) {
+    if (this.closed) return link.close();
+    if (this.incoming) this.incoming(link); else this.queued.push(link);
+  }
+
+  /** The guest side of such a connection: the game joins over it straight away, with no notes to swap. */
+  adoptGuestLink(link: Link) {
+    if (this.closed) return link.close();
+    this.dropGuestPeer();
+    link.onClose(() => { if (this.guestView.stage === "connected") this.setGuest({ stage: "idle", reply: "", lost: true }); });
+    this.setGuest({ stage: "connected", reply: "", error: undefined, lost: false });
+    this.deliverToGuest(link);
+  }
+
   setIncoming(cb: (link: Link) => void) {
     this.incoming = cb;
     for (const l of this.queued.splice(0)) cb(l);

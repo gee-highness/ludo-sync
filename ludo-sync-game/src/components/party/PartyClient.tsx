@@ -19,6 +19,9 @@ import { useFriends } from "@/components/friends/FriendsProvider";
 import { ConnectionTips, HostInvites } from "@/components/nearby/HostInvites";
 import { GuestPairing } from "@/components/nearby/GuestPairing";
 import { ScanButton } from "@/components/online/ScanButton";
+import { NearbyPeople } from "@/components/nearby/NearbyPeople";
+import { useNearby } from "@/components/nearby/NearbyPlayersProvider";
+import { nearbyPlayers, type NearbyPeer } from "@/lib/native/nearbyPlayers";
 import { Members, partyMe, useParty } from "./PartyProvider";
 
 const Panel = ({ children, title, sub, tone }: { children?: React.ReactNode; title?: string; sub?: string; tone?: string }) => (
@@ -113,6 +116,7 @@ const Lobby = ({ joinCode }: { joinCode: string | null }) => {
   const [code, setCode] = useState(joinCode ?? "");
   const [tab, setTab] = useState(0);
   const tried = useRef(false);
+  const nearbySupported = useNearby().supported;
   const me = () => { const n = name.trim(); if (n && n !== getSettings().playerName) updateSettings({ playerName: n.slice(0, 20) }); return partyMe(); };
   const join = (c: string) => { sound.unlock(); sound.play("click"); void partyStore.joinOnline(me(), c); };
 
@@ -161,9 +165,17 @@ const Lobby = ({ joinCode }: { joinCode: string | null }) => {
           </TabPanel>
           <TabPanel px={0}>
             <VStack spacing={4}>
-              <Text fontSize="sm" color="gray.300" w="100%">No internet needed. One phone shares a hotspot (or everyone is on the same Wi-Fi), and the leader pairs each phone once by swapping two QR codes.</Text>
+              <Text fontSize="sm" color="gray.300" w="100%">{nearbySupported
+                ? "No internet needed. Phones with the app open find each other over Bluetooth or the same Wi-Fi: the leader taps a name, they tap Join."
+                : "No internet needed. One phone shares a hotspot (or everyone is on the same Wi-Fi), and the leader pairs each phone once by swapping two QR codes."}</Text>
               <Button w="100%" size="lg" h="60px" colorScheme="cyan" onClick={() => { sound.unlock(); sound.play("click"); void partyStore.startNearby(me()); }}>Start a nearby party</Button>
-              <Button w="100%" size="lg" h="60px" colorScheme="blue" variant="outline" color="white" onClick={() => { sound.unlock(); sound.play("click"); void partyStore.joinNearby(me()); }}>Join a nearby party</Button>
+              {nearbySupported && (
+                <HStack w="100%" p={3} borderRadius="xl" bg="rgba(34,211,238,.08)" border="1px solid" borderColor="cyan.800" spacing={3}>
+                  <Text fontSize="xl" aria-hidden>📡</Text>
+                  <Text fontSize="sm" color="gray.200">To join, just keep the app open: the leader sees you nearby and invites you with one tap.</Text>
+                </HStack>
+              )}
+              <Button w="100%" size="lg" h="60px" colorScheme="blue" variant="outline" color="white" onClick={() => { sound.unlock(); sound.play("click"); void partyStore.joinNearby(me()); }}>{nearbySupported ? "Join with QR codes instead" : "Join a nearby party"}</Button>
             </VStack>
           </TabPanel>
         </TabPanels>
@@ -174,6 +186,7 @@ const Lobby = ({ joinCode }: { joinCode: string | null }) => {
 
 export default function PartyClient() {
   const v = useParty();
+  const nearbySupported = useNearby().supported;
   const router = useRouter();
   const params = useSearchParams();
   const joinCode = extractRoomCode(params.get("join") ?? "");
@@ -200,6 +213,7 @@ export default function PartyClient() {
     body = <Lobby joinCode={joinCode} />;
   } else {
     const leaderName = s.members.find(m => m.leader)?.name ?? "the leader";
+    const invitePeer = async (peer: NearbyPeer) => partyStore.addLink(await nearbyPlayers().invite(peer, { k: "party", p: (party as PartyLeader).code }));
     const kept = partyStore.keptGame();
     body = (
       <VStack spacing={4} w="100%">
@@ -218,9 +232,14 @@ export default function PartyClient() {
         </Panel>
 
         {party.leader && v.mode === "online" && <ShareCode code={(party as PartyLeader).code} />}
+        {party.leader && v.mode === "online" && nearbySupported && (
+          <Panel title="People nearby" sub="Friends with the app open nearby can join in one tap, no code needed.">
+            <Box mt={3}><NearbyPeople title="Nearby now" onInvite={invitePeer} exclude={s.members.map(m => m.id)} /></Box>
+          </Panel>
+        )}
         {party.leader && v.mode === "nearby" && v.desk && (
-          <Panel title="Add players" sub="Each phone pairs once. Make an invite, let them scan it, then scan their reply.">
-            <Box mt={3}><HostInvites desk={v.desk} /></Box>
+          <Panel title="Add players" sub={nearbySupported ? "Tap someone nearby to invite them. Each phone joins once." : "Each phone pairs once. Make an invite, let them scan it, then scan their reply."}>
+            <Box mt={3}><HostInvites desk={v.desk} nearby={{ onInvite: invitePeer, exclude: s.members.map(m => m.id) }} /></Box>
             <Box mt={3}><ConnectionTips /></Box>
           </Panel>
         )}

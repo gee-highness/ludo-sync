@@ -4,6 +4,7 @@ import { ServiceWorker } from "@/components/pwa/ServiceWorker";
 import { NativeShell } from "@/components/native/NativeShell";
 import { FriendsProvider } from "@/components/friends/FriendsProvider";
 import { PartyProvider } from "@/components/party/PartyProvider";
+import { NearbyPlayersProvider } from "@/components/nearby/NearbyPlayersProvider";
 import type { Metadata, Viewport } from "next";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -37,7 +38,7 @@ export default function RootLayout({
     <html lang="en" style={{ background: "#0b1020" }}>
       <body className={inter.variable} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
         <ChakraProviders> {/* Use the client-side ChakraProviders */}
-          <FriendsProvider><PartyProvider><main id="main">{children}</main></PartyProvider></FriendsProvider>
+          <FriendsProvider><PartyProvider><main id="main">{children}</main></PartyProvider><NearbyPlayersProvider /></FriendsProvider>
           <ServiceWorker />
           <NativeShell />
         </ChakraProviders>

@@ -2,7 +2,7 @@ import { readJSON, removeKey, writeJSON } from "../client/storage";
 import { newRoomCode } from "../net/crypto";
 import { ManualNetwork, type NearbyDesk } from "../net/manualTransport";
 import { defaultNetwork } from "../net/network";
-import { TransportError, type Endpoint } from "../net/transport";
+import { TransportError, type Endpoint, type Link } from "../net/transport";
 import { GAMES } from "../games";
 import { PartyLeader, PartyMember, type Me, type Party } from "./session";
 
@@ -160,6 +160,18 @@ class PartyStore {
     this.set({ busy: true, error: "", mode: "nearby", desk: net.desk });
     ep.dial("party").then(link => { if (this.ep === ep) this.adopt(new PartyMember(me, link, "NEARBY"), "nearby", net.desk); })
       .catch(() => { if (this.ep === ep) this.set({ busy: false }); });
+  }
+
+  /** The leader adds someone who accepted a nearby invite (Android app, no QR codes needed). */
+  addLink(link: Link) {
+    const p = this.v.party;
+    if (p?.leader && p.status !== "closed") (p as PartyLeader).addLink(link); else link.close();
+  }
+
+  /** Joins a party over a connection from an accepted nearby invite. Leaves any party this phone was in. */
+  joinWithLink(me: Me, link: Link, code: string) {
+    if (this.v.party) this.leave();
+    this.adopt(new PartyMember(me, link, code), "nearby");
   }
 
   /** Leaves (or, for the leader, ends) the party. */
