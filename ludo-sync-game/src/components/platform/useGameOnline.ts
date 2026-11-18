@@ -1,5 +1,6 @@
 "use client";
 
+import { partyStore, type KeptGame } from "@/lib/party/store";
 import { useEffect, useRef, useState } from "react";
 import { defaultNetwork } from "@/lib/net/network";
 import type { Network } from "@/lib/net/transport";
@@ -71,31 +72,33 @@ export const loadHostRoom = (id: string, maxAgeMs = 6 * 3600e3): { save: HostSav
   return { save: sv as HostSave, savedAt: r!.savedAt! };
 };
 
-export const useGameHost = (driver: GameDriver, name: string, rules: RuleValues, network?: Network, save?: HostSave) => {
+export const useGameHost = (driver: GameDriver, name: string, rules: RuleValues, network?: Network, save?: HostSave, code?: string, persist = true, partyGame?: KeptGame) => {
   const [session, setSession] = useState<GameHost<unknown, unknown, unknown> | null>(null);
   const [snap, setSnap] = useState<HostSnapshot | null>(null);
   const { feed, push } = useFeed(driver, () => sessionNames.current);
   const sessionNames = useRef<string[]>([]);
   const sessionRef = useRef<GameHost<unknown, unknown, unknown> | null>(null);
   useEffect(() => {
-    const s = new GameHost(driver, { network: network ?? defaultNetwork(), name, rules, save });
+    const make = () => new GameHost(driver, { network: network ?? defaultNetwork(), name, rules, save, ...(code && !save ? { code } : {}) });
+    const kept = partyGame ? partyStore.keep(partyGame, make, x => x.close(), x => x.tick()) : null;
+    const s = kept ? kept.obj : make();
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
     // an unfinished game is kept so the host can reopen the room later; a finished one is let go
-    const keep = () => { if (s.resumable) writeJSON(hostKey(driver.id), { savedAt: Date.now(), save: s.exportSave() }); else if (s.exportSave().phase === "playing") clearHostRoom(driver.id); };
+    const keep = () => { if (!persist) return; if (s.resumable) writeJSON(hostKey(driver.id), { savedAt: Date.now(), save: s.exportSave() }); else if (s.exportSave().phase === "playing") clearHostRoom(driver.id); };
     const off = s.subscribe(sn => { setSnap(sn); sessionNames.current = sn.room.frame?.base.players.map(p => p.name) ?? []; keep(); });
     const offFrame = s.onFrame(f => { sessionNames.current = f.base.players.map(p => p.name); push(f); keep(); });
-    void s.open();
-    const timer = setInterval(() => s.tick(), 1000);
-    return () => { clearInterval(timer); off(); offFrame(); s.close(); setSession(null); };
+    if (!kept || kept.fresh) void s.open();
+    const timer = kept ? undefined : setInterval(() => s.tick(), 1000);
+    return () => { clearInterval(timer); off(); offFrame(); if (!kept) s.close(); setSession(null); };
     // the room is made once, for the name and rules chosen on the previous screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return { session, snap, feed, endRoom: () => sessionRef.current?.close() };
+  return { session, snap, feed, endRoom: () => { sessionRef.current?.close(); if (partyGame) partyStore.release(partyGame.key); } };
 };
 
-export const useGameGuest = (driver: GameDriver, code: string, name: string, rejoin = false, network?: Network) => {
+export const useGameGuest = (driver: GameDriver, code: string, name: string, rejoin = false, network?: Network, persist = true, keep?: KeptGame) => {
   const [client, setClient] = useState<GameGuest | null>(null);
   const [snap, setSnap] = useState<GuestSnapshot | null>(null);
   const names = useRef<string[]>([]);
@@ -104,21 +107,28 @@ export const useGameGuest = (driver: GameDriver, code: string, name: string, rej
   const clientRef = useRef<GameGuest | null>(null);
   useEffect(() => {
     quit.current = false;
-    const c = new GameGuest({ network: network ?? defaultNetwork(), gameId: driver.id, maxSlots: driver.maxPlayers, code, name, clientId: getClientId(), rejoin });
+    const make = () => new GameGuest({ network: network ?? defaultNetwork(), gameId: driver.id, maxSlots: driver.maxPlayers, code, name, clientId: getClientId(), rejoin });
+    const kept = keep ? partyStore.keep(keep, make, x => x.leave()) : null;
+    const c = kept ? kept.obj : make();
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
     let saved = false;
     const off = c.subscribe(sn => {
       setSnap(sn);
-      if (sn.status === "kicked" || sn.status === "error") { if (saved) clearRoom(driver.id); saved = false; }
-      else if (sn.room?.phase === "playing" && sn.frame && !saved && !quit.current) saved = writeJSON(roomKey(driver.id), { role: "guest", code, name });
+      if (sn.status === "kicked" || sn.status === "error" || sn.status === "host-left") { if (keep) partyStore.release(keep.key); if (saved) clearRoom(driver.id); saved = false; }
+      else if (sn.room?.phase === "playing" && sn.frame && !saved && !quit.current && persist) saved = writeJSON(roomKey(driver.id), { role: "guest", code, name });
     });
     const offFrame = c.onFrame(f => { names.current = f.base.players.map(p => p.name); push(f); });
-    void c.start();
-    return () => { off(); offFrame(); c.leave(quit.current ? { forfeit: true } : undefined); clientRef.current = null; setClient(null); };
+    if (!kept || kept.fresh) void c.start();
+    return () => {
+      off(); offFrame();
+      if (kept) { if (quit.current) partyStore.release(keep!.key); }
+      else c.leave(quit.current ? { forfeit: true } : undefined);
+      clientRef.current = null; setClient(null);
+    };
     // one connection per visit to this screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
-  return { client, snap, feed, quitForGood: () => { quit.current = true; clearRoom(driver.id); clientRef.current?.leave({ forfeit: true }); } };
+  return { client, snap, feed, quitForGood: () => { quit.current = true; clearRoom(driver.id); clientRef.current?.leave({ forfeit: true }); if (keep) partyStore.release(keep.key); } };
 };

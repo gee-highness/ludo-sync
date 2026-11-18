@@ -1,5 +1,6 @@
 "use client";
 
+import { partyStore, type KeptGame } from "@/lib/party/store";
 import { useEffect, useRef, useState } from "react";
 import { describeEvents } from "@/lib/skipbo/describe";
 import { SkipBoGuest, type GuestSnapshot } from "@/lib/skipbo/net/guest";
@@ -41,7 +42,7 @@ export const useReactionLog = (subscribe: ((cb: (r: Reaction) => void) => () => 
 };
 
 /** Opens a room on this device and follows it. Closing the screen closes the room: the table lives on the host's phone. */
-export interface SessionOptions { network?: Network; /** Keep a record so the game can be rejoined from the menu. Nearby games cannot be rejoined that way. */ persist?: boolean }
+export interface SessionOptions { network?: Network; /** Keep a record so the game can be rejoined from the menu. Nearby games cannot be rejoined that way. */ persist?: boolean; /** Open the room under this code (a party chooses it in advance). */ code?: string; /** A party game: keep it running when this screen closes. */ keep?: KeptGame }
 
 export const useSkipBoHost = (name: string, rules: Partial<Rules>, options: SessionOptions = {}, resume?: HostResume) => {
   const { network, persist: keepRecord = true } = options;
@@ -53,7 +54,10 @@ export const useSkipBoHost = (name: string, rules: Partial<Rules>, options: Sess
 
   useEffect(() => {
     ended.current = false;
-    const s = new SkipBoHost({ network: network ?? defaultNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    const keep = options.keep;
+    const make = () => new SkipBoHost({ network: network ?? defaultNetwork(), name, rules, ...(options.code && !resume ? { code: options.code } : {}), ...(resume ? { resume } : {}) });
+    const kept = keep ? partyStore.keep(keep, make, x => x.close(), x => x.tick()) : null;
+    const s = kept ? kept.obj : make();
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
@@ -65,14 +69,19 @@ export const useSkipBoHost = (name: string, rules: Partial<Rules>, options: Sess
       if (r && r.phase === "playing" && r.state) writeJSON("skipbo-room", { role: "host", code: s.code, name, host: r });
     });
     const offFrame = s.onFrame(f => { if (f.events.length) push(f.events, describeEvents(f.events, f.view)); else reset(); });
-    void s.open();
-    const timer = setInterval(() => s.tick(), 1000);
-    return () => { clearInterval(timer); off(); offFrame(); if (ended.current) s.close(); else s.suspend(); setSession(null); };
+    if (!kept || kept.fresh) void s.open();
+    const timer = kept ? undefined : setInterval(() => s.tick(), 1000);
+    return () => {
+      clearInterval(timer); off(); offFrame();
+      if (kept) { if (ended.current) partyStore.release(keep!.key); }
+      else if (ended.current) s.close(); else s.suspend();
+      setSession(null);
+    };
     // the room is made once, for the name and rules chosen on the previous screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /** Closes the room for everyone and forgets it. */
-  const endRoom = () => { ended.current = true; if (keepRecord) clearSkipBoRoom(); sessionRef.current?.close(); };
+  const endRoom = () => { ended.current = true; if (keepRecord) clearSkipBoRoom(); sessionRef.current?.close(); if (options.keep) partyStore.release(options.keep.key); };
   return { session, snap, feed, endRoom };
 };
 
@@ -86,24 +95,32 @@ export const useSkipBoGuest = (code: string, name: string, rejoin = false, optio
 
   useEffect(() => {
     quit.current = false;
-    const c = new SkipBoGuest({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
+    const keep = options.keep;
+    const make = () => new SkipBoGuest({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
+    const kept = keep ? partyStore.keep(keep, make, x => x.leave()) : null;
+    const c = kept ? kept.obj : make();
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
     let saved = false;
     const off = c.subscribe(snapshot => {
       setSnap(snapshot);
-      if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") { if (saved) clearSkipBoRoom(); saved = false; }
+      if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") { if (keep) partyStore.release(keep.key); if (saved) clearSkipBoRoom(); saved = false; }
       else if (keepRecord && snapshot.room?.phase === "playing" && snapshot.view && !saved && !quit.current) saved = writeJSON("skipbo-room", { role: "guest", code, name });
     });
     const offFrame = c.onFrame(f => { if (f.events.length) push(f.events, describeEvents(f.events, f.view)); else reset(); });
-    void c.start();
-    return () => { off(); offFrame(); c.leave(quit.current ? { forfeit: true } : undefined); clientRef.current = null; setClient(null); };
+    if (!kept || kept.fresh) void c.start();
+    return () => {
+      off(); offFrame();
+      if (kept) { if (quit.current) partyStore.release(keep!.key); }
+      else c.leave(quit.current ? { forfeit: true } : undefined);
+      clientRef.current = null; setClient(null);
+    };
     // one connection per visit to this screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const quitForGood = () => { quit.current = true; clearSkipBoRoom(); clientRef.current?.leave({ forfeit: true }); };
+  const quitForGood = () => { quit.current = true; clearSkipBoRoom(); clientRef.current?.leave({ forfeit: true }); if (options.keep) partyStore.release(options.keep.key); };
   return { client, snap, feed, quitForGood };
 };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePartyAnnounce, usePartyRoom, type PartyRoomRole } from "@/components/party/usePartyRoom";
 import { Box, Button, Center, Flex, Heading, HStack, IconButton, Input, Spinner, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
 import Link from "next/link";
@@ -39,8 +40,9 @@ const Notice = ({ title, text, onBack }: { title: string; text: string; onBack: 
   </Shell>
 );
 
-function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume; onExit: () => void }) {
-  const { session, snap, endRoom } = useHostSession(name, getSettings().rules, resume);
+function HostFlow({ name, resume, onExit, party }: { name: string; resume?: HostResume; onExit: () => void; party: PartyRoomRole | null }) {
+  const { session, snap, endRoom } = useHostSession(name, getSettings().rules, resume, party?.host ? { network: party.network, code: party.code, persist: false, keep: party.keep } : {});
+  usePartyAnnounce("ludo", party, snap?.status, snap?.code);
   usePieceSync(snap?.room ?? null, session ? d => session.setPieces(d) : undefined);
   usePaletteSync(snap?.room ?? null, session ? c => session.setColors(c) : undefined);
   if (!session || !snap || snap.status === "opening") {
@@ -76,8 +78,8 @@ function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume;
   );
 }
 
-function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string; rejoin?: boolean; onExit: () => void }) {
-  const { client, snap, quitForGood } = useGuestClient(code, name, rejoin);
+function GuestFlow({ code, name, rejoin, onExit, party }: { code: string; name: string; rejoin?: boolean; onExit: () => void; party: PartyRoomRole | null }) {
+  const { client, snap, quitForGood } = useGuestClient(code, name, rejoin, party ? { network: party.network, persist: false, keep: party.keep } : {});
   usePieceSync(snap?.room ?? null, client ? d => client.setPieces(d) : undefined);
   usePaletteSync(snap?.room ?? null, client ? c => client.setColors(c) : undefined);
   if (!client || !snap) return <Center minH="100dvh" bg="#0b1020"><Spinner size="xl" color="white" /></Center>;
@@ -116,6 +118,7 @@ export default function OnlineClient() {
   const [name, setName] = useState("");
   const [typed, setTyped] = useState(linkCode ?? "");
   const [ready, setReady] = useState(false);
+  const party = usePartyRoom("ludo");
 
   const online = useOnline();
   const [noRoom, setNoRoom] = useState(false);
@@ -128,7 +131,9 @@ export default function OnlineClient() {
         setName(rec.name);
         setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true });
       } else setNoRoom(true);
-    } else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
+    } else if (party?.host) setStep({ kind: "host" }); // the party chose this game: open its room at once
+    else if (party && linkCode) setStep({ kind: "join", code: linkCode });
+    else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     setReady(true);
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,8 +144,8 @@ export default function OnlineClient() {
   const remember = () => updateSettings({ playerName: finalName });
 
   if (!ready) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
-  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
-  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
+  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} party={step.resume ? null : party} />;
+  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} party={step.rejoin ? null : party} />;
 
   const code = cleanRoomCode(typed);
   return (

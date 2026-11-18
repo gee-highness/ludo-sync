@@ -49,7 +49,7 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
       announced.current.add(i.id);
       sound.play("turn");
       if (typeof document !== "undefined" && document.hidden && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        try { const n = new Notification(`${i.name} invites you to play ${gameName(i.game)}`, { tag: i.id, body: "Tap to join" }); n.onclick = () => { window.focus(); const p = joinPathFor(i.game, i.room); if (p) router.push(p); n.close(); }; } catch { /* notifications blocked */ }
+        try { const n = new Notification(i.game === "party" ? `${i.name} invites you to their party` : `${i.name} invites you to play ${gameName(i.game)}`, { tag: i.id, body: "Tap to join" }); n.onclick = () => { window.focus(); const p = joinPathFor(i.game, i.room); if (p) router.push(p); n.close(); }; } catch { /* notifications blocked */ }
       }
     }
     for (const r of snap.requests) if (!announced.current.has(`r${r.code}${r.at}`)) { announced.current.add(`r${r.code}${r.at}`); sound.play("turn"); }
@@ -67,7 +67,7 @@ export function FriendsProvider({ children }: { children: ReactNode }) {
             const path = joinPathFor(i.game, i.room);
             return (
               <Box key={i.id} pointerEvents="auto" w="100%" maxW="460px" bg="gray.800" color="white" borderRadius="xl" p={3} border="2px solid #eab308" boxShadow="0 8px 24px rgba(0,0,0,.5)" role="alert">
-                <Text fontWeight={800}>{i.name} invites you to play {gameName(i.game)}</Text>
+                <Text fontWeight={800}>{i.game === "party" ? `${i.name} invites you to their party 🎉` : `${i.name} invites you to play ${gameName(i.game)}`}</Text>
                 {Date.now() - i.sentAt > 120_000 && <Text fontSize="xs" color="gray.400">Sent {Math.round((Date.now() - i.sentAt) / 60_000)} minutes ago: the room may have closed</Text>}
                 <HStack mt={2}>
                   <Button size="sm" colorScheme="yellow" isDisabled={!path} onClick={() => { service.dismissInvite(i.id); if (path) router.push(path); }}>Join now</Button>

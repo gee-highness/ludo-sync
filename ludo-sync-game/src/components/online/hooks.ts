@@ -1,5 +1,6 @@
 "use client";
 
+import { partyStore, type KeptGame } from "@/lib/party/store";
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_DESIGN, setRemoteDesigns, useDesigns, type PieceDesign } from "@/lib/client/pieces";
 import type { RoomView } from "@/lib/net/protocol";
@@ -24,10 +25,14 @@ export interface SessionOptions {
   network?: Network;
   /** Keep a record so the game can be rejoined from the menu. Nearby games cannot be rejoined that way. */
   persist?: boolean;
+  /** Open the room under this code (a party chooses it in advance). */
+  code?: string;
+  /** A party game: keep it running when this screen closes, so leaving never drops you out. */
+  keep?: KeptGame;
 }
 
 export const useHostSession = (name: string, rules: Rules, resume?: HostResume, options: SessionOptions = {}) => {
-  const { network, persist: keepRecord = true } = options;
+  const { network, persist: keepRecord = true, code: presetCode, keep } = options;
   const [session, setSession] = useState<HostSession | null>(null);
   const [snap, setSnap] = useState<HostSnapshot | null>(null);
   const ended = useRef(false);
@@ -35,7 +40,9 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume, 
 
   useEffect(() => {
     ended.current = false;
-    const s = new HostSession({ network: network ?? defaultNetwork(), name, rules, ...(resume ? { resume } : {}) });
+    const make = () => new HostSession({ network: network ?? defaultNetwork(), name, rules, ...(presetCode && !resume ? { code: presetCode } : {}), ...(resume ? { resume } : {}) });
+    const kept = keep ? partyStore.keep(keep, make, x => x.close(), x => x.tick()) : null;
+    const s = kept ? kept.obj : make();
     sessionRef.current = s;
     setSession(s);
     setSnap(s.getSnapshot());
@@ -49,12 +56,13 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume, 
       else if (!resume) clearRoomRecord();
     };
     const off = s.subscribe(snapshot => { setSnap(snapshot); persist(); });
-    void s.open();
-    // plays for anyone away or out of time
-    const timer = setInterval(() => s.tick(), 1000);
+    if (!kept || kept.fresh) void s.open();
+    // plays for anyone away or out of time (a kept party game is ticked by the party, even with this screen closed)
+    const timer = kept ? undefined : setInterval(() => s.tick(), 1000);
     return () => {
       clearInterval(timer); off();
-      if (ended.current) s.close(); else s.suspend();
+      if (kept) { if (ended.current) partyStore.release(keep!.key); }
+      else if (ended.current) s.close(); else s.suspend();
       sessionRef.current = null;
       setSession(null);
     };
@@ -67,12 +75,13 @@ export const useHostSession = (name: string, rules: Rules, resume?: HostResume, 
     ended.current = true;
     if (keepRecord) clearRoomRecord();
     sessionRef.current?.close();
+    if (keep) partyStore.release(keep.key);
   };
   return { session, snap, endRoom };
 };
 
 export const useGuestClient = (code: string, name: string, rejoin = false, options: SessionOptions = {}) => {
-  const { network, persist: keepRecord = true } = options;
+  const { network, persist: keepRecord = true, keep } = options;
   const [client, setClient] = useState<GuestClient | null>(null);
   const [snap, setSnap] = useState<GuestSnapshot | null>(null);
   const quit = useRef(false);
@@ -80,7 +89,9 @@ export const useGuestClient = (code: string, name: string, rejoin = false, optio
 
   useEffect(() => {
     quit.current = false;
-    const c = new GuestClient({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
+    const make = () => new GuestClient({ network: network ?? defaultNetwork(), code, name, clientId: getClientId(), rejoin });
+    const kept = keep ? partyStore.keep(keep, make, x => x.leave()) : null;
+    const c = kept ? kept.obj : make();
     clientRef.current = c;
     setClient(c);
     setSnap(c.getSnapshot());
@@ -89,14 +100,20 @@ export const useGuestClient = (code: string, name: string, rejoin = false, optio
       setSnap(snapshot);
       const playing = snapshot.room?.phase === "playing" && !!snapshot.state;
       if (snapshot.status === "kicked" || snapshot.status === "host-left" || snapshot.status === "error") {
+        if (keep) partyStore.release(keep.key);
         if (saved && keepRecord) clearRoomRecord();
         saved = false;
       } else if (keepRecord && playing && !saved && !quit.current) {
         saved = saveRoomRecord({ role: "guest", code, name });
       }
     });
-    void c.start();
-    return () => { off(); c.leave(quit.current ? { forfeit: true } : undefined); clientRef.current = null; setClient(null); };
+    if (!kept || kept.fresh) void c.start();
+    return () => {
+      off();
+      if (kept) { if (quit.current) partyStore.release(keep!.key); }
+      else c.leave(quit.current ? { forfeit: true } : undefined);
+      clientRef.current = null; setClient(null);
+    };
     // one connection per visit to this screen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
@@ -106,6 +123,7 @@ export const useGuestClient = (code: string, name: string, rejoin = false, optio
     quit.current = true;
     if (keepRecord) clearRoomRecord();
     clientRef.current?.leave({ forfeit: true });
+    if (keep) partyStore.release(keep.key);
   };
   return { client, snap, quitForGood };
 };

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePartyAnnounce, usePartyRoom, type PartyRoomRole } from "@/components/party/usePartyRoom";
 import { Badge, Box, Button, Center, HStack, Input, Select, Spinner, Text, VStack } from "@chakra-ui/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -97,8 +98,9 @@ const Lobby = ({ mod, room, host, check, chat }: { mod: GameModule; room: RoomVi
 
 const Loading = ({ text }: { text: string }) => <Center minH="100dvh" bg={BG}><VStack color="white"><Spinner size="xl" /><Text>{text}</Text></VStack></Center>;
 
-function HostFlow({ mod, name, rules, save, onExit }: { mod: GameModule; name: string; rules: RuleValues; save?: HostSave; onExit: () => void }) {
-  const { session, snap, feed, endRoom } = useGameHost(mod.driver, name, rules, undefined, save);
+function HostFlow({ mod, name, rules, save, onExit, party }: { mod: GameModule; name: string; rules: RuleValues; save?: HostSave; onExit: () => void; party: PartyRoomRole | null }) {
+  const { session, snap, feed, endRoom } = useGameHost(mod.driver, name, rules, party?.network, save, party?.host ? party.code : undefined, !party, party?.keep);
+  usePartyAnnounce(mod.driver.id, party, snap?.status, snap?.code);
   const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   const humans = snap?.room.slots.filter(s => s.kind === "human").length ?? 0;
@@ -124,8 +126,8 @@ function HostFlow({ mod, name, rules, save, onExit }: { mod: GameModule; name: s
   );
 }
 
-function GuestFlow({ mod, code, name, rejoin, onExit, onForget }: { mod: GameModule; code: string; name: string; rejoin?: boolean; onExit: () => void; onForget: () => void }) {
-  const { client, snap, feed } = useGameGuest(mod.driver, code, name, rejoin);
+function GuestFlow({ mod, code, name, rejoin, onExit, onForget, party }: { mod: GameModule; code: string; name: string; rejoin?: boolean; onExit: () => void; onForget: () => void; party: PartyRoomRole | null }) {
+  const { client, snap, feed } = useGameGuest(mod.driver, code, name, rejoin, party?.network, !party, party?.keep);
   const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
@@ -163,6 +165,7 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
   const [name, setName] = useState("");
   const [typed, setTyped] = useState(linkCode ?? "");
   const [rules, setRules] = useState<RuleValues>({});
+  const party = usePartyRoom(gameId);
 
   useEffect(() => {
     void loadModule(gameId).then(m => {
@@ -172,6 +175,8 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
       setName(getSettings().playerName);
       if (params.get("rejoin") === "1") { const rec = loadRoom(gameId); if (rec) { setName(rec.name); setStep({ kind: "join", code: rec.code, rejoin: true }); } }
       else if (params.get("reopen") === "1") { const rec = loadHostRoom(gameId); if (rec) { setName(rec.save.name); setStep({ kind: "host", save: rec.save }); } }
+      else if (party?.host) setStep({ kind: "host" }); // the party chose this game: open its room at once
+      else if (party && linkCode) setStep({ kind: "join", code: linkCode });
       else if (params.get("host") === "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     });
     // read once, when the screen opens
@@ -184,8 +189,8 @@ export default function OnlineClient({ gameId }: { gameId: string }) {
 
   if (mod === undefined) return <Loading text="Loading…" />;
   if (mod === null) return <Notice title="Unknown game" text="That game does not exist." onBack={() => router.push("/")} />;
-  if (step.kind === "host") return <HostFlow mod={mod} name={finalName} rules={rules} save={step.save} onExit={exit} />;
-  if (step.kind === "join") return <GuestFlow mod={mod} code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} onForget={() => { clearRoom(gameId); exit(); }} />;
+  if (step.kind === "host") return <HostFlow mod={mod} name={finalName} rules={rules} save={step.save} onExit={exit} party={step.save ? null : party} />;
+  if (step.kind === "join") return <GuestFlow mod={mod} code={step.code} name={finalName} rejoin={step.rejoin} party={step.rejoin ? null : party} onExit={exit} onForget={() => { clearRoom(gameId); exit(); }} />;
 
   const code = cleanRoomCode(typed);
   return (

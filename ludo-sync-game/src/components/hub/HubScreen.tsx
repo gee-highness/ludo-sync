@@ -143,6 +143,7 @@ export default function HubScreen() {
         )}
 
         <Flex w="100%" gap={3} wrap="wrap">
+          <QuickTile href="/party" icon="🎉" title="Party" sub="Get everyone in, then pick games" />
           <QuickTile href="/friends" icon="👥" title="Friends" sub={friendCount ? `${friendCount} friend${friendCount === 1 ? "" : "s"} · invite in a tap` : "Invite in one tap"} badge={friendAlerts} />
           <QuickTile href="/cards" icon="🎴" title="Cards" sub="Card backs and courts" />
         </Flex>

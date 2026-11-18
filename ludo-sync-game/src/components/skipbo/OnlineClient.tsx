@@ -1,5 +1,6 @@
 "use client";
 
+import { usePartyAnnounce, usePartyRoom, type PartyRoomRole } from "@/components/party/usePartyRoom";
 import { Badge, Box, Button, Center, Flex, Heading, HStack, IconButton, Input, Select, Spinner, Switch, Text, VStack } from "@chakra-ui/react";
 import { ChevronLeftIcon } from "@chakra-ui/icons";
 import Link from "next/link";
@@ -138,8 +139,9 @@ export const Lobby = ({ room, host, check, invite, chat }: { room: RoomView; hos
   );
 };
 
-function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume; onExit: () => void }) {
-  const { session, snap, feed, endRoom } = useSkipBoHost(name, {}, {}, resume);
+function HostFlow({ name, resume, onExit, party }: { name: string; resume?: HostResume; onExit: () => void; party: PartyRoomRole | null }) {
+  const { session, snap, feed, endRoom } = useSkipBoHost(name, {}, party?.host ? { network: party.network, code: party.code, persist: false, keep: party.keep } : {}, resume);
+  usePartyAnnounce("skipbo", party, snap?.status, snap?.code);
   const chat: ChatSource | null = session && snap ? { items: snap.chat, onSend: t => session.sendChat(t), mySlot: snap.room.you.slot } : null;
   const reactions = useReactionLog(session ? cb => session.onReaction(cb) : undefined);
   if (!session || !snap || snap.status === "opening") return <Center minH="100dvh" bg="#0b1020"><VStack color="white"><Spinner size="xl" /><Text>Opening your room…</Text></VStack></Center>;
@@ -165,8 +167,8 @@ function HostFlow({ name, resume, onExit }: { name: string; resume?: HostResume;
   );
 }
 
-function GuestFlow({ code, name, rejoin, onExit }: { code: string; name: string; rejoin?: boolean; onExit: () => void }) {
-  const { client, snap, feed, quitForGood } = useSkipBoGuest(code, name, rejoin);
+function GuestFlow({ code, name, rejoin, onExit, party }: { code: string; name: string; rejoin?: boolean; onExit: () => void; party: PartyRoomRole | null }) {
+  const { client, snap, feed, quitForGood } = useSkipBoGuest(code, name, rejoin, party ? { network: party.network, persist: false, keep: party.keep } : {});
   const chat: ChatSource | null = client && snap ? { items: snap.chat, onSend: t => client.sendChat(t), mySlot: snap.room?.you.slot ?? null } : null;
   const reactions = useReactionLog(client ? cb => client.onReaction(cb) : undefined);
   const away = useMemo(() => new Set(snap?.room?.away ?? []), [snap?.room?.away]);
@@ -205,14 +207,17 @@ export default function SkipBoOnlineClient() {
   const [name, setName] = useState("");
   const [typed, setTyped] = useState(linkCode ?? "");
   const [ready, setReady] = useState(false);
+  const party = usePartyRoom("skipbo");
 
   useEffect(() => {
     setName(getSettings().playerName);
+    if (party?.host) setStep({ kind: "host" }); // the party chose this game: open its room at once
+    else if (party && linkCode) setStep({ kind: "join", code: linkCode });
     if (params.get("rejoin") === "1") {
       const rec = loadSkipBoRoom();
       if (rec) { setName(rec.name); setStep(rec.role === "host" && rec.host ? { kind: "host", resume: rec.host } : { kind: "join", code: rec.code, rejoin: true }); }
     }
-    if (params.get("host") === "1" && params.get("rejoin") !== "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
+    if (!party && params.get("host") === "1" && params.get("rejoin") !== "1") setStep({ kind: "host" }); // "Play with a friend" opens the room straight away
     setReady(true);
     // read once, when the screen opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -223,8 +228,8 @@ export default function SkipBoOnlineClient() {
   const remember = () => updateSettings({ playerName: finalName });
 
   if (!ready) return <Center minH="100dvh" bg="#0b1020"><Spinner color="white" size="xl" /></Center>;
-  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} />;
-  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} />;
+  if (step.kind === "host") return <HostFlow name={finalName} resume={step.resume} onExit={exit} party={step.resume ? null : party} />;
+  if (step.kind === "join") return <GuestFlow code={step.code} name={finalName} rejoin={step.rejoin} onExit={exit} party={step.rejoin ? null : party} />;
 
   const code = cleanRoomCode(typed);
   return (

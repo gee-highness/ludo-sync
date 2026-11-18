@@ -3,6 +3,7 @@ import { isRoomCode } from "../net/crypto";
 
 /** Where a friend's invite leads. Only games this app has, and only a proper room code, so an invite can never send you somewhere else. */
 export const joinPathFor = (game: string, room: string): string | null => {
+  if (game === "party") return isRoomCode(room) ? `/party?join=${room}` : null;
   if (!GAMES.some(g => g.id === game) || !isRoomCode(room)) return null;
   return game === "ludo" ? `/online?join=${room}` : game === "skipbo" ? `/skipbo/online?join=${room}` : `/g/${game}/online?join=${room}`;
 };
@@ -14,4 +15,4 @@ export const hostPathFor = (game: string, friendCodes: string[]): string | null 
   return `${base}?host=1${friendCodes.length ? `&invite=${friendCodes.join(",")}` : ""}`;
 };
 
-export const gameName = (id: string) => GAMES.find(g => g.id === id)?.name ?? "a game";
+export const gameName = (id: string) => (id === "party" ? "a party" : GAMES.find(g => g.id === id)?.name ?? "a game");
