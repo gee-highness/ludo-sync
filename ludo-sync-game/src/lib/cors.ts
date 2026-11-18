@@ -1,5 +1,5 @@
-/** The Android app loads from https://localhost (Capacitor) and calls these endpoints on the deployed site, so they must answer cross-origin. */
-const ALLOWED = new Set(["https://localhost", "capacitor://localhost", "http://localhost"]);
+/** The Android app loads from https://localhost (Capacitor), the desktop app from ludosync://app, and they call these endpoints on the deployed site, so they must answer cross-origin. */
+const ALLOWED = new Set(["https://localhost", "capacitor://localhost", "http://localhost", "ludosync://app"]);
 
 export const withCors = (req: Request, res: Response): Response => {
   const origin = req.headers.get("origin");

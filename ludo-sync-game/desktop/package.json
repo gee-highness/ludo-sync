@@ -1,0 +1,42 @@
+{
+  "name": "ludo-sync",
+  "productName": "Ludo Sync",
+  "version": "1.0.0",
+  "description": "Classic games for you and your friends. Play on your own, with friends online, or with no internet at all.",
+  "author": "Ludo Sync",
+  "license": "UNLICENSED",
+  "homepage": "https://gss-ludo-sync.vercel.app",
+  "main": "main.js",
+  "scripts": {
+    "app": "node prepare.mjs",
+    "start": "electron .",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "app.ludosync.games",
+    "productName": "Ludo Sync",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["main.js", "preload.js", "app/**/*", "package.json"],
+    "artifactName": "ludo-sync-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "target": ["AppImage", "deb", "pacman", "tar.gz"],
+      "category": "Game",
+      "icon": "build/icon.png",
+      "synopsis": "Ludo, Skip-Bo and more, with friends",
+      "maintainer": "Ludo Sync <noreply@ludosync.app>"
+    },
+    "win": {
+      "target": ["nsis", "portable", "zip"],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true },
+    "pacman": { "depends": ["gtk3", "nss", "alsa-lib", "libxss"] },
+    "deb": { "depends": ["libgtk-3-0", "libnss3", "libasound2", "libxss1"] }
+  }
+}
