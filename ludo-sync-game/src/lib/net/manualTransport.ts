@@ -54,6 +54,20 @@ export const primeLocalAddresses = async (): Promise<boolean> => {
   } catch { return false; }
 };
 
+/**
+ * Keeps the camera on while a connection is being set up, so the browser lists the phone's real local address instead of a `.local` name.
+ * Those names only work when the phones can look each other up, which Android often cannot do on a hotspot without internet.
+ * Returns a function that turns the camera off again; does nothing (and never fails) where there is no camera or it is refused.
+ */
+export const holdLocalAddresses = async (): Promise<() => void> => {
+  try {
+    const md = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
+    if (!md?.getUserMedia) return () => {};
+    const stream = await md.getUserMedia({ video: true });
+    return () => stream.getTracks().forEach(t => t.stop());
+  } catch { return () => {}; }
+};
+
 // ---- what the screens see ------------------------------------------------------------------------------------------
 
 export type InviteState = "creating" | "waiting" | "connecting" | "connected" | "failed";
@@ -179,21 +193,23 @@ export class NearbyDesk {
     const open = [...this.invites.values()].filter(i => i.view.state !== "failed" && i.view.state !== "connected").length;
     if (open >= MAX_INVITES) return { ok: false, error: "Finish or cancel the invites you already have first." };
     const id = randomId();
+    const release = this.factory === browserPeerFactory ? await holdLocalAddresses() : () => {};
     let pc: PeerConnectionLike;
-    try { pc = this.factory(); } catch { return { ok: false, error: "This browser cannot make direct connections." }; }
+    try { pc = this.factory(); } catch { release(); return { ok: false, error: "This browser cannot make direct connections." }; }
     const dc = pc.createDataChannel("ludo", { ordered: true });
     const invite: HostInvite = { view: { id, state: "creating", text: "", label: id.slice(0, 4).toUpperCase() }, pc, dc };
     this.invites.set(id, invite);
     this.publish();
     try {
       await pc.setLocalDescription(await pc.createOffer());
-      await gathered(pc, this.timing.gatherMs);
+      await gathered(pc, this.timing.gatherMs).finally(release);
       const sig = pc.localDescription ? signalFromSdp(pc.localDescription.sdp, "offer", id) : null;
       if (!sig) throw new Error("no address");
       this.setInvite(invite, { state: "waiting", text: encodeSignal(sig) });
       invite.timer = setTimeout(() => this.failInvite(invite, "No reply came back. Make a new invite."), this.timing.replyWaitMs);
       return { ok: true };
     } catch {
+      release();
       this.failInvite(invite, NO_ADDRESS);
       return { ok: false, error: NO_ADDRESS };
     }
@@ -250,8 +266,9 @@ export class NearbyDesk {
     if (!r.ok) return { ok: false, error: DECODE_MESSAGE[r.reason] };
     this.dropGuestPeer();
     this.setGuest({ stage: "reading", reply: "", label: noteLabel(r.signal), error: undefined, lost: false });
+    const release = this.factory === browserPeerFactory ? await holdLocalAddresses() : () => {};
     let pc: PeerConnectionLike;
-    try { pc = this.factory(); } catch { this.setGuest({ stage: "failed", error: "This browser cannot make direct connections." }); return { ok: false, error: "This browser cannot make direct connections." }; }
+    try { pc = this.factory(); } catch { release(); this.setGuest({ stage: "failed", error: "This browser cannot make direct connections." }); return { ok: false, error: "This browser cannot make direct connections." }; }
     this.guestPc = pc;
     pc.ondatachannel = ({ channel }) => {
       channel.onopen = () => {
@@ -268,13 +285,14 @@ export class NearbyDesk {
     try {
       await pc.setRemoteDescription({ type: "offer", sdp: sdpFromSignal(r.signal) });
       await pc.setLocalDescription(await pc.createAnswer());
-      await gathered(pc, this.timing.gatherMs);
+      await gathered(pc, this.timing.gatherMs).finally(release);
       const sig = pc.localDescription ? signalFromSdp(pc.localDescription.sdp, "answer", r.signal.id) : null;
       if (!sig) throw new Error("no address");
       this.setGuest({ stage: "reply", reply: encodeSignal(sig) });
       this.guestTimer = setTimeout(() => this.guestFailed(NOT_REACHED), this.timing.replyWaitMs);
       return { ok: true };
     } catch {
+      release();
       this.guestFailed(NO_ADDRESS);
       return { ok: false, error: NO_ADDRESS };
     }
