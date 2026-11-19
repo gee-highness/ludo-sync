@@ -136,6 +136,15 @@ public class NearbyPlayersPlugin extends Plugin {
         return false;
     }
 
+    @PluginMethod
+    public void lastCrash(PluginCall call) {
+        android.content.SharedPreferences sp = getContext().getSharedPreferences("crash", Context.MODE_PRIVATE);
+        JSObject r = new JSObject();
+        r.put("trace", sp.getString("trace", ""));
+        sp.edit().remove("trace").apply();
+        call.resolve(r);
+    }
+
     private void problem(String reason) { JSObject e = new JSObject(); e.put("reason", reason); notifyListeners("problem", e); }
 
     @PluginMethod

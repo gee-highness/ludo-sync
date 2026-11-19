@@ -45,6 +45,7 @@ type Ev = "found" | "lost" | "invited" | "closed" | "message" | "problem";
 export interface NearbyPluginLike {
   status(): Promise<{ granted: boolean; google: boolean }>;
   access(): Promise<{ granted: boolean }>;
+  lastCrash?(): Promise<{ trace: string }>;
   start(o: Identity): Promise<{ google: boolean }>;
   stop(): Promise<void>;
   invite(o: { rid: string; info: string }): Promise<{ cid: string }>;
@@ -156,6 +157,12 @@ export class NearbyPlayers {
     try { await this.plugin.stop(); } catch { /* ignore */ }
     this.peers.clear(); this.byRoute.clear();
     this.set({ visible: false, peers: [], problem: "" });
+  }
+
+  /** The stack trace of the last native crash, once (empty if none). */
+  async lastCrash(): Promise<string> {
+    if (!this.plugin) return "";
+    try { return (await this.plugin.lastCrash?.())?.trace || ""; } catch { return ""; }
   }
 
   /** Asks for the Bluetooth permission; Google Nearby starts as soon as it is given. */

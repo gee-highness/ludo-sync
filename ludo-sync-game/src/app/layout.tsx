@@ -1,6 +1,7 @@
 import { Inter } from "next/font/google";
 import { ChakraProviders } from "@/components/ChakraProviders"; // Import the client component
 import { ServiceWorker } from "@/components/pwa/ServiceWorker";
+import { CrashOverlay } from "@/components/native/CrashOverlay";
 import { NativeShell } from "@/components/native/NativeShell";
 import { FriendsProvider } from "@/components/friends/FriendsProvider";
 import { PartyProvider } from "@/components/party/PartyProvider";
@@ -41,6 +42,7 @@ export default function RootLayout({
           <FriendsProvider><PartyProvider><main id="main">{children}</main></PartyProvider><NearbyPlayersProvider /></FriendsProvider>
           <ServiceWorker />
           <NativeShell />
+          <CrashOverlay />
         </ChakraProviders>
       </body>
     </html>
