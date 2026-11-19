@@ -1,9 +1,16 @@
 package app.ludosync.games;
 
 import android.content.Context;
+import android.bluetooth.BluetoothAdapter;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.util.Base64;
+
+import androidx.core.location.LocationManagerCompat;
+import android.location.LocationManager;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -15,6 +22,7 @@ import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.nearby.Nearby;
 import com.google.android.gms.nearby.connection.AdvertisingOptions;
 import com.google.android.gms.nearby.connection.ConnectionInfo;
@@ -117,12 +125,26 @@ public class NearbyPlayersPlugin extends Plugin {
         catch (Throwable t) { return false; }
     }
 
+    private boolean vpnOn() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities c = cm.getNetworkCapabilities(n);
+                if (c != null && c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return true;
+            }
+        } catch (Throwable ignored) {}
+        return false;
+    }
+
+    private void problem(String reason) { JSObject e = new JSObject(); e.put("reason", reason); notifyListeners("problem", e); }
+
     @PluginMethod
     public void status(PluginCall call) {
         JSObject r = new JSObject();
         r.put("granted", granted());
         r.put("google", googleAvailable());
         r.put("visible", visible);
+        r.put("vpn", vpnOn());
         call.resolve(r);
     }
 
@@ -167,14 +189,31 @@ public class NearbyPlayersPlugin extends Plugin {
     }
 
     private void startGoogle() {
-        if (googleOn || !googleAvailable()) return;
+        if (googleOn) return;
+        if (!googleAvailable()) { problem("google:unavailable:0"); return; }
+        BluetoothAdapter ba = BluetoothAdapter.getDefaultAdapter();
+        if (ba == null || !ba.isEnabled()) { problem("google:bluetooth:8007"); return; }
+        if (Build.VERSION.SDK_INT <= 32) {
+            LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null && !LocationManagerCompat.isLocationEnabled(lm)) { problem("google:location:8034"); return; }
+        }
         try {
             google = Nearby.getConnectionsClient(getContext());
             Strategy s = Strategy.P2P_CLUSTER;
-            google.startAdvertising(me, SERVICE_ID, lifecycle, new AdvertisingOptions.Builder().setStrategy(s).build());
-            google.startDiscovery(SERVICE_ID, discovery, new DiscoveryOptions.Builder().setStrategy(s).build());
             googleOn = true;
-        } catch (Throwable t) { googleOn = false; }
+            google.startAdvertising(me, SERVICE_ID, lifecycle, new AdvertisingOptions.Builder().setStrategy(s).build())
+                .addOnFailureListener(e -> googleFailed("advertising", e));
+            google.startDiscovery(SERVICE_ID, discovery, new DiscoveryOptions.Builder().setStrategy(s).build())
+                .addOnFailureListener(e -> googleFailed("discovery", e));
+        } catch (Throwable t) { googleOn = false; problem("google:" + t); }
+    }
+
+    /** Reports why Bluetooth / Wi-Fi Direct search did not start, so the page can say so instead of waiting forever. */
+    private void googleFailed(String what, Exception e) {
+        int code = e instanceof ApiException ? ((ApiException) e).getStatusCode() : -1;
+        if (code == 8001 || code == 8002) return; // already advertising / discovering: fine
+        googleOn = false;
+        problem("google:" + what + ":" + code);
     }
 
     private void stopGoogleDiscovery() {
@@ -220,43 +259,55 @@ public class NearbyPlayersPlugin extends Plugin {
     // ---- local network: beacons and sockets ---------------------------------------------------
     private synchronized void startLan() {
         try {
-            if (server == null) {
-                server = new ServerSocket(0);
-                io.execute(this::acceptLoop);
-            }
+            if (server == null) { server = new ServerSocket(0); io.execute(this::acceptLoop); }
+        } catch (IOException e) { problem("lan:server"); }
+        try {
             if (udp == null) {
                 WifiManager wifi = (WifiManager) getContext().getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wifi != null) { lock = wifi.createMulticastLock("ludosync-nearby"); lock.setReferenceCounted(false); lock.acquire(); }
-                udp = new DatagramSocket(null);
-                udp.setReuseAddress(true);
-                udp.setBroadcast(true);
-                udp.bind(new InetSocketAddress(LAN_PORT));
+                DatagramSocket u = new DatagramSocket(null);
+                u.setReuseAddress(true);
+                u.setBroadcast(true);
+                u.bind(new InetSocketAddress(LAN_PORT));
+                udp = u;
                 io.execute(this::beaconLoop);
             }
-            if (beat == null) {
-                beat = Executors.newSingleThreadScheduledExecutor();
-                beat.scheduleAtFixedRate(this::beacon, 0, 2, TimeUnit.SECONDS);
-            }
-        } catch (IOException ignored) {}
+        } catch (Exception e) { problem("lan:udp"); }
+        if (beat == null) {
+            beat = Executors.newSingleThreadScheduledExecutor();
+            beat.scheduleAtFixedRate(this::beacon, 0, 2, TimeUnit.SECONDS);
+        }
     }
 
+    private int beaconFails = 0, googleTick = 0;
+
     private void beacon() {
+        // expire peers first, so a failed send below can never keep stale people on the list
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, LanPeer> e : lanPeers.entrySet()) {
+            if (now - e.getValue().seen > LOST_MS) { lanPeers.remove(e.getKey()); lost("l:" + e.getKey()); }
+        }
+        if (visible && !googleOn && granted() && ++googleTick % 5 == 0) startGoogle();
+        if (udp == null || server == null || udp.isClosed()) return;
+        byte[] b;
         try {
             JSONObject j = new JSONObject(me);
             j.put("a", "ludosync"); j.put("v", 1); j.put("p", server.getLocalPort());
-            byte[] b = j.toString().getBytes(StandardCharsets.UTF_8);
-            udp.send(new DatagramPacket(b, b.length, InetAddress.getByName("255.255.255.255"), LAN_PORT));
+            b = j.toString().getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) { return; }
+        int sent = 0;
+        // each address on its own: one that fails (no route, VPN) must not stop the others
+        try { udp.send(new DatagramPacket(b, b.length, InetAddress.getByName("255.255.255.255"), LAN_PORT)); sent++; } catch (Exception ignored) {}
+        try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) continue;
                 for (InterfaceAddress ia : ni.getInterfaceAddresses()) {
-                    if (ia.getBroadcast() != null) udp.send(new DatagramPacket(b, b.length, ia.getBroadcast(), LAN_PORT));
+                    if (ia.getBroadcast() == null) continue;
+                    try { udp.send(new DatagramPacket(b, b.length, ia.getBroadcast(), LAN_PORT)); sent++; } catch (Exception ignored) {}
                 }
             }
-            long now = System.currentTimeMillis();
-            for (Map.Entry<String, LanPeer> e : lanPeers.entrySet()) {
-                if (now - e.getValue().seen > LOST_MS) { lanPeers.remove(e.getKey()); lost("l:" + e.getKey()); }
-            }
         } catch (Exception ignored) {}
+        if (sent == 0) { if (++beaconFails == 3) problem(vpnOn() ? "lan:vpn" : "lan:nonetwork"); } else beaconFails = 0;
     }
 
     private void beaconLoop() {

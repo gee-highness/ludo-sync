@@ -23,10 +23,25 @@ export interface NearbyState {
   google: boolean;
   peers: NearbyPeer[];
   invites: IncomingInvite[];
+  /** Why looking is not working (Bluetooth off, VPN in the way, …), in plain words; empty when all is well. */
+  problem: string;
 }
+
+/** Turns the plugin's reason code into something a player can act on. */
+export const explainProblem = (reason: string): string => {
+  if (reason === "lan:vpn") return "A VPN is on, which blocks Wi-Fi discovery. Turn it off on both phones.";
+  if (reason === "lan:nonetwork") return "No shared Wi-Fi or hotspot found. Join the same Wi-Fi or hotspot, or rely on Bluetooth.";
+  if (reason.startsWith("lan:")) return "This phone could not open its local network port. Restart the app.";
+  if (reason.startsWith("google:unavailable")) return "This phone has no Google Play services, so Bluetooth search is not possible. Use the same Wi-Fi or hotspot.";
+  const code = Number(reason.split(":")[2]);
+  if (code === 8007) return "Turn on Bluetooth on this phone.";
+  if (code === 8034 || code === 8035 || code === 8036) return "Turn on Location (needed by Android to find nearby phones) and allow Nearby devices.";
+  if (reason.startsWith("google:")) return `Bluetooth search could not start (code ${Number.isNaN(code) ? "?" : code}). Check Bluetooth and Location are on.`;
+  return "";
+};
 export interface Identity { device: string; name: string; code: string }
 
-type Ev = "found" | "lost" | "invited" | "closed" | "message";
+type Ev = "found" | "lost" | "invited" | "closed" | "message" | "problem";
 export interface NearbyPluginLike {
   status(): Promise<{ granted: boolean; google: boolean }>;
   access(): Promise<{ granted: boolean }>;
@@ -109,7 +124,7 @@ export class NearbyPlayers {
   private wired = false;
 
   constructor(private plugin: NearbyPluginLike | null, private now: () => number = Date.now) {
-    this.st = { supported: !!plugin, visible: false, granted: false, google: false, peers: [], invites: [] };
+    this.st = { supported: !!plugin, visible: false, granted: false, google: false, peers: [], invites: [], problem: "" };
   }
 
   get = () => this.st;
@@ -126,7 +141,8 @@ export class NearbyPlayers {
     this.me = me;
     this.wire();
     try {
-      const s = await this.plugin.status();
+      let s = await this.plugin.status();
+      if (!s.granted && s.google) { await this.allow(); s = await this.plugin.status(); } // ask for Bluetooth right away
       const r = await this.plugin.start(me);
       this.running = true;
       this.set({ visible: true, granted: s.granted, google: r.google || s.google });
@@ -139,7 +155,7 @@ export class NearbyPlayers {
     this.running = false;
     try { await this.plugin.stop(); } catch { /* ignore */ }
     this.peers.clear(); this.byRoute.clear();
-    this.set({ visible: false, peers: [] });
+    this.set({ visible: false, peers: [], problem: "" });
   }
 
   /** Asks for the Bluetooth permission; Google Nearby starts as soon as it is given. */
@@ -203,9 +219,11 @@ export class NearbyPlayers {
       peer.code = cleanText(e.code, 16) || peer.code;
       peer.routes = { ...peer.routes, [via]: e.rid };
       this.peers.set(device, peer);
+      if (this.st.problem) this.set({ problem: "" });
       this.byRoute.set(e.rid, device);
       this.publishPeers();
     });
+    void p.addListener("problem", e => { const m = explainProblem(String(e.reason ?? "")); if (m) this.set({ problem: m }); });
     void p.addListener("lost", e => {
       const device = this.byRoute.get(e.rid);
       this.byRoute.delete(e.rid);

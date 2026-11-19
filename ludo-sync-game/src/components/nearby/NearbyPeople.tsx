@@ -94,6 +94,7 @@ export function NearbyPeople({ onInvite, exclude = [], title = "People nearby", 
           <Radar />
           <Box>
             <Text fontWeight={700}>Looking for phones nearby…</Text>
+            {st.problem && <Text fontSize="sm" color="orange.300" fontWeight={700}>{st.problem}</Text>}
             <Text fontSize="xs" color="gray.400">Ask friends to open the app. They appear here by themselves{st.granted ? "" : " when you're on the same Wi-Fi or hotspot"}.</Text>
           </Box>
         </HStack>
